@@ -72,7 +72,12 @@ function cardapio_evento_e(string $value): string
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
-$horario_evento = eventos_reuniao_snapshot_horario_evento($snapshot, '-', $reuniao);
+$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
+$hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
+$horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
+if ($hora_inicio !== '' && $hora_fim !== '') {
+    $horario_evento .= ' - ' . $hora_fim;
+}
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $pacote_nome = trim((string)($contexto_cardapio['pacote']['nome'] ?? ''));

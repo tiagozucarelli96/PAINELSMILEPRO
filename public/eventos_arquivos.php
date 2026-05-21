@@ -87,7 +87,7 @@ if (!is_array($snapshot)) {
 $nome_evento = trim((string)($snapshot['nome'] ?? 'Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
-$horario_evento = eventos_reuniao_snapshot_horario_evento($snapshot, '-', $reuniao);
+$hora_evento = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
@@ -725,7 +725,7 @@ includeSidebar('Arquivos do Evento');
         <h2><?= eventos_arquivos_e($nome_evento) ?></h2>
         <div class="event-meta">
             <div><strong>📅 Data:</strong> <?= eventos_arquivos_e($data_evento_fmt) ?></div>
-            <div><strong>⏰ Horário:</strong> <?= eventos_arquivos_e($horario_evento) ?></div>
+            <div><strong>⏰ Horário:</strong> <?= eventos_arquivos_e($hora_evento !== '' ? $hora_evento : '-') ?></div>
             <div><strong>📍 Local:</strong> <?= eventos_arquivos_e($local_evento) ?></div>
             <div><strong>👤 Cliente:</strong> <?= eventos_arquivos_e($cliente_nome) ?></div>
             <div><strong>🏷️ Tipo:</strong> <?= eventos_arquivos_e($tipo_evento_real_label) ?></div>

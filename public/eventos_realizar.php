@@ -317,7 +317,12 @@ if (!$reuniao) {
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
-$horario_evento = eventos_reuniao_snapshot_horario_evento($snapshot, '-', $reuniao);
+$hora_inicio = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
+$hora_fim = eventos_realizar_snapshot_hora_fim($snapshot);
+$horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
+if ($hora_inicio !== '' && $hora_fim !== '') {
+    $horario_evento .= ' - ' . $hora_fim;
+}
 $local_evento = eventos_me_snapshot_local($snapshot, 'Local não informado');
 $cliente_nome = eventos_me_snapshot_cliente_nome($snapshot, 'Cliente não informado');
 $convidados_previstos_me = eventos_realizar_snapshot_convidados_previstos($snapshot);

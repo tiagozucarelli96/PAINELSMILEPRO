@@ -152,10 +152,58 @@ foreach ($arquivos as $arquivo) {
             padding-bottom: 28px;
         }
 
+        .toolbar {
+            display: grid;
+            grid-template-columns: minmax(220px, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .search {
+            width: 100%;
+            min-height: 46px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 11px 14px;
+            font: inherit;
+            color: var(--ink);
+            background: rgba(255,255,255,0.92);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+        }
+
+        .filters {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px;
+            border: 1px solid var(--line);
+            border-radius: 13px;
+            background: rgba(255,255,255,0.86);
+        }
+
+        .filter-btn {
+            min-height: 38px;
+            border: 0;
+            border-radius: 10px;
+            padding: 7px 12px;
+            background: transparent;
+            color: #475569;
+            cursor: pointer;
+            font: inherit;
+            font-size: .9rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .filter-btn.is-active {
+            background: var(--brand-2);
+            color: #fff;
+        }
+
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 18px;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px;
         }
 
         .empty {
@@ -170,18 +218,27 @@ foreach ($arquivos as $arquivo) {
         .card {
             background: var(--card);
             border: 1px solid var(--line);
-            border-radius: 22px;
+            border-radius: 14px;
             overflow: hidden;
             box-shadow: 0 16px 35px rgba(15, 23, 42, 0.06);
+            transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            border-color: #bfdbfe;
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.09);
         }
 
         .preview {
-            min-height: 240px;
-            aspect-ratio: 16 / 10;
+            min-height: 0;
+            aspect-ratio: 16 / 11;
             background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
+            overflow: hidden;
         }
 
         .preview img,
@@ -191,6 +248,26 @@ foreach ($arquivos as $arquivo) {
             object-fit: cover;
             display: block;
             background: #000;
+        }
+
+        .preview video {
+            object-fit: contain;
+        }
+
+        .preview-badge {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.76);
+            color: #fff;
+            font-size: .76rem;
+            font-weight: 900;
+            backdrop-filter: blur(8px);
         }
 
         .body {
@@ -209,6 +286,11 @@ foreach ($arquivos as $arquivo) {
             font-size: 1rem;
             color: var(--ink);
             word-break: break-word;
+            line-height: 1.35;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .tag {
@@ -236,6 +318,10 @@ foreach ($arquivos as $arquivo) {
             color: #475569;
             line-height: 1.65;
             white-space: pre-wrap;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .actions {
@@ -261,6 +347,16 @@ foreach ($arquivos as $arquivo) {
 
         .btn:hover {
             background: #f8fbff;
+        }
+
+        .no-results {
+            display: none;
+            border: 1px dashed #c6d6ec;
+            border-radius: 14px;
+            padding: 32px 18px;
+            text-align: center;
+            color: var(--muted);
+            background: rgba(255,255,255,0.85);
         }
 
         @media (max-width: 1100px) {
@@ -318,6 +414,19 @@ foreach ($arquivos as $arquivo) {
             .grid {
                 grid-template-columns: 1fr;
                 gap: 14px;
+            }
+
+            .toolbar {
+                grid-template-columns: 1fr;
+            }
+
+            .filters {
+                width: 100%;
+                overflow-x: auto;
+            }
+
+            .filter-btn {
+                flex: 1;
             }
 
             .card,
@@ -417,15 +526,33 @@ foreach ($arquivos as $arquivo) {
         <?php if (empty($arquivos)): ?>
         <div class="empty">Nenhum material foi publicado ainda.</div>
         <?php else: ?>
-        <section class="grid">
+        <div class="toolbar" aria-label="Filtros da galeria de marketing">
+            <input class="search" id="marketingPublicSearch" type="search" placeholder="Buscar material" autocomplete="off">
+            <div class="filters" role="group" aria-label="Filtrar por tipo">
+                <button class="filter-btn is-active" type="button" data-filter="todos">Todos</button>
+                <button class="filter-btn" type="button" data-filter="imagem">Imagens</button>
+                <button class="filter-btn" type="button" data-filter="video">Videos</button>
+            </div>
+        </div>
+
+        <div class="no-results" id="marketingPublicNoResults">Nenhum material encontrado com os filtros atuais.</div>
+
+        <section class="grid" id="marketingPublicGrid">
             <?php foreach ($arquivos as $arquivo): ?>
                 <?php
                 $arquivoUrl = trim((string)($arquivo['public_url'] ?? ''));
                 $mimeType = trim((string)($arquivo['mime_type'] ?? ''));
                 $mediaKind = trim((string)($arquivo['media_kind'] ?? ''));
+                $searchText = trim(implode(' ', [
+                    (string)($arquivo['original_name'] ?? ''),
+                    (string)($arquivo['descricao'] ?? ''),
+                    (string)($arquivo['uploaded_by_name'] ?? ''),
+                    $mediaKind,
+                ]));
                 ?>
-                <article class="card">
+                <article class="card" data-kind="<?= h($mediaKind) ?>" data-search="<?= h(strtolower($searchText)) ?>">
                     <div class="preview">
+                        <span class="preview-badge"><?= h($mediaKind === 'video' ? 'Video' : 'Imagem') ?></span>
                         <?php if ($mediaKind === 'imagem' && $arquivoUrl !== ''): ?>
                         <img src="<?= h($arquivoUrl) ?>" alt="<?= h($arquivo['original_name'] ?? 'Imagem') ?>" loading="lazy">
                         <?php elseif ($mediaKind === 'video' && $arquivoUrl !== ''): ?>
@@ -463,5 +590,57 @@ foreach ($arquivos as $arquivo) {
         </section>
         <?php endif; ?>
     </main>
+    <script>
+        (function() {
+            const search = document.getElementById('marketingPublicSearch');
+            const buttons = Array.from(document.querySelectorAll('.filter-btn'));
+            const cards = Array.from(document.querySelectorAll('.card[data-kind]'));
+            const noResults = document.getElementById('marketingPublicNoResults');
+            let activeFilter = 'todos';
+
+            function normalize(value) {
+                return String(value || '')
+                    .toLowerCase()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .trim();
+            }
+
+            function applyFilters() {
+                const query = normalize(search ? search.value : '');
+                let visibleCount = 0;
+
+                cards.forEach(function(card) {
+                    const kind = card.getAttribute('data-kind') || '';
+                    const text = normalize(card.getAttribute('data-search') || '');
+                    const visible = (activeFilter === 'todos' || kind === activeFilter)
+                        && (query === '' || text.indexOf(query) !== -1);
+
+                    card.style.display = visible ? '' : 'none';
+                    if (visible) {
+                        visibleCount++;
+                    }
+                });
+
+                if (noResults) {
+                    noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+                }
+            }
+
+            if (search) {
+                search.addEventListener('input', applyFilters);
+            }
+
+            buttons.forEach(function(button) {
+                button.addEventListener('click', function() {
+                    activeFilter = button.getAttribute('data-filter') || 'todos';
+                    buttons.forEach(function(current) {
+                        current.classList.toggle('is-active', current === button);
+                    });
+                    applyFilters();
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

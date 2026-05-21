@@ -604,9 +604,59 @@ ob_start();
     margin-bottom: 1rem;
 }
 
+.marketing-library-tools {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    gap: .75rem;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.marketing-search {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: .75rem .9rem;
+    font: inherit;
+    color: #0f172a;
+    background: #fff;
+}
+
+.marketing-filter-group {
+    display: inline-flex;
+    gap: .35rem;
+    padding: .25rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 13px;
+    background: #f8fafc;
+}
+
+.marketing-filter-btn {
+    min-height: 36px;
+    border: 0;
+    border-radius: 10px;
+    padding: .45rem .75rem;
+    background: transparent;
+    color: #475569;
+    cursor: pointer;
+    font: inherit;
+    font-size: .9rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.marketing-filter-btn.is-active {
+    color: #fff;
+    background: #1e3a8a;
+    box-shadow: 0 8px 18px rgba(30, 58, 138, 0.18);
+}
+
 .marketing-library-list {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 1rem;
+    align-items: stretch;
 }
 
 .marketing-empty {
@@ -620,33 +670,68 @@ ob_start();
 
 .marketing-media-item {
     border: 1px solid #e2e8f0;
-    border-radius: 18px;
+    border-radius: 14px;
     overflow: hidden;
     background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+
+.marketing-media-item:hover {
+    transform: translateY(-2px);
+    border-color: #bfdbfe;
+    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
 }
 
 .marketing-media-preview {
     background:
         linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    min-height: 220px;
+    aspect-ratio: 16 / 11;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    overflow: hidden;
 }
 
 .marketing-media-preview img,
 .marketing-media-preview video {
     display: block;
     width: 100%;
-    max-height: 360px;
+    height: 100%;
     object-fit: cover;
     background: #000;
+}
+
+.marketing-media-preview video {
+    object-fit: contain;
+}
+
+.marketing-preview-badge {
+    position: absolute;
+    left: .7rem;
+    top: .7rem;
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: .3rem .55rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.76);
+    color: #fff;
+    font-size: .76rem;
+    font-weight: 800;
+    backdrop-filter: blur(8px);
 }
 
 .marketing-media-body {
     padding: 1rem;
     display: grid;
     gap: .8rem;
+    flex: 1;
+    align-content: start;
 }
 
 .marketing-media-top {
@@ -658,9 +743,14 @@ ob_start();
 
 .marketing-media-name {
     margin: 0;
-    font-size: 1rem;
+    font-size: .98rem;
+    line-height: 1.35;
     color: #0f172a;
     word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .marketing-media-meta {
@@ -687,16 +777,42 @@ ob_start();
     color: #475569;
     line-height: 1.6;
     white-space: pre-wrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .marketing-media-actions {
     display: flex;
     flex-wrap: wrap;
     gap: .65rem;
+    margin-top: auto;
+}
+
+.marketing-media-actions .marketing-btn {
+    min-height: 40px;
+    padding: .65rem .85rem;
+    border-radius: 10px;
+    font-size: .9rem;
+}
+
+.marketing-media-actions .marketing-delete-form {
+    margin-left: auto;
 }
 
 .marketing-delete-form {
     margin: 0;
+}
+
+.marketing-no-results {
+    display: none;
+    padding: 2rem 1rem;
+    text-align: center;
+    border: 1px dashed #cbd5e1;
+    border-radius: 14px;
+    color: #64748b;
+    background: #f8fafc;
 }
 
 @media (max-width: 1080px) {
@@ -717,6 +833,19 @@ ob_start();
 
     .marketing-stat-grid {
         grid-template-columns: 1fr 1fr;
+    }
+
+    .marketing-library-tools {
+        grid-template-columns: 1fr;
+    }
+
+    .marketing-filter-group {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .marketing-filter-btn {
+        flex: 1;
     }
 }
 </style>
@@ -813,15 +942,35 @@ ob_start();
                 Nenhum arquivo enviado ainda. Use o formulario ao lado para montar a biblioteca.
             </div>
             <?php else: ?>
-            <div class="marketing-library-list">
+            <div class="marketing-library-tools" aria-label="Filtros da biblioteca de marketing">
+                <input class="marketing-search" id="marketingSearch" type="search" placeholder="Buscar por nome, descricao ou pessoa" autocomplete="off">
+                <div class="marketing-filter-group" role="group" aria-label="Filtrar por tipo">
+                    <button class="marketing-filter-btn is-active" type="button" data-filter="todos">Todos</button>
+                    <button class="marketing-filter-btn" type="button" data-filter="imagem">Imagens</button>
+                    <button class="marketing-filter-btn" type="button" data-filter="video">Videos</button>
+                </div>
+            </div>
+
+            <div class="marketing-no-results" id="marketingNoResults">
+                Nenhum arquivo encontrado com os filtros atuais.
+            </div>
+
+            <div class="marketing-library-list" id="marketingLibraryList">
                 <?php foreach ($arquivos as $arquivo): ?>
                     <?php
                     $arquivoUrl = trim((string)($arquivo['public_url'] ?? ''));
                     $mimeType = trim((string)($arquivo['mime_type'] ?? ''));
                     $mediaKind = trim((string)($arquivo['media_kind'] ?? ''));
+                    $searchText = trim(implode(' ', [
+                        (string)($arquivo['original_name'] ?? ''),
+                        (string)($arquivo['descricao'] ?? ''),
+                        (string)($arquivo['uploaded_by_name'] ?? ''),
+                        $mediaKind,
+                    ]));
                     ?>
-                    <article class="marketing-media-item">
+                    <article class="marketing-media-item" data-kind="<?= h($mediaKind) ?>" data-search="<?= h(strtolower($searchText)) ?>">
                         <div class="marketing-media-preview">
+                            <span class="marketing-preview-badge"><?= h($mediaKind === 'video' ? 'Video' : 'Imagem') ?></span>
                             <?php if ($mediaKind === 'imagem' && $arquivoUrl !== ''): ?>
                             <img src="<?= h($arquivoUrl) ?>" alt="<?= h($arquivo['original_name'] ?? 'Imagem marketing') ?>" loading="lazy">
                             <?php elseif ($mediaKind === 'video' && $arquivoUrl !== ''): ?>
@@ -877,23 +1026,72 @@ ob_start();
 (function() {
     const input = document.getElementById('arquivo');
     const summary = document.getElementById('marketingFileSummary');
-    if (!input || !summary) {
-        return;
+
+    if (input && summary) {
+        input.addEventListener('change', function() {
+            const files = Array.from(input.files || []);
+            if (files.length === 0) {
+                summary.textContent = 'Ao escolher arquivo, voce pode selecionar varios de uma vez.';
+                return;
+            }
+
+            if (files.length === 1) {
+                summary.textContent = '1 arquivo selecionado: ' + files[0].name;
+                return;
+            }
+
+            summary.textContent = files.length + ' arquivos selecionados.';
+        });
     }
 
-    input.addEventListener('change', function() {
-        const files = Array.from(input.files || []);
-        if (files.length === 0) {
-            summary.textContent = 'Ao escolher arquivo, voce pode selecionar varios de uma vez.';
-            return;
-        }
+    const search = document.getElementById('marketingSearch');
+    const filterButtons = Array.from(document.querySelectorAll('.marketing-filter-btn'));
+    const items = Array.from(document.querySelectorAll('.marketing-media-item'));
+    const noResults = document.getElementById('marketingNoResults');
+    let activeFilter = 'todos';
 
-        if (files.length === 1) {
-            summary.textContent = '1 arquivo selecionado: ' + files[0].name;
-            return;
-        }
+    function normalize(value) {
+        return String(value || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim();
+    }
 
-        summary.textContent = files.length + ' arquivos selecionados.';
+    function applyFilters() {
+        const query = normalize(search ? search.value : '');
+        let visibleCount = 0;
+
+        items.forEach(function(item) {
+            const kind = item.getAttribute('data-kind') || '';
+            const searchable = normalize(item.getAttribute('data-search') || '');
+            const matchesKind = activeFilter === 'todos' || kind === activeFilter;
+            const matchesQuery = query === '' || searchable.indexOf(query) !== -1;
+            const visible = matchesKind && matchesQuery;
+
+            item.style.display = visible ? '' : 'none';
+            if (visible) {
+                visibleCount++;
+            }
+        });
+
+        if (noResults) {
+            noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+        }
+    }
+
+    if (search) {
+        search.addEventListener('input', applyFilters);
+    }
+
+    filterButtons.forEach(function(button) {
+        button.addEventListener('click', function() {
+            activeFilter = button.getAttribute('data-filter') || 'todos';
+            filterButtons.forEach(function(current) {
+                current.classList.toggle('is-active', current === button);
+            });
+            applyFilters();
+        });
     });
 })();
 </script>
