@@ -844,7 +844,7 @@ function logistica_cardapio_pacote_regras_salvar(PDO $pdo, int $pacote_id, array
                     ':pacote_evento_id' => $pacote_id,
                     ':secao_cardapio_id' => (int)$rule['secao_cardapio_id'],
                     ':quantidade_maxima' => (int)$rule['quantidade_maxima'],
-                    ':exigir_quantidade_exata' => !empty($rule['exigir_quantidade_exata']) ? 1 : 0,
+                    ':exigir_quantidade_exata' => !empty($rule['exigir_quantidade_exata']) ? 'true' : 'false',
                     ':ordem' => (int)$rule['ordem'],
                 ]);
             }
