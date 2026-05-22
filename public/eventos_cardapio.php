@@ -314,13 +314,6 @@ includeSidebar('Cardápio do Evento');
         font-weight: 600;
     }
 
-    .item-type {
-        color: #64748b;
-        font-size: 0.76rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-    }
-
     .empty-box {
         padding: 1rem;
         border-radius: 12px;
@@ -424,7 +417,6 @@ includeSidebar('Cardápio do Evento');
                                     <div class="item-row <?= !empty($item['checked']) ? 'selected' : '' ?>">
                                         <input class="item-check" type="checkbox" disabled <?= !empty($item['checked']) ? 'checked' : '' ?>>
                                         <div class="item-name"><?= cardapio_evento_e((string)$item['nome']) ?></div>
-                                        <div class="item-type"><?= cardapio_evento_e((string)$item['item_tipo']) ?></div>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
