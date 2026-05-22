@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS logistica_pacotes_evento_secoes (
     secao_cardapio_id BIGINT NOT NULL REFERENCES logistica_cardapio_secoes(id) ON DELETE CASCADE,
     quantidade_maxima INTEGER NOT NULL DEFAULT 1,
     exigir_quantidade_exata BOOLEAN NOT NULL DEFAULT TRUE,
+    selecionar_todos_itens BOOLEAN NOT NULL DEFAULT FALSE,
     ordem INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -30,6 +31,9 @@ CREATE TABLE IF NOT EXISTS logistica_pacotes_evento_secoes (
 
 ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes
     ADD COLUMN IF NOT EXISTS exigir_quantidade_exata BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes
+    ADD COLUMN IF NOT EXISTS selecionar_todos_itens BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_logistica_pacotes_evento_secoes
     ON logistica_pacotes_evento_secoes (pacote_evento_id, secao_cardapio_id);

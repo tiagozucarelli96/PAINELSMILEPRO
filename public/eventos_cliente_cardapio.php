@@ -516,12 +516,14 @@ $pode_editar = $error === ''
                             $secao_id = (int)$secao['id'];
                             $max_escolhas = (int)$secao['quantidade_maxima'];
                             $exigir_quantidade_exata = !empty($secao['exigir_quantidade_exata']);
+                            $selecionar_todos_itens = !empty($secao['selecionar_todos_itens']);
                             $selected_count = (int)($secao['selected_count'] ?? 0);
                             ?>
                             <section class="section-card"
                                      data-section-id="<?= $secao_id ?>"
                                      data-max="<?= $max_escolhas ?>"
-                                     data-exact="<?= $exigir_quantidade_exata ? '1' : '0' ?>">
+                                     data-exact="<?= $exigir_quantidade_exata ? '1' : '0' ?>"
+                                     data-fixed="<?= $selecionar_todos_itens ? '1' : '0' ?>">
                                 <div class="section-head">
                                     <div>
                                         <h2 class="section-title"><?= eventos_cliente_cardapio_e((string)$secao['nome']) ?></h2>
@@ -529,9 +531,13 @@ $pode_editar = $error === ''
                                             <p class="section-desc"><?= eventos_cliente_cardapio_e((string)$secao['descricao']) ?></p>
                                         <?php endif; ?>
                                     </div>
-                                    <div class="section-limit">
-                                        <?= $exigir_quantidade_exata ? 'Escolha ' : 'Escolha até ' ?><?= $max_escolhas ?>
-                                    </div>
+                                    <?php if ($selecionar_todos_itens): ?>
+                                        <div class="section-limit">Itens fixos</div>
+                                    <?php else: ?>
+                                        <div class="section-limit">
+                                            <?= $exigir_quantidade_exata ? 'Escolha ' : 'Escolha até ' ?><?= $max_escolhas ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
 
                                 <?php if ($exigir_quantidade_exata && !empty($secao['itens']) && count($secao['itens']) < $max_escolhas): ?>
@@ -541,7 +547,11 @@ $pode_editar = $error === ''
                                 <?php endif; ?>
 
                                 <div class="section-counter">
-                                    Selecionados: <span class="counter-current"><?= $selected_count ?></span> de <span class="counter-max"><?= $max_escolhas ?></span>
+                                    <?php if ($selecionar_todos_itens): ?>
+                                        Todos os itens desta seção estão incluídos no cardápio.
+                                    <?php else: ?>
+                                        Selecionados: <span class="counter-current"><?= $selected_count ?></span> de <span class="counter-max"><?= $max_escolhas ?></span>
+                                    <?php endif; ?>
                                 </div>
 
                                 <?php if (empty($secao['itens'])): ?>
@@ -555,7 +565,7 @@ $pode_editar = $error === ''
                                                     name="selecao[<?= $secao_id ?>][]"
                                                     value="<?= eventos_cliente_cardapio_e((string)$item['key']) ?>"
                                                     <?= !empty($item['checked']) ? 'checked' : '' ?>
-                                                    <?= !$pode_editar ? 'disabled' : '' ?>
+                                                    <?= (!$pode_editar || $selecionar_todos_itens) ? 'disabled' : '' ?>
                                                 >
                                                 <div class="item-name"><?= eventos_cliente_cardapio_e((string)$item['nome']) ?></div>
                                             </label>
@@ -632,8 +642,13 @@ $pode_editar = $error === ''
             for (const section of sections) {
                 const max = parseInt(section.getAttribute('data-max') || '0', 10);
                 const exact = section.getAttribute('data-exact') === '1';
+                const fixed = section.getAttribute('data-fixed') === '1';
                 const checked = section.querySelectorAll('input[type="checkbox"]:checked').length;
                 const title = section.querySelector('.section-title')?.textContent || 'esta seção';
+                if (fixed) {
+                    continue;
+                }
+
                 if (checked > max) {
                     event.preventDefault();
                     window.alert('Selecione no máximo ' + max + ' opção(ões) em ' + title + ' antes de enviar.');

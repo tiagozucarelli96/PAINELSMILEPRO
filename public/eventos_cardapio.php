@@ -410,7 +410,9 @@ includeSidebar('Cardápio do Evento');
                                 <?php endif; ?>
                             </div>
                             <div class="section-limit">
-                                <?= !empty($secao['exigir_quantidade_exata']) ? '' : 'Até ' ?><?= (int)$secao['quantidade_maxima'] ?> escolha(s)
+                                <?= !empty($secao['selecionar_todos_itens'])
+                                    ? 'Todos os itens'
+                                    : ((!empty($secao['exigir_quantidade_exata']) ? '' : 'Até ') . (int)$secao['quantidade_maxima'] . ' escolha(s)') ?>
                             </div>
                         </div>
 

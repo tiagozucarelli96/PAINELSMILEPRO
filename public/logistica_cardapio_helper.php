@@ -150,6 +150,7 @@ function logistica_cardapio_normalizar_pacote_secao_row(array $row): array
     $row['secao_cardapio_id'] = (int)($row['secao_cardapio_id'] ?? 0);
     $row['quantidade_maxima'] = max(0, (int)($row['quantidade_maxima'] ?? 0));
     $row['exigir_quantidade_exata'] = !array_key_exists('exigir_quantidade_exata', $row) || !empty($row['exigir_quantidade_exata']);
+    $row['selecionar_todos_itens'] = !empty($row['selecionar_todos_itens']);
     $row['ordem'] = (int)($row['ordem'] ?? 0);
     $row['secao_nome'] = trim((string)($row['secao_nome'] ?? $row['nome'] ?? ''));
     $row['secao_descricao'] = trim((string)($row['secao_descricao'] ?? ''));
@@ -174,11 +175,11 @@ function logistica_cardapio_resposta_normalizar(?array $row): ?array
 function logistica_cardapio_schema_marker_path(bool $withMeetingSchema): string
 {
     return $withMeetingSchema
-        ? '/tmp/logistica_cardapio_schema_full_ready_v2'
-        : '/tmp/logistica_cardapio_schema_basic_ready_v2';
+        ? '/tmp/logistica_cardapio_schema_full_ready_v3'
+        : '/tmp/logistica_cardapio_schema_basic_ready_v3';
 }
 
-function logistica_cardapio_ensure_pacote_secao_exigencia_schema(PDO $pdo): void
+function logistica_cardapio_ensure_pacote_secao_regras_schema(PDO $pdo): void
 {
     static $done = false;
     if ($done || !painel_runtime_schema_setup_enabled()) {
@@ -187,8 +188,9 @@ function logistica_cardapio_ensure_pacote_secao_exigencia_schema(PDO $pdo): void
 
     try {
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS exigir_quantidade_exata BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS selecionar_todos_itens BOOLEAN NOT NULL DEFAULT FALSE");
     } catch (Throwable $e) {
-        error_log('logistica_cardapio_ensure_pacote_secao_exigencia_schema: ' . $e->getMessage());
+        error_log('logistica_cardapio_ensure_pacote_secao_regras_schema: ' . $e->getMessage());
     }
 
     $done = true;
@@ -275,6 +277,7 @@ function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = tr
                 secao_cardapio_id BIGINT NOT NULL REFERENCES logistica_cardapio_secoes(id) ON DELETE CASCADE,
                 quantidade_maxima INTEGER NOT NULL DEFAULT 1,
                 exigir_quantidade_exata BOOLEAN NOT NULL DEFAULT TRUE,
+                selecionar_todos_itens BOOLEAN NOT NULL DEFAULT FALSE,
                 ordem INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -284,6 +287,7 @@ function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = tr
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS secao_cardapio_id BIGINT");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS quantidade_maxima INTEGER NOT NULL DEFAULT 1");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS exigir_quantidade_exata BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS selecionar_todos_itens BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS ordem INTEGER NOT NULL DEFAULT 0");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
@@ -766,7 +770,7 @@ function logistica_cardapio_pacote_regras_listar(PDO $pdo, int $pacote_id): arra
 function logistica_cardapio_pacote_regras_salvar(PDO $pdo, int $pacote_id, array $rules): array
 {
     logistica_cardapio_ensure_schema($pdo, false);
-    logistica_cardapio_ensure_pacote_secao_exigencia_schema($pdo);
+    logistica_cardapio_ensure_pacote_secao_regras_schema($pdo);
     if ($pacote_id <= 0) {
         return ['ok' => false, 'error' => 'Pacote inválido para configuração de seções.'];
     }
@@ -798,7 +802,8 @@ function logistica_cardapio_pacote_regras_salvar(PDO $pdo, int $pacote_id, array
 
         $quantidade = is_numeric($quantidade_raw) ? (int)$quantidade_raw : 0;
         $ordem = is_numeric($ordem_raw) ? (int)$ordem_raw : 0;
-        if ($quantidade <= 0) {
+        $selecionar_todos_itens = (string)($rule['selecionar_todos_itens'] ?? '0') === '1';
+        if ($quantidade <= 0 && !$selecionar_todos_itens) {
             continue;
         }
 
@@ -807,6 +812,7 @@ function logistica_cardapio_pacote_regras_salvar(PDO $pdo, int $pacote_id, array
             'quantidade_maxima' => $quantidade,
             'exigir_quantidade_exata' => !array_key_exists('exigir_quantidade_exata', $rule)
                 || (string)($rule['exigir_quantidade_exata'] ?? '0') === '1',
+            'selecionar_todos_itens' => $selecionar_todos_itens,
             'ordem' => max(0, $ordem),
         ];
     }
@@ -835,9 +841,9 @@ function logistica_cardapio_pacote_regras_salvar(PDO $pdo, int $pacote_id, array
         if (!empty($normalized)) {
             $stmt_insert = $pdo->prepare("
                 INSERT INTO logistica_pacotes_evento_secoes
-                    (pacote_evento_id, secao_cardapio_id, quantidade_maxima, exigir_quantidade_exata, ordem, created_at, updated_at)
+                    (pacote_evento_id, secao_cardapio_id, quantidade_maxima, exigir_quantidade_exata, selecionar_todos_itens, ordem, created_at, updated_at)
                 VALUES
-                    (:pacote_evento_id, :secao_cardapio_id, :quantidade_maxima, :exigir_quantidade_exata, :ordem, NOW(), NOW())
+                    (:pacote_evento_id, :secao_cardapio_id, :quantidade_maxima, :exigir_quantidade_exata, :selecionar_todos_itens, :ordem, NOW(), NOW())
             ");
             foreach ($normalized as $rule) {
                 $stmt_insert->execute([
@@ -845,6 +851,7 @@ function logistica_cardapio_pacote_regras_salvar(PDO $pdo, int $pacote_id, array
                     ':secao_cardapio_id' => (int)$rule['secao_cardapio_id'],
                     ':quantidade_maxima' => (int)$rule['quantidade_maxima'],
                     ':exigir_quantidade_exata' => !empty($rule['exigir_quantidade_exata']) ? 'true' : 'false',
+                    ':selecionar_todos_itens' => !empty($rule['selecionar_todos_itens']) ? 'true' : 'false',
                     ':ordem' => (int)$rule['ordem'],
                 ]);
             }
@@ -1150,6 +1157,7 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
             'ordem' => (int)($regra['ordem'] ?? 0),
             'quantidade_maxima' => (int)$regra['quantidade_maxima'],
             'exigir_quantidade_exata' => !empty($regra['exigir_quantidade_exata']),
+            'selecionar_todos_itens' => !empty($regra['selecionar_todos_itens']),
             'itens' => [],
             'selected_keys' => [],
             'selected_count' => 0,
@@ -1238,8 +1246,33 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
 
     $resposta = logistica_cardapio_resposta_get($pdo, $meeting_id);
     $selected_total = 0;
+    foreach ($secoes as &$secao) {
+        if (empty($secao['selecionar_todos_itens'])) {
+            continue;
+        }
+
+        $fixed_keys = [];
+        foreach ($secao['itens'] as &$item) {
+            $item['checked'] = true;
+            $item['fixed_selected'] = true;
+            $fixed_keys[] = (string)$item['key'];
+        }
+        unset($item);
+
+        $secao['selected_keys'] = $fixed_keys;
+        $secao['selected_count'] = count($fixed_keys);
+        if ((int)$secao['quantidade_maxima'] <= 0) {
+            $secao['quantidade_maxima'] = count($fixed_keys);
+        }
+    }
+    unset($secao);
+
     if ($resposta && !empty($resposta['selected_by_section'])) {
         foreach ($secoes as $secao_id => &$secao) {
+            if (!empty($secao['selecionar_todos_itens'])) {
+                $selected_total += $secao['selected_count'];
+                continue;
+            }
             $selected_keys = array_values(array_unique($resposta['selected_by_section'][$secao_id] ?? []));
             $secao['selected_keys'] = $selected_keys;
             foreach ($secao['itens'] as &$item) {
@@ -1250,6 +1283,10 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
             $selected_total += $secao['selected_count'];
         }
         unset($secao);
+    } else {
+        foreach ($secoes as $secao) {
+            $selected_total += (int)($secao['selected_count'] ?? 0);
+        }
     }
 
     return [
@@ -1319,9 +1356,21 @@ function logistica_cardapio_resposta_salvar_cliente(PDO $pdo, int $meeting_id, ?
         $secao_id = (int)$secao['id'];
         $quantidade_maxima = max(0, (int)$secao['quantidade_maxima']);
         $exigir_quantidade_exata = !empty($secao['exigir_quantidade_exata']);
+        $selecionar_todos_itens = !empty($secao['selecionar_todos_itens']);
         $allowed_items = [];
         foreach ($secao['itens'] as $item) {
             $allowed_items[$item['key']] = $item;
+        }
+
+        if ($selecionar_todos_itens) {
+            foreach ($allowed_items as $allowed_item) {
+                $selected_rows[] = [
+                    'secao_cardapio_id' => $secao_id,
+                    'item_tipo' => (string)$allowed_item['item_tipo'],
+                    'item_id' => (int)$allowed_item['item_id'],
+                ];
+            }
+            continue;
         }
 
         if ($exigir_quantidade_exata && $quantidade_maxima > count($allowed_items)) {

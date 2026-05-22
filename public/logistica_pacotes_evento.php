@@ -516,7 +516,7 @@ includeSidebar('Pacotes de Evento');
                 <a class="btn-secondary" href="index.php?page=logistica_cardapio_secoes">Abrir Seções de Cardápio</a>
             </div>
         <?php else: ?>
-            <p class="helper-text">Preencha a quantidade de escolhas por seção. Deixe `0` ou vazio para não exibir a seção neste pacote. Use a exigência exata quando o cliente precisar escolher todos os itens definidos. Arraste as linhas para definir a ordem.</p>
+            <p class="helper-text">Preencha a quantidade de escolhas por seção. Deixe `0` ou vazio para não exibir a seção neste pacote, exceto quando a seção estiver fixa. Use "Selecionar todos" para itens fixos do cardápio. Arraste as linhas para definir a ordem.</p>
             <form method="POST" id="pacoteRulesForm">
                 <input type="hidden" name="action" value="save_rules">
                 <input type="hidden" name="id" value="<?= (int)$edit_item['id'] ?>">
@@ -570,6 +570,15 @@ includeSidebar('Pacotes de Evento');
                                                 <span>Exigir quantidade exata</span>
                                             </label>
                                             <div class="rule-mode-help">Desmarcado permite escolher até a quantidade.</div>
+                                            <input type="hidden" name="regras[<?= $index ?>][selecionar_todos_itens]" value="0">
+                                            <label class="form-check">
+                                                <input type="checkbox"
+                                                       name="regras[<?= $index ?>][selecionar_todos_itens]"
+                                                       value="1"
+                                                       <?= ($rule && !empty($rule['selecionar_todos_itens'])) ? 'checked' : '' ?>>
+                                                <span>Selecionar todos os itens</span>
+                                            </label>
+                                            <div class="rule-mode-help">Marca todos no portal e impede o cliente de desmarcar.</div>
                                         </div>
                                     </td>
                                 </tr>
@@ -617,7 +626,7 @@ includeSidebar('Pacotes de Evento');
                                         <?php foreach ($pacote_rules as $rule): ?>
                                             <span class="rule-chip">
                                                 <?= logistica_pacotes_evento_e((string)$rule['secao_nome']) ?>:
-                                                <?= !empty($rule['exigir_quantidade_exata']) ? '' : 'até ' ?><?= (int)$rule['quantidade_maxima'] ?>
+                                                <?= !empty($rule['selecionar_todos_itens']) ? 'todos' : ((!empty($rule['exigir_quantidade_exata']) ? '' : 'até ') . (int)$rule['quantidade_maxima']) ?>
                                             </span>
                                         <?php endforeach; ?>
                                     </div>
