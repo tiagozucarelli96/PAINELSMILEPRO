@@ -26,6 +26,34 @@ try {
     $erro = 'Não foi possível preparar a estrutura de notificações: ' . $e->getMessage();
 }
 
+if (empty($erro) && isset($_GET['preview'])) {
+    $modeloIdPreview = (int)($_GET['modelo'] ?? 0);
+    if ($modeloIdPreview <= 0) {
+        $modeloPreview = cliente_notificacoes_get_modelo($pdo, 'contrato_aprovado');
+    } else {
+        $stmtPreview = $pdo->prepare("SELECT * FROM cliente_notificacao_modelos WHERE id = :id LIMIT 1");
+        $stmtPreview->execute([':id' => $modeloIdPreview]);
+        $modeloPreview = $stmtPreview->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    if (!$modeloPreview) {
+        http_response_code(404);
+        echo 'Modelo de notificação não encontrado.';
+        exit;
+    }
+
+    $variaveisPreview = [
+        '{{nome_cliente}}' => 'Tiago Zucarelli',
+        '{{nome_evento}}' => 'Casamento',
+        '{{data_evento}}' => '29/09/2026',
+        '{{link_painel}}' => 'https://painelpro.smileeventos.com.br/index.php?page=eventos_cliente_portal&token=exemplo',
+        '{{prazo_formularios}}' => '14/09/2026',
+    ];
+
+    echo cliente_notificacoes_render_email($modeloPreview, $variaveisPreview);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
     try {
         $id = (int)($_POST['id'] ?? 0);
@@ -137,6 +165,7 @@ ob_start();
 .notif-toggle { display: inline-flex; align-items: center; gap: .45rem; color: #334155; font-weight: 700; font-size: .9rem; }
 .notif-actions { display: flex; justify-content: flex-end; gap: .7rem; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
 .notif-btn { border: 0; border-radius: 8px; padding: .75rem 1rem; font-weight: 800; cursor: pointer; background: #0f766e; color: #fff; }
+.notif-btn.secondary { background: #e2e8f0; color: #0f172a; text-decoration: none; display: inline-flex; align-items: center; }
 .notif-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
 .notif-code-list { padding: .9rem 1.1rem 1.1rem; display: grid; gap: .55rem; }
 .notif-code { display: grid; grid-template-columns: 155px 1fr; gap: .6rem; align-items: start; font-size: .88rem; }
@@ -231,6 +260,12 @@ ob_start();
                     </div>
 
                     <div class="notif-actions">
+                        <a
+                            class="notif-btn secondary"
+                            href="index.php?page=cliente_notificacoes&modelo=<?= (int)$modeloAtual['id'] ?>&preview=1"
+                            target="_blank"
+                            rel="noopener"
+                        >Ver prévia</a>
                         <button type="submit" class="notif-btn">Salvar notificação</button>
                     </div>
                 </form>
