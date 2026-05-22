@@ -174,8 +174,24 @@ function logistica_cardapio_resposta_normalizar(?array $row): ?array
 function logistica_cardapio_schema_marker_path(bool $withMeetingSchema): string
 {
     return $withMeetingSchema
-        ? '/tmp/logistica_cardapio_schema_full_ready'
-        : '/tmp/logistica_cardapio_schema_basic_ready';
+        ? '/tmp/logistica_cardapio_schema_full_ready_v2'
+        : '/tmp/logistica_cardapio_schema_basic_ready_v2';
+}
+
+function logistica_cardapio_ensure_pacote_secao_exigencia_schema(PDO $pdo): void
+{
+    static $done = false;
+    if ($done || !painel_runtime_schema_setup_enabled()) {
+        return;
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento_secoes ADD COLUMN IF NOT EXISTS exigir_quantidade_exata BOOLEAN NOT NULL DEFAULT TRUE");
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_ensure_pacote_secao_exigencia_schema: ' . $e->getMessage());
+    }
+
+    $done = true;
 }
 
 function logistica_cardapio_schema_marker_is_fresh(bool $withMeetingSchema): bool
@@ -750,6 +766,7 @@ function logistica_cardapio_pacote_regras_listar(PDO $pdo, int $pacote_id): arra
 function logistica_cardapio_pacote_regras_salvar(PDO $pdo, int $pacote_id, array $rules): array
 {
     logistica_cardapio_ensure_schema($pdo, false);
+    logistica_cardapio_ensure_pacote_secao_exigencia_schema($pdo);
     if ($pacote_id <= 0) {
         return ['ok' => false, 'error' => 'Pacote inválido para configuração de seções.'];
     }
