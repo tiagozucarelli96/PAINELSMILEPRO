@@ -158,6 +158,23 @@ function logistica_cardapio_normalizar_pacote_secao_row(array $row): array
     return $row;
 }
 
+function logistica_cardapio_slug_simples(string $value): string
+{
+    $value = function_exists('mb_strtolower')
+        ? trim(mb_strtolower($value, 'UTF-8'))
+        : trim(strtolower($value));
+    $map = [
+        'á' => 'a', 'à' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a',
+        'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+        'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i',
+        'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
+        'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u',
+        'ç' => 'c',
+    ];
+    $value = strtr($value, $map);
+    return preg_replace('/[^a-z0-9]+/', ' ', $value) ?: '';
+}
+
 function logistica_cardapio_resposta_normalizar(?array $row): ?array
 {
     if (!$row) {
@@ -1245,8 +1262,84 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
     }
 
     $resposta = logistica_cardapio_resposta_get($pdo, $meeting_id);
+    $exclusive_groups = [];
+    $exclusive_section_ids = [];
+    if ($pacote && logistica_cardapio_slug_simples((string)($pacote['nome'] ?? '')) === 'estrela') {
+        $ilha_options = [];
+        foreach ($secoes as $secao_id => $secao) {
+            $secao_slug = logistica_cardapio_slug_simples((string)($secao['nome'] ?? ''));
+            if ($secao_slug === 'ilha fria' || $secao_slug === 'ilha teen') {
+                $ilha_options[$secao_slug] = (int)$secao_id;
+            }
+        }
+
+        if (isset($ilha_options['ilha fria'], $ilha_options['ilha teen'])) {
+            $selected_secao_id = 0;
+            if ($resposta && !empty($resposta['selected_by_section'])) {
+                foreach ($ilha_options as $secao_id) {
+                    if (!empty($resposta['selected_by_section'][$secao_id])) {
+                        $selected_secao_id = (int)$secao_id;
+                        break;
+                    }
+                }
+            }
+
+            $ordered_options = [];
+            foreach (['ilha fria', 'ilha teen'] as $secao_slug) {
+                $secao_id = (int)$ilha_options[$secao_slug];
+                $secoes[$secao_id]['exclusive_group_key'] = 'estrela_ilha';
+                $secoes[$secao_id]['exclusive_group_label'] = 'Escolha sua ilha';
+                $secoes[$secao_id]['selecionar_todos_itens'] = true;
+                $exclusive_section_ids[$secao_id] = 'estrela_ilha';
+                $ordered_options[] = [
+                    'secao_id' => $secao_id,
+                    'label' => (string)$secoes[$secao_id]['nome'],
+                    'descricao' => (string)($secoes[$secao_id]['descricao'] ?? ''),
+                    'item_count' => count($secoes[$secao_id]['itens'] ?? []),
+                    'selected' => $selected_secao_id === $secao_id,
+                ];
+            }
+
+            $exclusive_groups[] = [
+                'key' => 'estrela_ilha',
+                'label' => 'Escolha sua ilha',
+                'description' => 'Escolha uma das ilhas do pacote Estrela. Os itens da ilha escolhida são fixos.',
+                'selected_secao_id' => $selected_secao_id,
+                'options' => $ordered_options,
+            ];
+        }
+    }
+
     $selected_total = 0;
     foreach ($secoes as &$secao) {
+        $secao_id = (int)$secao['id'];
+        if (isset($exclusive_section_ids[$secao_id])) {
+            $selected_in_group = false;
+            foreach ($exclusive_groups as $group) {
+                if (($group['key'] ?? '') === $exclusive_section_ids[$secao_id]) {
+                    $selected_in_group = (int)($group['selected_secao_id'] ?? 0) === $secao_id;
+                    break;
+                }
+            }
+
+            $fixed_keys = [];
+            foreach ($secao['itens'] as &$item) {
+                $item['checked'] = $selected_in_group;
+                $item['fixed_selected'] = true;
+                if ($selected_in_group) {
+                    $fixed_keys[] = (string)$item['key'];
+                }
+            }
+            unset($item);
+
+            $secao['selected_keys'] = $fixed_keys;
+            $secao['selected_count'] = count($fixed_keys);
+            if ((int)$secao['quantidade_maxima'] <= 0) {
+                $secao['quantidade_maxima'] = count($secao['itens']);
+            }
+            continue;
+        }
+
         if (empty($secao['selecionar_todos_itens'])) {
             continue;
         }
@@ -1269,6 +1362,10 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
 
     if ($resposta && !empty($resposta['selected_by_section'])) {
         foreach ($secoes as $secao_id => &$secao) {
+            if (isset($exclusive_section_ids[(int)$secao_id])) {
+                $selected_total += (int)$secao['selected_count'];
+                continue;
+            }
             if (!empty($secao['selecionar_todos_itens'])) {
                 $selected_total += $secao['selected_count'];
                 continue;
@@ -1294,6 +1391,7 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
         'meeting_id' => $meeting_id,
         'pacote' => $pacote,
         'secoes' => array_values($secoes),
+        'exclusive_groups' => $exclusive_groups,
         'resposta' => $resposta,
         'locked' => !empty($resposta['locked']),
         'summary' => [
@@ -1307,7 +1405,7 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
     ];
 }
 
-function logistica_cardapio_resposta_salvar_cliente(PDO $pdo, int $meeting_id, ?int $portal_id, array $selected_by_section_input): array
+function logistica_cardapio_resposta_salvar_cliente(PDO $pdo, int $meeting_id, ?int $portal_id, array $selected_by_section_input, array $exclusive_input = []): array
 {
     logistica_cardapio_ensure_schema($pdo);
     $contexto = logistica_cardapio_evento_contexto($pdo, $meeting_id);
@@ -1352,8 +1450,53 @@ function logistica_cardapio_resposta_salvar_cliente(PDO $pdo, int $meeting_id, ?
     }
 
     $selected_rows = [];
+    $exclusive_section_ids = [];
+    foreach (($contexto['exclusive_groups'] ?? []) as $group) {
+        $group_key = trim((string)($group['key'] ?? ''));
+        if ($group_key === '') {
+            continue;
+        }
+
+        $valid_options = [];
+        foreach (($group['options'] ?? []) as $option) {
+            $secao_id = (int)($option['secao_id'] ?? 0);
+            if ($secao_id > 0) {
+                $valid_options[$secao_id] = true;
+                $exclusive_section_ids[$secao_id] = $group_key;
+            }
+        }
+
+        $chosen_raw = trim((string)($exclusive_input[$group_key] ?? ''));
+        if ($chosen_raw === '' || !ctype_digit($chosen_raw) || !isset($valid_options[(int)$chosen_raw])) {
+            return [
+                'ok' => false,
+                'error' => 'Escolha uma opção em "' . (string)($group['label'] ?? 'grupo do cardápio') . '".',
+            ];
+        }
+
+        $chosen_secao_id = (int)$chosen_raw;
+        foreach ($contexto['secoes'] as $secao) {
+            if ((int)$secao['id'] !== $chosen_secao_id) {
+                continue;
+            }
+
+            foreach (($secao['itens'] ?? []) as $allowed_item) {
+                $selected_rows[] = [
+                    'secao_cardapio_id' => $chosen_secao_id,
+                    'item_tipo' => (string)$allowed_item['item_tipo'],
+                    'item_id' => (int)$allowed_item['item_id'],
+                ];
+            }
+            break;
+        }
+    }
+
     foreach ($contexto['secoes'] as $secao) {
         $secao_id = (int)$secao['id'];
+        if (isset($exclusive_section_ids[$secao_id])) {
+            continue;
+        }
+
         $quantidade_maxima = max(0, (int)$secao['quantidade_maxima']);
         $exigir_quantidade_exata = !empty($secao['exigir_quantidade_exata']);
         $selecionar_todos_itens = !empty($secao['selecionar_todos_itens']);

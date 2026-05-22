@@ -60,7 +60,8 @@ if ($token === '') {
                             $pdo,
                             (int)$reuniao['id'],
                             (int)($portal['id'] ?? 0),
-                            $_POST['selecao'] ?? []
+                            $_POST['selecao'] ?? [],
+                            $_POST['exclusive'] ?? []
                         );
                         if (!empty($result['ok'])) {
                             $success = 'Escolhas salvas com sucesso. O cardápio foi bloqueado para nova edição.';
@@ -258,6 +259,54 @@ $pode_editar = $error === ''
 
         .section-card {
             padding: 1.1rem;
+        }
+
+        .choice-group {
+            padding: 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        .choice-options {
+            display: grid;
+            gap: 0.75rem;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            margin-top: 0.9rem;
+        }
+
+        .choice-option {
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-start;
+            border: 1px solid #dbe3f1;
+            border-radius: 16px;
+            background: #f8fafc;
+            padding: 0.95rem 1rem;
+            cursor: pointer;
+        }
+
+        .choice-option.selected {
+            border-color: #60a5fa;
+            background: #eff6ff;
+        }
+
+        .choice-option input[type="radio"] {
+            width: 20px;
+            height: 20px;
+            margin-top: 0.1rem;
+            accent-color: #2563eb;
+            flex: 0 0 auto;
+        }
+
+        .choice-name {
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+        .choice-meta {
+            margin-top: 0.2rem;
+            color: #64748b;
+            font-size: 0.88rem;
+            line-height: 1.45;
         }
 
         .section-head {
@@ -510,6 +559,48 @@ $pode_editar = $error === ''
                     <input type="hidden" name="action" value="save_cardapio">
                     <input type="hidden" name="token" value="<?= eventos_cliente_cardapio_e($token) ?>">
 
+                    <?php foreach (($contexto_cardapio['exclusive_groups'] ?? []) as $group): ?>
+                        <?php
+                        $group_key = (string)($group['key'] ?? '');
+                        $selected_secao_id = (int)($group['selected_secao_id'] ?? 0);
+                        ?>
+                        <?php if ($group_key !== '' && !empty($group['options'])): ?>
+                            <section class="section-card choice-group" data-exclusive-group="<?= eventos_cliente_cardapio_e($group_key) ?>">
+                                <div class="section-head">
+                                    <div>
+                                        <h2 class="section-title"><?= eventos_cliente_cardapio_e((string)($group['label'] ?? 'Escolha')) ?></h2>
+                                        <?php if (!empty($group['description'])): ?>
+                                            <p class="section-desc"><?= eventos_cliente_cardapio_e((string)$group['description']) ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="section-limit">Escolha 1</div>
+                                </div>
+                                <div class="choice-options">
+                                    <?php foreach (($group['options'] ?? []) as $option): ?>
+                                        <?php
+                                        $option_secao_id = (int)($option['secao_id'] ?? 0);
+                                        $option_selected = $selected_secao_id === $option_secao_id;
+                                        ?>
+                                        <label class="choice-option <?= $option_selected ? 'selected' : '' ?>">
+                                            <input
+                                                type="radio"
+                                                name="exclusive[<?= eventos_cliente_cardapio_e($group_key) ?>]"
+                                                value="<?= $option_secao_id ?>"
+                                                data-exclusive-choice="<?= eventos_cliente_cardapio_e($group_key) ?>"
+                                                <?= $option_selected ? 'checked' : '' ?>
+                                                <?= !$pode_editar ? 'disabled' : '' ?>
+                                            >
+                                            <div>
+                                                <div class="choice-name"><?= eventos_cliente_cardapio_e((string)($option['label'] ?? '')) ?></div>
+                                                <div class="choice-meta"><?= (int)($option['item_count'] ?? 0) ?> item(ns) fixo(s)</div>
+                                            </div>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </section>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+
                     <div class="sections-grid">
                         <?php foreach (($contexto_cardapio['secoes'] ?? []) as $secao): ?>
                             <?php
@@ -518,12 +609,17 @@ $pode_editar = $error === ''
                             $exigir_quantidade_exata = !empty($secao['exigir_quantidade_exata']);
                             $selecionar_todos_itens = !empty($secao['selecionar_todos_itens']);
                             $selected_count = (int)($secao['selected_count'] ?? 0);
+                            $exclusive_group_key = (string)($secao['exclusive_group_key'] ?? '');
+                            $exclusive_visible = $exclusive_group_key === '' || $selected_count > 0;
                             ?>
                             <section class="section-card"
                                      data-section-id="<?= $secao_id ?>"
                                      data-max="<?= $max_escolhas ?>"
                                      data-exact="<?= $exigir_quantidade_exata ? '1' : '0' ?>"
-                                     data-fixed="<?= $selecionar_todos_itens ? '1' : '0' ?>">
+                                     data-fixed="<?= $selecionar_todos_itens ? '1' : '0' ?>"
+                                     <?= $exclusive_group_key !== '' ? 'data-exclusive-section="' . eventos_cliente_cardapio_e($exclusive_group_key) . '"' : '' ?>
+                                     <?= $exclusive_group_key !== '' ? 'data-exclusive-section-id="' . $secao_id . '"' : '' ?>
+                                     <?= !$exclusive_visible ? 'style="display:none;"' : '' ?>>
                                 <div class="section-head">
                                     <div>
                                         <h2 class="section-title"><?= eventos_cliente_cardapio_e((string)$secao['nome']) ?></h2>
@@ -609,6 +705,39 @@ $pode_editar = $error === ''
             }
         }
 
+        function updateExclusiveGroup(groupKey) {
+            const selected = document.querySelector('input[data-exclusive-choice="' + groupKey + '"]:checked');
+            const selectedId = selected ? selected.value : '';
+
+            document.querySelectorAll('input[data-exclusive-choice="' + groupKey + '"]').forEach((radio) => {
+                const row = radio.closest('.choice-option');
+                if (row) {
+                    row.classList.toggle('selected', radio.checked);
+                }
+            });
+
+            document.querySelectorAll('[data-exclusive-section="' + groupKey + '"]').forEach((section) => {
+                const sectionId = section.getAttribute('data-exclusive-section-id') || '';
+                const visible = selectedId !== '' && sectionId === selectedId;
+                section.style.display = visible ? '' : 'none';
+                section.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+                    checkbox.checked = visible;
+                    const row = checkbox.closest('.item-option');
+                    if (row) {
+                        row.classList.toggle('selected', visible);
+                    }
+                });
+                updateSectionCounter(section);
+            });
+        }
+
+        document.querySelectorAll('input[data-exclusive-choice]').forEach((radio) => {
+            radio.addEventListener('change', () => {
+                updateExclusiveGroup(radio.getAttribute('data-exclusive-choice') || '');
+            });
+            updateExclusiveGroup(radio.getAttribute('data-exclusive-choice') || '');
+        });
+
         document.querySelectorAll('.section-card[data-max]').forEach((section) => {
             const max = parseInt(section.getAttribute('data-max') || '0', 10);
             const checkboxes = Array.from(section.querySelectorAll('input[type="checkbox"]'));
@@ -637,6 +766,18 @@ $pode_editar = $error === ''
         });
 
         document.getElementById('cardapioForm')?.addEventListener('submit', (event) => {
+            const groups = Array.from(document.querySelectorAll('.choice-group[data-exclusive-group]'));
+            for (const group of groups) {
+                const groupKey = group.getAttribute('data-exclusive-group') || '';
+                const selected = group.querySelector('input[data-exclusive-choice="' + groupKey + '"]:checked');
+                const title = group.querySelector('.section-title')?.textContent || 'esta escolha';
+                if (!selected) {
+                    event.preventDefault();
+                    window.alert('Selecione uma opção em ' + title + ' antes de enviar.');
+                    return;
+                }
+            }
+
             const sections = Array.from(document.querySelectorAll('.section-card[data-max]'));
             const incompleteAllowed = [];
             for (const section of sections) {
