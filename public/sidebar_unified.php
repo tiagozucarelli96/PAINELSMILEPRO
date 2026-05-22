@@ -210,6 +210,11 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 $current_page = $_GET['page'] ?? 'dashboard';
 $show_top_account_access = ($current_page === 'dashboard');
 $push_user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+$eventos_cancelamento_popups = [];
+if (!empty($_SESSION['eventos_cancelamento_popups']) && is_array($_SESSION['eventos_cancelamento_popups'])) {
+    $eventos_cancelamento_popups = $_SESSION['eventos_cancelamento_popups'];
+    unset($_SESSION['eventos_cancelamento_popups']);
+}
 $local_production_banner_visible = painel_should_show_local_production_banner($GLOBALS['painel_database_config'] ?? null);
 $can_view_dashboard_agenda = !empty($_SESSION['perm_agenda']);
 
@@ -1461,10 +1466,117 @@ if ($current_page === 'dashboard') {
                 ?>
     
     <script src="/js/push-notifications.js"></script>
+    <style>
+        .event-cancel-login-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.58);
+        }
+        .event-cancel-login-modal.open {
+            display: flex;
+        }
+        .event-cancel-login-dialog {
+            width: min(560px, 100%);
+            max-height: min(720px, calc(100vh - 40px));
+            overflow: auto;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 24px 70px rgba(15, 23, 42, 0.32);
+            border: 1px solid #fecaca;
+        }
+        .event-cancel-login-head {
+            padding: 18px 20px;
+            background: #991b1b;
+            color: #ffffff;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .event-cancel-login-head h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            line-height: 1.25;
+        }
+        .event-cancel-login-close {
+            border: 0;
+            background: rgba(255, 255, 255, 0.18);
+            color: #ffffff;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+        }
+        .event-cancel-login-body {
+            padding: 18px 20px 20px;
+        }
+        .event-cancel-login-intro {
+            margin: 0 0 14px;
+            color: #334155;
+            font-size: 0.95rem;
+        }
+        .event-cancel-login-item {
+            border: 1px solid #fee2e2;
+            border-radius: 8px;
+            padding: 14px;
+            background: #fff7f7;
+        }
+        .event-cancel-login-item + .event-cancel-login-item {
+            margin-top: 10px;
+        }
+        .event-cancel-login-title {
+            margin: 0 0 8px;
+            color: #7f1d1d;
+            font-weight: 800;
+        }
+        .event-cancel-login-meta {
+            display: grid;
+            gap: 4px;
+            color: #475569;
+            font-size: 0.9rem;
+        }
+        .event-cancel-login-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+        .event-cancel-login-ok {
+            border: 0;
+            background: #991b1b;
+            color: #ffffff;
+            border-radius: 6px;
+            padding: 10px 16px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+    </style>
+    <div class="event-cancel-login-modal" id="eventCancelLoginModal" aria-hidden="true">
+        <div class="event-cancel-login-dialog" role="dialog" aria-modal="true" aria-labelledby="eventCancelLoginTitle">
+            <div class="event-cancel-login-head">
+                <h2 id="eventCancelLoginTitle">Evento cancelado na ME</h2>
+                <button type="button" class="event-cancel-login-close" onclick="fecharEventCancelLoginModal()" aria-label="Fechar">&times;</button>
+            </div>
+            <div class="event-cancel-login-body">
+                <p class="event-cancel-login-intro">Existe cancelamento de evento para a sua unidade responsável.</p>
+                <div id="eventCancelLoginList"></div>
+                <div class="event-cancel-login-actions">
+                    <button type="button" class="event-cancel-login-ok" onclick="fecharEventCancelLoginModal()">Entendi</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script>
         window.sidebarUnifiedConfig = {
             currentPage: <?= json_encode($current_page, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
-            pushUserId: <?= (int)$push_user_id ?>
+            pushUserId: <?= (int)$push_user_id ?>,
+            eventosCancelamentoPopups: <?= json_encode($eventos_cancelamento_popups, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
         };
     </script>
     <script src="assets/js/sidebar_unified.js"></script>

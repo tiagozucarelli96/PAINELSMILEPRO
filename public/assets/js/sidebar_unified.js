@@ -14,6 +14,64 @@
             }
         })();
 
+        function fecharEventCancelLoginModal() {
+            const modal = document.getElementById('eventCancelLoginModal');
+            if (!modal) return;
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function renderEventCancelLoginModal() {
+            const config = window.sidebarUnifiedConfig || {};
+            const alerts = Array.isArray(config.eventosCancelamentoPopups) ? config.eventosCancelamentoPopups : [];
+            if (!alerts.length) return;
+
+            const modal = document.getElementById('eventCancelLoginModal');
+            const list = document.getElementById('eventCancelLoginList');
+            if (!modal || !list) return;
+
+            list.innerHTML = '';
+            alerts.forEach((alerta) => {
+                const item = document.createElement('div');
+                item.className = 'event-cancel-login-item';
+
+                const title = document.createElement('p');
+                title.className = 'event-cancel-login-title';
+                title.textContent = alerta.nome_evento || 'Evento';
+                item.appendChild(title);
+
+                const meta = document.createElement('div');
+                meta.className = 'event-cancel-login-meta';
+
+                [
+                    ['Data', alerta.data_evento_formatada || alerta.data_evento || 'Data não informada'],
+                    ['Unidade', alerta.space_visivel || 'Unidade não identificada'],
+                    ['Local', alerta.local_evento || 'Local não informado']
+                ].forEach(([label, value]) => {
+                    const line = document.createElement('div');
+                    const strong = document.createElement('strong');
+                    strong.textContent = label + ': ';
+                    line.appendChild(strong);
+                    line.appendChild(document.createTextNode(value));
+                    meta.appendChild(line);
+                });
+
+                item.appendChild(meta);
+                list.appendChild(item);
+            });
+
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        window.fecharEventCancelLoginModal = fecharEventCancelLoginModal;
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', renderEventCancelLoginModal);
+        } else {
+            renderEventCancelLoginModal();
+        }
+        
         // Push notifications para qualquer usuário logado (por usuário, sem bloqueio de navegação)
         (function () {
             const sidebarUnifiedConfig = window.sidebarUnifiedConfig || {};

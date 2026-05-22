@@ -170,6 +170,28 @@ function processarWebhook($data) {
         } catch (Throwable $e) {
             logWebhook("Aviso: falha ao atualizar snapshot/cache ME: " . $e->getMessage());
         }
+
+        if ($status === 'cancelado') {
+            try {
+                $stmtArchive = $pdo->prepare("
+                    UPDATE logistica_eventos_espelho
+                    SET arquivado = TRUE,
+                        updated_at = NOW()
+                    WHERE me_event_id = :me_event_id
+                ");
+                $stmtArchive->execute([':me_event_id' => (int)$evento_id]);
+            } catch (Throwable $e) {
+                logWebhook("Aviso: falha ao arquivar evento espelho cancelado: " . $e->getMessage());
+            }
+
+            try {
+                require_once __DIR__ . '/eventos_cancelamento_alertas_helper.php';
+                $alertResult = eventosCancelamentoRegistrar($pdo, (int)$evento_id, is_array($evento_data) ? $evento_data : []);
+                logWebhook("Alerta de cancelamento processado: " . json_encode($alertResult, JSON_UNESCAPED_UNICODE));
+            } catch (Throwable $e) {
+                logWebhook("Aviso: falha ao disparar alerta de cancelamento: " . $e->getMessage());
+            }
+        }
         
         logWebhook("Webhook processado com sucesso: {$webhook_tipo_original} ({$webhook_tipo}) - Evento ID: {$evento_id}");
         return true;

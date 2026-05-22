@@ -14,6 +14,7 @@ error_reporting($debug ? E_ALL : (E_ALL & ~E_NOTICE));
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php'; // define $pdo / $db_error
+require_once __DIR__ . '/eventos_cancelamento_alertas_helper.php';
 
 $erro = '';
 
@@ -200,6 +201,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                         $_SESSION['logado'] = 1;
                         $_SESSION['id']     = (int)($u['id'] ?? 0);
                         $_SESSION['nome']   = $u['nome'] ?? ($u['nome_completo'] ?? ($u['name'] ?? 'Usuário'));
+                        try {
+                            $_SESSION['eventos_cancelamento_popups'] = eventosCancelamentoBuscarPopupsLogin($pdo, (int)$_SESSION['id'], 5);
+                        } catch (Throwable $e) {
+                            error_log('Erro ao buscar popups de cancelamento no login: ' . $e->getMessage());
+                            $_SESSION['eventos_cancelamento_popups'] = [];
+                        }
                         // Permissões continuam sendo tratadas pelo permissoes_boot.php no index.php.
                         // Push é inicializado de forma não-bloqueante após o login.
                         

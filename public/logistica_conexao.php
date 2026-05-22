@@ -9,6 +9,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/me_config.php';
+require_once __DIR__ . '/eventos_me_helper.php';
 
 $errors = [];
 $messages = [];
@@ -458,7 +459,22 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
     $stmtUpsert = $pdo->prepare($sql);
 
     foreach ($items as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
         $meEventId = $item['id'] ?? null;
+        $meEventIdInt = is_numeric($meEventId) ? (int)$meEventId : 0;
+        if ($meEventIdInt > 0 && (eventos_me_evento_cancelado($item) || eventos_me_evento_cancelado_por_webhook($pdo, $meEventIdInt))) {
+            $stmtArchiveCanceled = $pdo->prepare("
+                UPDATE logistica_eventos_espelho
+                SET arquivado = TRUE,
+                    updated_at = NOW()
+                WHERE me_event_id = :me_event_id
+            ");
+            $stmtArchiveCanceled->execute([':me_event_id' => $meEventIdInt]);
+            continue;
+        }
+
         $dataEvento = $item['dataevento'] ?? null;
         $localEvento = $item['localevento'] ?? null;
 
