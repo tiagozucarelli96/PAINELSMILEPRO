@@ -80,6 +80,24 @@ function cliente_notificacoes_seed_modelos(PDO $pdo): void
         ':mensagem_texto' => $mensagem,
         ':botao_texto' => 'Acessar painel do evento',
     ]);
+
+    $mensagemCampanha = "Olá {{nome_cliente}}, tudo bem?\n\n"
+        . "Temos uma novidade para deixar a organização do seu evento ainda mais prática: agora você conta com o Portal do Cliente Smile.\n\n"
+        . "Por lá, vamos centralizar as principais informações do seu evento em um só lugar. Você poderá preencher formulários importantes, enviar informações para o DJ, acompanhar detalhes de decoração, revisar opções disponíveis de cardápio, consultar lista de convidados e acessar outros pontos essenciais da organização.\n\n"
+        . "Acesse seu portal pelo botão abaixo:\n\n"
+        . "{{link_painel}}\n\n"
+        . "Caso você já tenha preenchido ou enviado essas informações para nossa equipe, pode desconsiderar este aviso. Se ainda houver algo pendente, pedimos que acesse com calma e complete os formulários disponíveis dentro dos prazos solicitados.\n\n"
+        . "Qualquer dúvida durante o acesso ou preenchimento, fale com a nossa equipe. Estamos por aqui para te ajudar!";
+
+    $stmt->execute([
+        ':chave' => 'portal_cliente_lancamento',
+        ':nome' => 'Lançamento do Portal do Cliente',
+        ':descricao' => 'Campanha em massa para apresentar o Portal do Cliente a eventos futuros de casamento e 15 anos.',
+        ':gatilho' => 'Disparo em massa para eventos a partir de 30/05/2026',
+        ':assunto' => 'Novidade: seu Portal do Cliente Smile está disponível',
+        ':mensagem_texto' => $mensagemCampanha,
+        ':botao_texto' => 'Acessar meu portal',
+    ]);
 }
 
 function cliente_notificacoes_codigos(): array
@@ -131,6 +149,15 @@ function cliente_notificacoes_prazo_formularios(?string $dataEvento): string
 
 function cliente_notificacoes_render_email(array $modelo, array $variaveis): string
 {
+    if (($modelo['chave'] ?? '') === 'portal_cliente_lancamento') {
+        return cliente_notificacoes_render_email_lancamento($modelo, $variaveis);
+    }
+
+    return cliente_notificacoes_render_email_padrao($modelo, $variaveis);
+}
+
+function cliente_notificacoes_render_email_padrao(array $modelo, array $variaveis): string
+{
     $mensagem = cliente_notificacoes_substituir((string)($modelo['mensagem_texto'] ?? ''), $variaveis);
     $linhas = array_filter(array_map('trim', preg_split('/\R{2,}/', $mensagem) ?: []), static fn($p) => $p !== '');
     $body = '';
@@ -172,6 +199,96 @@ function cliente_notificacoes_render_email(array $modelo, array $variaveis): str
         . '</td></tr>'
         . '<tr><td style="background:#f8fafc;padding:18px 30px;color:#64748b;font-size:12px;text-align:center;">Este é um e-mail automático do Painel Smile Pro.</td></tr>'
         . '</table></td></tr></table></body></html>';
+}
+
+function cliente_notificacoes_render_email_lancamento(array $modelo, array $variaveis): string
+{
+    $mensagem = cliente_notificacoes_substituir((string)($modelo['mensagem_texto'] ?? ''), $variaveis);
+    $paragrafos = array_filter(array_map('trim', preg_split('/\R{2,}/', $mensagem) ?: []), static fn($p) => $p !== '');
+    $body = '';
+    foreach ($paragrafos as $paragrafo) {
+        if ($paragrafo === ($variaveis['{{link_painel}}'] ?? '')) {
+            continue;
+        }
+        $body .= '<p style="margin:0 0 16px;color:#27364f;font-size:16px;line-height:1.65;">'
+            . nl2br(htmlspecialchars($paragrafo, ENT_QUOTES, 'UTF-8'))
+            . '</p>';
+    }
+
+    $nomeCliente = htmlspecialchars((string)($variaveis['{{nome_cliente}}'] ?? 'Cliente'), ENT_QUOTES, 'UTF-8');
+    $nomeEvento = htmlspecialchars((string)($variaveis['{{nome_evento}}'] ?? 'Evento'), ENT_QUOTES, 'UTF-8');
+    $dataEvento = htmlspecialchars((string)($variaveis['{{data_evento}}'] ?? ''), ENT_QUOTES, 'UTF-8');
+    $linkPainel = htmlspecialchars((string)($variaveis['{{link_painel}}'] ?? '#'), ENT_QUOTES, 'UTF-8');
+    $botaoTexto = htmlspecialchars((string)($modelo['botao_texto'] ?? 'Acessar meu portal'), ENT_QUOTES, 'UTF-8');
+
+    $featureStyle = 'width:50%;padding:8px;vertical-align:top;';
+    $featureBoxStyle = 'background:#f8fafc;border:1px solid #dbe3ef;border-radius:10px;padding:14px 12px;min-height:78px;';
+    $featureTitleStyle = 'margin:0 0 5px;color:#1e3a8a;font-size:14px;font-weight:800;';
+    $featureTextStyle = 'margin:0;color:#52637a;font-size:13px;line-height:1.4;';
+
+    return '<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>'
+        . '<body style="margin:0;background:#eef3fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">'
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eef3fb;padding:28px 12px;"><tr><td align="center">'
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbe3ef;box-shadow:0 10px 30px rgba(30,58,138,.08);">'
+        . '<tr><td style="background:#1e3a8a;padding:30px 30px 32px;color:#ffffff;text-align:center;">'
+        . '<div style="font-size:18px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;">Grupo Smile Eventos</div>'
+        . '<div style="display:inline-block;margin-top:18px;background:#dbeafe;color:#1e3a8a;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;">Novidade</div>'
+        . '<h1 style="margin:16px 0 0;font-size:30px;line-height:1.18;">Seu Portal do Cliente chegou</h1>'
+        . '<p style="margin:12px auto 0;max-width:500px;color:#dbeafe;font-size:16px;line-height:1.5;">Organização, formulários e informações importantes do seu evento em um só lugar.</p>'
+        . '</td></tr>'
+        . '<tr><td style="padding:28px 30px;">'
+        . '<p style="margin:0 0 18px;color:#0f172a;font-size:18px;line-height:1.5;">Olá, <strong>' . $nomeCliente . '</strong>.</p>'
+        . '<div style="background:#f8fafc;border:1px solid #dbe3ef;border-radius:12px;padding:15px 16px;margin:0 0 22px;">'
+        . '<div style="font-size:13px;color:#64748b;margin-bottom:4px;">Evento</div>'
+        . '<div style="font-size:16px;color:#0f172a;font-weight:800;">' . $nomeEvento . ($dataEvento !== '' ? ' - ' . $dataEvento : '') . '</div>'
+        . '</div>'
+        . $body
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:10px 0 20px;"><tr>'
+        . '<td style="' . $featureStyle . '"><div style="' . $featureBoxStyle . '"><p style="' . $featureTitleStyle . '">Formulários do DJ</p><p style="' . $featureTextStyle . '">Envie músicas, protocolos e dados importantes.</p></div></td>'
+        . '<td style="' . $featureStyle . '"><div style="' . $featureBoxStyle . '"><p style="' . $featureTitleStyle . '">Cardápio</p><p style="' . $featureTextStyle . '">Consulte e revise escolhas disponíveis.</p></div></td>'
+        . '</tr><tr>'
+        . '<td style="' . $featureStyle . '"><div style="' . $featureBoxStyle . '"><p style="' . $featureTitleStyle . '">Lista de convidados</p><p style="' . $featureTextStyle . '">Centralize informações para a organização.</p></div></td>'
+        . '<td style="' . $featureStyle . '"><div style="' . $featureBoxStyle . '"><p style="' . $featureTitleStyle . '">Decoração e detalhes</p><p style="' . $featureTextStyle . '">Acompanhe orientações e solicitações da equipe.</p></div></td>'
+        . '</tr></table>'
+        . '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:13px 14px;margin:0 0 24px;color:#9a3412;font-size:14px;line-height:1.5;">'
+        . '<strong>Aviso:</strong> caso você já tenha preenchido ou enviado essas informações, pode desconsiderar este e-mail.'
+        . '</div>'
+        . '<div style="text-align:center;margin:26px 0 24px;">'
+        . '<a href="' . $linkPainel . '" style="display:inline-block;background:#1e3a8a;color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;padding:15px 24px;border-radius:8px;">' . $botaoTexto . '</a>'
+        . '</div>'
+        . '<p style="margin:0;color:#64748b;font-size:13px;line-height:1.5;">Se o botão não abrir, copie este link no navegador:<br>'
+        . '<a href="' . $linkPainel . '" style="color:#1e3a8a;word-break:break-all;">' . $linkPainel . '</a></p>'
+        . '</td></tr>'
+        . '<tr><td style="background:#f8fafc;padding:18px 30px;color:#64748b;font-size:12px;text-align:center;">Este é um e-mail automático do Painel Smile Pro.</td></tr>'
+        . '</table></td></tr></table></body></html>';
+}
+
+function cliente_notificacoes_nome_evento(array $preContrato): string
+{
+    $tipoEvento = trim((string)($preContrato['tipo_evento_real'] ?? ''));
+    if ($tipoEvento === '') {
+        $tipoEvento = trim((string)($preContrato['tipo_evento'] ?? ''));
+    }
+    $map = [
+        'casamento' => 'Casamento',
+        '15anos' => '15 anos',
+        '15_anos' => '15 anos',
+        'infantil' => 'Infantil',
+        'pj' => 'Corporativo',
+    ];
+    $key = strtolower(str_replace([' ', '-'], '_', $tipoEvento));
+    return $map[$key] ?? ($tipoEvento !== '' ? ucfirst(str_replace('_', ' ', $tipoEvento)) : 'Evento');
+}
+
+function cliente_notificacoes_variaveis_pre_contrato(array $preContrato, array $portal): array
+{
+    return [
+        '{{nome_cliente}}' => trim((string)($preContrato['nome_completo'] ?? 'Cliente')),
+        '{{nome_evento}}' => cliente_notificacoes_nome_evento($preContrato),
+        '{{data_evento}}' => cliente_notificacoes_data_br((string)($preContrato['data_evento'] ?? '')),
+        '{{link_painel}}' => (string)($portal['url'] ?? ''),
+        '{{prazo_formularios}}' => cliente_notificacoes_prazo_formularios((string)($preContrato['data_evento'] ?? '')),
+    ];
 }
 
 function cliente_notificacoes_enviar_contrato_aprovado(PDO $pdo, array $preContrato, int $meEventId, int $usuarioId = 0): bool
