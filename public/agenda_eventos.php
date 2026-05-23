@@ -938,6 +938,7 @@ includeSidebar('Agenda Geral');
     gap: 0.8rem;
     padding: 1.25rem;
     text-align: center;
+    text-decoration: none;
 }
 
 .event-function-icon {
@@ -1036,7 +1037,7 @@ includeSidebar('Agenda Geral');
         $cards = [
             ['icon' => '📝', 'title' => 'Informações Gerais', 'pill' => ''],
             ['icon' => '☑️', 'title' => 'Checklist', 'pill' => '10% / 90%'],
-            ['icon' => '🧮', 'title' => 'Financeiro do Evento', 'pill' => 'Pagamentos em Dia'],
+            ['icon' => '🧮', 'title' => 'Financeiro do Evento', 'pill' => 'Pagamentos em Dia', 'href' => 'index.php?page=eventos_financeiro&evento_id=' . (int)$eventoSelecionado['id']],
             ['icon' => '🖥️', 'title' => 'Área do Cliente', 'pill' => 'Área Ativa'],
             ['icon' => '🏷️', 'title' => 'Fornecedores', 'pill' => '0'],
             ['icon' => '📄', 'title' => 'Contratos e Documentos', 'pill' => ''],
@@ -1093,13 +1094,23 @@ includeSidebar('Agenda Geral');
 
                 <div class="event-functions-grid">
                     <?php foreach ($cards as $card): ?>
-                        <div class="event-function-card">
-                            <div class="event-function-icon" aria-hidden="true"><?= h($card['icon']) ?></div>
-                            <div class="event-function-title"><?= h($card['title']) ?></div>
-                            <?php if ($card['pill'] !== ''): ?>
-                                <div class="event-function-pill"><?= h($card['pill']) ?></div>
-                            <?php endif; ?>
-                        </div>
+                        <?php if (!empty($card['href'])): ?>
+                            <a class="event-function-card" href="<?= h((string)$card['href']) ?>">
+                                <div class="event-function-icon" aria-hidden="true"><?= h($card['icon']) ?></div>
+                                <div class="event-function-title"><?= h($card['title']) ?></div>
+                                <?php if ($card['pill'] !== ''): ?>
+                                    <div class="event-function-pill"><?= h($card['pill']) ?></div>
+                                <?php endif; ?>
+                            </a>
+                        <?php else: ?>
+                            <div class="event-function-card">
+                                <div class="event-function-icon" aria-hidden="true"><?= h($card['icon']) ?></div>
+                                <div class="event-function-title"><?= h($card['title']) ?></div>
+                                <?php if ($card['pill'] !== ''): ?>
+                                    <div class="event-function-pill"><?= h($card['pill']) ?></div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
                     <?php endforeach; ?>
                 </div>
             </section>

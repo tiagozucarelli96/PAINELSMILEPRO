@@ -355,6 +355,20 @@ try {
     
     if ($payment_id) {
         logWebhook("Processando evento de Pagamento: $event - Payment ID: $payment_id" . ($pix_qr_code_id ? " - QR Code ID: $pix_qr_code_id" : ""));
+
+        try {
+            require_once __DIR__ . '/eventos_financeiro_helper.php';
+            $updatedFinanceiro = eventos_financeiro_atualizar_asaas_payment(
+                $pdo,
+                (string)$payment_id,
+                is_array($webhook_data['payment'] ?? null) ? $webhook_data['payment'] : []
+            );
+            if ($updatedFinanceiro) {
+                logWebhook("Financeiro do evento atualizado pelo Asaas: payment_id=$payment_id");
+            }
+        } catch (Throwable $e) {
+            logWebhook("Aviso: falha ao atualizar financeiro do evento pelo Asaas: " . $e->getMessage());
+        }
         
         $inscricao = null;
         
