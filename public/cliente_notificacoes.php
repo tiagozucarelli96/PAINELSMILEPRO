@@ -19,6 +19,7 @@ require_once __DIR__ . '/cliente_notificacoes_helper.php';
 
 $mensagem = '';
 $erro = '';
+$campanhaResultado = null;
 
 try {
     cliente_notificacoes_ensure_schema($pdo);
@@ -54,7 +55,22 @@ if (empty($erro) && isset($_GET['preview'])) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro) && ($_POST['acao'] ?? '') === 'enviar_campanha_portal') {
+    try {
+        $usuarioId = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
+        $campanhaResultado = cliente_notificacoes_enviar_campanha_portal_lancamento($pdo, $usuarioId, 500);
+        if (empty($campanhaResultado['ok'])) {
+            throw new RuntimeException((string)($campanhaResultado['error'] ?? 'Não foi possível enviar a campanha.'));
+        }
+        $mensagem = 'Campanha processada. Enviados: ' . (int)$campanhaResultado['enviados']
+            . ' | Erros: ' . (int)$campanhaResultado['erros']
+            . ' | Ignorados: ' . (int)$campanhaResultado['ignorados'] . '.';
+    } catch (Throwable $e) {
+        $erro = $e->getMessage();
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro) && ($_POST['acao'] ?? '') !== 'enviar_campanha_portal') {
     try {
         $id = (int)($_POST['id'] ?? 0);
         $nome = trim((string)($_POST['nome'] ?? ''));
@@ -112,6 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
 $modelos = [];
 $modeloAtual = null;
 $enviosRecentes = [];
+$publicoCampanha = [];
 if (empty($erro)) {
     $modelos = $pdo->query("SELECT * FROM cliente_notificacao_modelos ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
     $modeloId = (int)($_GET['modelo'] ?? 0);
@@ -126,6 +143,15 @@ if (empty($erro)) {
         ORDER BY created_at DESC, id DESC
         LIMIT 8
     ")->fetchAll(PDO::FETCH_ASSOC);
+
+    if (($modeloAtual['chave'] ?? '') === 'portal_cliente_lancamento') {
+        try {
+            $publicoCampanha = cliente_notificacoes_buscar_publico_portal_lancamento($pdo, 500);
+        } catch (Throwable $e) {
+            $erro = 'Não foi possível consultar a ME Eventos para montar o público da campanha: ' . $e->getMessage();
+            $publicoCampanha = [];
+        }
+    }
 }
 
 $codigos = cliente_notificacoes_codigos();
@@ -166,7 +192,20 @@ ob_start();
 .notif-actions { display: flex; justify-content: flex-end; gap: .7rem; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
 .notif-btn { border: 0; border-radius: 8px; padding: .75rem 1rem; font-weight: 800; cursor: pointer; background: #0f766e; color: #fff; }
 .notif-btn.secondary { background: #e2e8f0; color: #0f172a; text-decoration: none; display: inline-flex; align-items: center; }
+.notif-btn.primary-blue { background: #1e3a8a; }
+.notif-btn.danger { background: #b91c1c; }
 .notif-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+.notif-campaign { margin-top: 1rem; }
+.notif-campaign-summary { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: .75rem; padding: 1.1rem; }
+.notif-stat { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: .85rem; }
+.notif-stat strong { display: block; font-size: 1.35rem; color: #1e3a8a; }
+.notif-stat span { color: #64748b; font-size: .82rem; font-weight: 700; }
+.notif-campaign-actions { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: 0 1.1rem 1.1rem; border-bottom: 1px solid #e2e8f0; }
+.notif-warning { color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: .75rem .85rem; font-size: .88rem; line-height: 1.45; }
+.notif-audience { padding: .85rem 1.1rem 1.1rem; overflow-x: auto; }
+.notif-audience table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.notif-audience th, .notif-audience td { text-align: left; border-bottom: 1px solid #e2e8f0; padding: .55rem .45rem; vertical-align: top; }
+.notif-audience th { color: #64748b; font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; }
 .notif-code-list { padding: .9rem 1.1rem 1.1rem; display: grid; gap: .55rem; }
 .notif-code { display: grid; grid-template-columns: 155px 1fr; gap: .6rem; align-items: start; font-size: .88rem; }
 .notif-code code { color: #0f766e; font-weight: 800; background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 6px; padding: .22rem .35rem; white-space: nowrap; }
@@ -176,7 +215,8 @@ ob_start();
 .notif-history th, .notif-history td { text-align: left; border-bottom: 1px solid #e2e8f0; padding: .55rem .45rem; vertical-align: top; }
 .notif-history th { color: #64748b; font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; }
 @media (max-width: 960px) {
-    .notif-layout, .notif-meta, .notif-grid { grid-template-columns: 1fr; }
+    .notif-layout, .notif-meta, .notif-grid, .notif-campaign-summary { grid-template-columns: 1fr; }
+    .notif-campaign-actions { align-items: stretch; flex-direction: column; }
     .notif-code { grid-template-columns: 1fr; }
 }
 </style>
@@ -270,6 +310,70 @@ ob_start();
                     </div>
                 </form>
             </section>
+
+            <?php if (($modeloAtual['chave'] ?? '') === 'portal_cliente_lancamento'): ?>
+                <?php
+                    $totalPublico = count($publicoCampanha);
+                    $comPortal = count(array_filter($publicoCampanha, static fn($item) => !empty($item['portal_url'])));
+                    $semPortal = max(0, $totalPublico - $comPortal);
+                    $emailsInvalidos = count(array_filter($publicoCampanha, static fn($item) => empty($item['email_valido'])));
+                ?>
+                <section class="notif-panel notif-campaign">
+                    <div class="notif-panel-head">
+                        <h2>Disparo em massa</h2>
+                        <span>Consulta direta na ME Eventos: eventos futuros a partir de 30/05/2026, apenas casamento e 15 anos, sem envio anterior desta campanha.</span>
+                    </div>
+                    <div class="notif-campaign-summary">
+                        <div class="notif-stat"><strong><?= (int)$totalPublico ?></strong><span>clientes elegíveis</span></div>
+                        <div class="notif-stat"><strong><?= (int)$comPortal ?></strong><span>já com portal</span></div>
+                        <div class="notif-stat"><strong><?= (int)$semPortal ?></strong><span>portais a criar</span></div>
+                        <div class="notif-stat"><strong><?= (int)$emailsInvalidos ?></strong><span>e-mails inválidos</span></div>
+                    </div>
+                    <div class="notif-campaign-actions">
+                        <div class="notif-warning">
+                            Ao enviar, o sistema usa a lista consultada na ME Eventos, cria automaticamente o portal para quem ainda não tiver e dispara o e-mail com o link individual. Clientes já enviados com sucesso nesta campanha não entram novamente.
+                        </div>
+                        <form method="post" onsubmit="return confirm('Enviar esta campanha para os clientes elegíveis agora?');">
+                            <input type="hidden" name="acao" value="enviar_campanha_portal">
+                            <button type="submit" class="notif-btn primary-blue" <?= $totalPublico <= 0 ? 'disabled' : '' ?>>Enviar campanha</button>
+                        </form>
+                    </div>
+                    <div class="notif-audience">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th>Evento</th>
+                                    <th>Data</th>
+                                    <th>Portal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($publicoCampanha)): ?>
+                                    <tr><td colspan="4">Nenhum cliente elegível pendente para esta campanha.</td></tr>
+                                <?php endif; ?>
+                                <?php foreach (array_slice($publicoCampanha, 0, 80) as $item): ?>
+                                    <tr>
+                                        <td>
+                                            <strong><?= h($item['nome_completo'] ?: '-') ?></strong><br>
+                                            <span style="color:#64748b;"><?= h($item['email'] ?: '') ?></span>
+                                        </td>
+                                        <td><?= h(cliente_notificacoes_nome_evento($item)) ?></td>
+                                        <td><?= h(cliente_notificacoes_data_br((string)($item['data_evento'] ?? ''))) ?></td>
+                                        <td>
+                                            <?php if (!empty($item['portal_url'])): ?>
+                                                <span class="notif-badge green">Criado</span>
+                                            <?php else: ?>
+                                                <span class="notif-badge">Será criado</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            <?php endif; ?>
 
             <div class="notif-meta">
                 <section class="notif-panel">

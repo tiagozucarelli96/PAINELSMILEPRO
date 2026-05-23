@@ -1987,6 +1987,13 @@ function eventos_reuniao_atualizar_tipo_evento_real(PDO $pdo, int $meeting_id, s
             error_log('eventos_reuniao_atualizar_tipo_evento_real: falha ao sincronizar convidados: ' . ($cfg['error'] ?? 'erro desconhecido'));
         }
 
+        if ($tipo === '15anos') {
+            $padrao = eventos_cliente_portal_aplicar_padrao_15anos($pdo, $meeting_id, $user_id, false);
+            if (empty($padrao['ok'])) {
+                error_log('eventos_reuniao_atualizar_tipo_evento_real: falha ao aplicar padrão 15 anos: ' . ($padrao['error'] ?? 'erro desconhecido'));
+            }
+        }
+
         return ['ok' => true, 'reuniao' => $row];
     } catch (Throwable $e) {
         error_log('eventos_reuniao_atualizar_tipo_evento_real: ' . $e->getMessage());
@@ -4164,6 +4171,308 @@ function eventos_cliente_portal_get_by_token(PDO $pdo, string $token): ?array {
     }
 }
 
+function eventos_reuniao_eh_15anos(array $reuniao): bool
+{
+    $tipo = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ''));
+    if ($tipo === '15anos') {
+        return true;
+    }
+
+    $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+    if (!is_array($snapshot)) {
+        $snapshot = [];
+    }
+
+    $tipo_snapshot = eventos_reuniao_normalizar_tipo_evento_real((string)($snapshot['tipo_evento_real'] ?? ''));
+    if ($tipo_snapshot === '15anos') {
+        return true;
+    }
+
+    $nome = function_exists('mb_strtolower')
+        ? mb_strtolower((string)($snapshot['nome'] ?? ''), 'UTF-8')
+        : strtolower((string)($snapshot['nome'] ?? ''));
+    return strpos($nome, '15 anos') !== false;
+}
+
+function eventos_cliente_portal_template_ativo(PDO $pdo, string $nome, string $categoria = '15anos'): ?array
+{
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, nome, schema_json
+            FROM eventos_form_templates
+            WHERE ativo IS TRUE
+              AND nome = :nome
+              AND categoria = :categoria
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':nome' => $nome,
+            ':categoria' => $categoria,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (is_array($row) && is_string($row['schema_json'] ?? null)) {
+            $decoded = json_decode((string)$row['schema_json'], true);
+            $row['schema_json'] = is_array($decoded) ? $decoded : [];
+        }
+        return is_array($row) ? $row : null;
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_template_ativo: ' . $e->getMessage());
+        return null;
+    }
+}
+
+function eventos_cliente_portal_upsert_link_template_padrao(
+    PDO $pdo,
+    int $meeting_id,
+    array $template,
+    string $link_type,
+    string $section,
+    int $user_id = 0
+): array {
+    $template_nome = trim((string)($template['nome'] ?? ''));
+    if ($meeting_id <= 0 || $template_nome === '') {
+        return ['ok' => false, 'error' => 'Dados insuficientes para vínculo do formulário padrão'];
+    }
+
+    $schema_json = json_encode($template['schema_json'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($schema_json === false || $schema_json === 'null') {
+        $schema_json = '[]';
+    }
+
+    $allowed_sections_json = json_encode([$section], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $slot_index = 1;
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = :link_type
+              AND COALESCE(slot_index, 1) = :slot_index
+            ORDER BY is_active DESC, id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type,
+            ':slot_index' => $slot_index,
+        ]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if ($existing) {
+            $stmt = $pdo->prepare("
+                UPDATE eventos_links_publicos
+                SET allowed_sections = CAST(:allowed_sections AS jsonb),
+                    form_schema_json = CAST(:form_schema_json AS jsonb),
+                    content_html_snapshot = NULL,
+                    draft_content_html_snapshot = NULL,
+                    form_title = :form_title,
+                    portal_visible = TRUE,
+                    portal_editable = TRUE,
+                    portal_configured = TRUE,
+                    is_active = TRUE
+                WHERE id = :id
+                RETURNING *
+            ");
+            $stmt->execute([
+                ':id' => (int)$existing['id'],
+                ':allowed_sections' => $allowed_sections_json,
+                ':form_schema_json' => $schema_json,
+                ':form_title' => $template_nome,
+            ]);
+            $link = $stmt->fetch(PDO::FETCH_ASSOC) ?: $existing;
+            return ['ok' => true, 'link' => $link, 'created' => false];
+        }
+
+        $token = bin2hex(random_bytes(32));
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_links_publicos
+                (meeting_id, token, link_type, allowed_sections, is_active, created_by, created_at, slot_index, form_schema_json, content_html_snapshot, form_title, portal_visible, portal_editable, portal_configured)
+            VALUES
+                (:meeting_id, :token, :link_type, CAST(:allowed_sections AS jsonb), TRUE, :created_by, NOW(), :slot_index, CAST(:form_schema_json AS jsonb), NULL, :form_title, TRUE, TRUE, TRUE)
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':token' => $token,
+            ':link_type' => $link_type,
+            ':allowed_sections' => $allowed_sections_json,
+            ':created_by' => $user_id > 0 ? $user_id : 0,
+            ':slot_index' => $slot_index,
+            ':form_schema_json' => $schema_json,
+            ':form_title' => $template_nome,
+        ]);
+        $link = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        return ['ok' => true, 'link' => $link, 'created' => true];
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_upsert_link_template_padrao: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao configurar formulário padrão'];
+    }
+}
+
+function eventos_cliente_portal_aplicar_padrao_15anos(PDO $pdo, int $meeting_id, int $user_id = 0, bool $criar_portal = false): array
+{
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $reuniao = eventos_reuniao_get($pdo, $meeting_id);
+    if (!$reuniao || !eventos_reuniao_eh_15anos($reuniao)) {
+        return ['ok' => true, 'applied' => false, 'reason' => 'Evento não é 15 anos'];
+    }
+
+    $portal = eventos_cliente_portal_get($pdo, $meeting_id);
+    if (!$portal && $criar_portal) {
+        $created = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
+        if (empty($created['ok'])) {
+            return ['ok' => false, 'error' => $created['error'] ?? 'Portal não encontrado'];
+        }
+        $portal = is_array($created['portal'] ?? null) ? $created['portal'] : null;
+    }
+    if (!$portal || empty($portal['is_active'])) {
+        return ['ok' => true, 'applied' => false, 'reason' => 'Portal ainda não está ativo'];
+    }
+
+    $dj_template = eventos_cliente_portal_template_ativo($pdo, 'Cerimonial 15 anos (DJ)', '15anos');
+    $form_template = eventos_cliente_portal_template_ativo($pdo, 'Organização 15 anos', '15anos');
+    if (!$dj_template || !$form_template) {
+        return ['ok' => false, 'error' => 'Modelos padrão de 15 anos não encontrados'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_cliente_portais
+            SET visivel_secao_dj_protocolo = TRUE,
+                editavel_secao_dj_protocolo = TRUE,
+                visivel_secao_formulario = TRUE,
+                editavel_secao_formulario = TRUE,
+                updated_at = NOW()
+            WHERE meeting_id = :meeting_id
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_aplicar_padrao_15anos portal: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao atualizar portal padrão 15 anos'];
+    }
+
+    $dj = eventos_cliente_portal_upsert_link_template_padrao(
+        $pdo,
+        $meeting_id,
+        $dj_template,
+        'cliente_dj',
+        'dj_protocolo',
+        $user_id
+    );
+    if (empty($dj['ok'])) {
+        return ['ok' => false, 'error' => $dj['error'] ?? 'Erro ao configurar DJ padrão'];
+    }
+
+    $formulario = eventos_cliente_portal_upsert_link_template_padrao(
+        $pdo,
+        $meeting_id,
+        $form_template,
+        'cliente_formulario',
+        'formulario',
+        $user_id
+    );
+    if (empty($formulario['ok'])) {
+        return ['ok' => false, 'error' => $formulario['error'] ?? 'Erro ao configurar formulário padrão'];
+    }
+
+    return [
+        'ok' => true,
+        'applied' => true,
+        'dj' => $dj,
+        'formulario' => $formulario,
+    ];
+}
+
+function eventos_cliente_portal_cardapio_enviado(PDO $pdo, int $meeting_id): bool
+{
+    if ($meeting_id <= 0 || !eventos_reuniao_has_table($pdo, 'eventos_cardapio_respostas')) {
+        return false;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 1
+            FROM eventos_cardapio_respostas
+            WHERE meeting_id = :meeting_id
+              AND submitted_at IS NOT NULL
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_cardapio_enviado: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function eventos_cliente_portal_aplicar_padrao_cardapio(PDO $pdo, int $meeting_id): array
+{
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $portal = eventos_cliente_portal_get($pdo, $meeting_id);
+    if (!$portal || empty($portal['is_active'])) {
+        return ['ok' => true, 'applied' => false, 'reason' => 'Portal ainda não está ativo'];
+    }
+
+    $has_visivel_cardapio_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_cardapio');
+    $has_editavel_cardapio_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_cardapio');
+    if (!$has_visivel_cardapio_col && !$has_editavel_cardapio_col) {
+        return ['ok' => true, 'applied' => false, 'reason' => 'Colunas de cardápio não existem'];
+    }
+
+    $cardapio_enviado = eventos_cliente_portal_cardapio_enviado($pdo, $meeting_id);
+    $set_parts = [];
+    $params = [':id' => (int)$portal['id']];
+    if ($has_visivel_cardapio_col) {
+        $set_parts[] = 'visivel_cardapio = TRUE';
+    }
+    if ($has_editavel_cardapio_col) {
+        $set_parts[] = 'editavel_cardapio = :editavel_cardapio';
+        $params[':editavel_cardapio'] = $cardapio_enviado ? 0 : 1;
+    }
+    if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at')) {
+        $set_parts[] = 'updated_at = NOW()';
+    }
+
+    try {
+        $where_parts = ['id = :id'];
+        if ($has_visivel_cardapio_col) {
+            $where_parts[] = 'visivel_cardapio IS DISTINCT FROM TRUE';
+        }
+        if ($has_editavel_cardapio_col) {
+            $where_parts[] = 'editavel_cardapio IS DISTINCT FROM :editavel_cardapio';
+        }
+        $stmt = $pdo->prepare("
+            UPDATE eventos_cliente_portais
+            SET " . implode(', ', $set_parts) . "
+            WHERE " . $where_parts[0] . "
+              AND (" . implode(' OR ', array_slice($where_parts, 1)) . ")
+            RETURNING *
+        ");
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $portal_atualizado = eventos_cliente_portal_normalizar_row($row ?: $portal);
+        return [
+            'ok' => true,
+            'applied' => (bool)$row,
+            'portal' => $portal_atualizado,
+            'cardapio_enviado' => $cardapio_enviado,
+        ];
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_aplicar_padrao_cardapio: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao atualizar padrão do cardápio'];
+    }
+}
+
 /**
  * Cria (ou retorna) portal do cliente para reunião.
  */
@@ -4206,6 +4515,18 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
                     $stmt->execute([':id' => (int)$existing['id']]);
                     $existing = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: $existing);
                 }
+            }
+            $padrao_15anos = eventos_cliente_portal_aplicar_padrao_15anos($pdo, $meeting_id, $user_id, false);
+            if (empty($padrao_15anos['ok'])) {
+                error_log('eventos_cliente_portal_get_or_create: falha ao aplicar padrão 15 anos: ' . ($padrao_15anos['error'] ?? 'erro desconhecido'));
+            } elseif (!empty($padrao_15anos['applied'])) {
+                $existing = eventos_cliente_portal_get($pdo, $meeting_id) ?: $existing;
+            }
+            $padrao_cardapio = eventos_cliente_portal_aplicar_padrao_cardapio($pdo, $meeting_id);
+            if (empty($padrao_cardapio['ok'])) {
+                error_log('eventos_cliente_portal_get_or_create: falha ao aplicar padrão do cardápio: ' . ($padrao_cardapio['error'] ?? 'erro desconhecido'));
+            } elseif (!empty($padrao_cardapio['portal'])) {
+                $existing = $padrao_cardapio['portal'];
             }
             return ['ok' => true, 'portal' => $existing, 'created' => false];
         }
@@ -4294,6 +4615,19 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
         if (!$portal) {
             return ['ok' => false, 'error' => 'Não foi possível criar o portal do cliente'];
+        }
+
+        $padrao_15anos = eventos_cliente_portal_aplicar_padrao_15anos($pdo, $meeting_id, $user_id, false);
+        if (empty($padrao_15anos['ok'])) {
+            error_log('eventos_cliente_portal_get_or_create: falha ao aplicar padrão 15 anos: ' . ($padrao_15anos['error'] ?? 'erro desconhecido'));
+        } elseif (!empty($padrao_15anos['applied'])) {
+            $portal = eventos_cliente_portal_get($pdo, $meeting_id) ?: $portal;
+        }
+        $padrao_cardapio = eventos_cliente_portal_aplicar_padrao_cardapio($pdo, $meeting_id);
+        if (empty($padrao_cardapio['ok'])) {
+            error_log('eventos_cliente_portal_get_or_create: falha ao aplicar padrão do cardápio: ' . ($padrao_cardapio['error'] ?? 'erro desconhecido'));
+        } elseif (!empty($padrao_cardapio['portal'])) {
+            $portal = $padrao_cardapio['portal'];
         }
 
         return ['ok' => true, 'portal' => $portal, 'created' => true];
@@ -4701,12 +5035,9 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     $editavel_arquivos = array_key_exists('editavel_arquivos', $config)
         ? !empty($config['editavel_arquivos'])
         : !empty($portal_atual['editavel_arquivos']);
-    $visivel_cardapio = array_key_exists('visivel_cardapio', $config)
-        ? !empty($config['visivel_cardapio'])
-        : !empty($portal_atual['visivel_cardapio']);
-    $editavel_cardapio = array_key_exists('editavel_cardapio', $config)
-        ? !empty($config['editavel_cardapio'])
-        : !empty($portal_atual['editavel_cardapio']);
+    $cardapio_enviado = eventos_cliente_portal_cardapio_enviado($pdo, $meeting_id);
+    $visivel_cardapio = true;
+    $editavel_cardapio = !$cardapio_enviado;
 
     if ($editavel_reuniao) {
         $visivel_reuniao = true;
@@ -4719,26 +5050,6 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     }
     if ($editavel_arquivos) {
         $visivel_arquivos = true;
-    }
-    if ($editavel_cardapio) {
-        $visivel_cardapio = true;
-    }
-    if ($editavel_cardapio && eventos_reuniao_has_table($pdo, 'eventos_cardapio_respostas')) {
-        try {
-            $stmt_cardapio_enviado = $pdo->prepare("
-                SELECT 1
-                FROM eventos_cardapio_respostas
-                WHERE meeting_id = :meeting_id
-                  AND submitted_at IS NOT NULL
-                LIMIT 1
-            ");
-            $stmt_cardapio_enviado->execute([':meeting_id' => $meeting_id]);
-            if ($stmt_cardapio_enviado->fetchColumn()) {
-                $editavel_cardapio = false;
-            }
-        } catch (Throwable $e) {
-            error_log('eventos_cliente_portal_atualizar_config cardapio enviado: ' . $e->getMessage());
-        }
     }
     $has_visivel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_reuniao');
     $has_editavel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_reuniao');
@@ -4853,6 +5164,13 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
             error_log('eventos_cliente_portal_atualizar_config sync dj: ' . (string)($sync_dj['error'] ?? 'erro desconhecido'));
         }
 
+        $padrao_15anos = eventos_cliente_portal_aplicar_padrao_15anos($pdo, $meeting_id, $user_id, false);
+        if (empty($padrao_15anos['ok'])) {
+            error_log('eventos_cliente_portal_atualizar_config padrão 15 anos: ' . (string)($padrao_15anos['error'] ?? 'erro desconhecido'));
+        } elseif (!empty($padrao_15anos['applied'])) {
+            $portal = eventos_cliente_portal_get($pdo, $meeting_id) ?: $portal;
+        }
+
         return ['ok' => true, 'portal' => $portal];
     } catch (Throwable $e) {
         error_log('eventos_cliente_portal_atualizar_config: ' . $e->getMessage());
@@ -4928,6 +5246,13 @@ function eventos_cliente_portal_atualizar_secao_config(
         $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
         if (!$portal) {
             return ['ok' => false, 'error' => 'Não foi possível salvar a configuração da seção'];
+        }
+
+        $padrao_15anos = eventos_cliente_portal_aplicar_padrao_15anos($pdo, $meeting_id, $user_id, false);
+        if (empty($padrao_15anos['ok'])) {
+            error_log('eventos_cliente_portal_atualizar_secao_config padrão 15 anos: ' . (string)($padrao_15anos['error'] ?? 'erro desconhecido'));
+        } elseif (!empty($padrao_15anos['applied'])) {
+            $portal = eventos_cliente_portal_get($pdo, $meeting_id) ?: $portal;
         }
 
         return [

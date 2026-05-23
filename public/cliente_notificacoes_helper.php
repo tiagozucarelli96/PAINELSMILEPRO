@@ -89,7 +89,14 @@ function cliente_notificacoes_seed_modelos(PDO $pdo): void
         . "Caso você já tenha preenchido ou enviado essas informações para nossa equipe, pode desconsiderar este aviso. Se ainda houver algo pendente, pedimos que acesse com calma e complete os formulários disponíveis dentro dos prazos solicitados.\n\n"
         . "Qualquer dúvida durante o acesso ou preenchimento, fale com a nossa equipe. Estamos por aqui para te ajudar!";
 
-    $stmt->execute([
+    $stmtCampanha = $pdo->prepare("
+        INSERT INTO cliente_notificacao_modelos
+            (chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto)
+        VALUES
+            (:chave, :nome, :descricao, :gatilho, TRUE, FALSE, TRUE, :assunto, :mensagem_texto, :botao_texto)
+        ON CONFLICT (chave) DO NOTHING
+    ");
+    $stmtCampanha->execute([
         ':chave' => 'portal_cliente_lancamento',
         ':nome' => 'Lançamento do Portal do Cliente',
         ':descricao' => 'Campanha em massa para apresentar o Portal do Cliente a eventos futuros de casamento e 15 anos.',
@@ -289,6 +296,507 @@ function cliente_notificacoes_variaveis_pre_contrato(array $preContrato, array $
         '{{link_painel}}' => (string)($portal['url'] ?? ''),
         '{{prazo_formularios}}' => cliente_notificacoes_prazo_formularios((string)($preContrato['data_evento'] ?? '')),
     ];
+}
+
+function cliente_notificacoes_me_evento_id(array $event): int
+{
+    return eventos_me_pick_int($event, ['id', 'idevento', 'idEvento', 'event.id']);
+}
+
+function cliente_notificacoes_me_evento_data(array $event): string
+{
+    $raw = eventos_me_pick_text($event, [
+        'dataevento',
+        'dataEvento',
+        'data_evento',
+        'data',
+        'date',
+        'start',
+        'start_date',
+        'inicio',
+    ]);
+    if ($raw === '') {
+        return '';
+    }
+    $ts = strtotime($raw);
+    return $ts ? date('Y-m-d', $ts) : substr($raw, 0, 10);
+}
+
+function cliente_notificacoes_me_evento_nome_cliente(array $event): string
+{
+    return eventos_me_pick_text($event, [
+        'nomecliente',
+        'nomeCliente',
+        'cliente.nome',
+        'client.name',
+        'cliente',
+        'nome_contato',
+    ], 'Cliente');
+}
+
+function cliente_notificacoes_me_evento_email_cliente(array $event): string
+{
+    return eventos_me_pick_text($event, [
+        'emailcliente',
+        'emailCliente',
+        'cliente.email',
+        'client.email',
+        'email',
+        'email_contato',
+        'contato.email',
+    ]);
+}
+
+function cliente_notificacoes_texto_normalizado(string $texto): string
+{
+    $texto = trim($texto);
+    if ($texto === '') {
+        return '';
+    }
+    if (function_exists('iconv')) {
+        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
+        if (is_string($ascii) && $ascii !== '') {
+            $texto = $ascii;
+        }
+    }
+    $texto = strtolower($texto);
+    $texto = preg_replace('/[^a-z0-9]+/', ' ', $texto) ?? '';
+    return trim($texto);
+}
+
+function cliente_notificacoes_classificar_tipo_evento_me(array $event, array $local = []): string
+{
+    foreach ([
+        (string)($local['tipo_evento_real'] ?? ''),
+        (string)($local['tipo_evento'] ?? ''),
+        eventos_me_pick_text($event, ['tipoevento', 'tipoEvento', 'tipo_evento', 'tipo', 'categoria', 'nomeTipoEvento']),
+    ] as $candidate) {
+        $normalizado = eventos_reuniao_normalizar_tipo_evento_real($candidate);
+        if (in_array($normalizado, ['casamento', '15anos'], true)) {
+            return $normalizado;
+        }
+    }
+
+    $texto = cliente_notificacoes_texto_normalizado(implode(' ', [
+        eventos_me_pick_text($event, ['nomeevento', 'nome', 'titulo']),
+        eventos_me_pick_text($event, ['tipoevento', 'tipoEvento', 'tipo_evento', 'tipo', 'categoria', 'nomeTipoEvento']),
+        eventos_me_pick_text($event, ['observacao', 'observacoes', 'descricao']),
+    ]));
+
+    if ($texto === '') {
+        return '';
+    }
+    if (preg_match('/(^| )15( |$)|15 anos|debutante/', $texto)) {
+        return '15anos';
+    }
+    if (strpos($texto, 'casamento') !== false || strpos($texto, 'wedding') !== false || strpos($texto, 'noivos') !== false) {
+        return 'casamento';
+    }
+
+    return '';
+}
+
+function cliente_notificacoes_me_buscar_eventos_periodo(PDO $pdo, string $start = '2026-05-30', string $end = '2031-12-31', bool $forceRefresh = false): array
+{
+    $cacheKey = 'cliente_notif_me_events_' . $start . '_' . $end;
+    if (!$forceRefresh) {
+        $cached = eventos_me_cache_get($pdo, $cacheKey);
+        if ($cached !== null) {
+            return ['ok' => true, 'events' => eventos_me_filtrar_ativos($cached), 'from_cache' => true];
+        }
+    }
+
+    $resp = eventos_me_request('GET', '/api/v1/events', [
+        'start' => $start,
+        'end' => $end,
+        'limit' => 1000,
+    ]);
+    if (empty($resp['ok'])) {
+        return ['ok' => false, 'error' => (string)($resp['error'] ?? 'Erro ao consultar eventos na ME.'), 'events' => []];
+    }
+
+    $events = $resp['data']['data'] ?? $resp['data'] ?? [];
+    if (!is_array($events)) {
+        $events = [];
+    }
+    $events = eventos_me_filtrar_ativos($events);
+    eventos_me_cache_set($pdo, $cacheKey, $events, 10);
+
+    return ['ok' => true, 'events' => $events, 'from_cache' => false];
+}
+
+function cliente_notificacoes_locais_por_me_evento(PDO $pdo, array $eventIds): array
+{
+    $eventIds = array_values(array_unique(array_filter(array_map('intval', $eventIds), static fn($id) => $id > 0)));
+    if (empty($eventIds)) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($eventIds), '?'));
+    $local = [];
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT
+                v.id AS pre_contrato_id,
+                v.me_event_id,
+                v.nome_completo,
+                v.email,
+                v.tipo_evento,
+                v.tipo_evento_real,
+                v.data_evento,
+                er.id AS meeting_id,
+                er.tipo_evento_real AS reuniao_tipo_evento_real,
+                p.id AS portal_id,
+                p.token AS portal_token,
+                p.is_active AS portal_ativo
+            FROM vendas_pre_contratos v
+            LEFT JOIN eventos_reunioes er ON er.me_event_id = v.me_event_id
+            LEFT JOIN eventos_cliente_portais p ON p.meeting_id = er.id
+            WHERE v.me_event_id IN ($placeholders)
+            ORDER BY v.aprovado_em DESC NULLS LAST, v.atualizado_em DESC NULLS LAST, v.id DESC
+        ");
+        $stmt->execute($eventIds);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $id = (int)($row['me_event_id'] ?? 0);
+            if ($id > 0 && !isset($local[$id])) {
+                $tipoReal = eventos_reuniao_normalizar_tipo_evento_real((string)($row['tipo_evento_real'] ?? ''));
+                if ($tipoReal === '') {
+                    $tipoReal = eventos_reuniao_normalizar_tipo_evento_real((string)($row['reuniao_tipo_evento_real'] ?? ''));
+                }
+                $row['tipo_evento_real'] = $tipoReal;
+                $row['portal_url'] = trim((string)($row['portal_token'] ?? '')) !== ''
+                    ? eventos_cliente_portal_build_url((string)$row['portal_token'])
+                    : '';
+                $local[$id] = $row;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[CLIENTE_NOTIFICACOES] locais pre_contratos: ' . $e->getMessage());
+    }
+
+    try {
+        $missing = array_values(array_diff($eventIds, array_keys($local)));
+        if (!empty($missing)) {
+            $placeholdersMissing = implode(',', array_fill(0, count($missing), '?'));
+            $stmt = $pdo->prepare("
+                SELECT
+                    er.id AS meeting_id,
+                    er.me_event_id,
+                    er.tipo_evento_real,
+                    er.me_event_snapshot,
+                    p.id AS portal_id,
+                    p.token AS portal_token,
+                    p.is_active AS portal_ativo
+                FROM eventos_reunioes er
+                LEFT JOIN eventos_cliente_portais p ON p.meeting_id = er.id
+                WHERE er.me_event_id IN ($placeholdersMissing)
+            ");
+            $stmt->execute($missing);
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $id = (int)($row['me_event_id'] ?? 0);
+                if ($id <= 0 || isset($local[$id])) {
+                    continue;
+                }
+                $snapshot = json_decode((string)($row['me_event_snapshot'] ?? '{}'), true);
+                $snapshot = is_array($snapshot) ? $snapshot : [];
+                $tipoReal = eventos_reuniao_normalizar_tipo_evento_real((string)($row['tipo_evento_real'] ?? ''));
+                if ($tipoReal === '') {
+                    $tipoReal = eventos_reuniao_normalizar_tipo_evento_real((string)($snapshot['tipo_evento_real'] ?? ''));
+                }
+                $local[$id] = [
+                    'pre_contrato_id' => null,
+                    'me_event_id' => $id,
+                    'nome_completo' => eventos_me_snapshot_cliente_nome($snapshot, ''),
+                    'email' => eventos_me_snapshot_cliente_email($snapshot, ''),
+                    'tipo_evento' => (string)($snapshot['tipo_evento'] ?? ''),
+                    'tipo_evento_real' => $tipoReal,
+                    'data_evento' => (string)($snapshot['data'] ?? ''),
+                    'meeting_id' => (int)($row['meeting_id'] ?? 0),
+                    'portal_id' => (int)($row['portal_id'] ?? 0),
+                    'portal_token' => (string)($row['portal_token'] ?? ''),
+                    'portal_ativo' => !empty($row['portal_ativo']),
+                    'portal_url' => trim((string)($row['portal_token'] ?? '')) !== ''
+                        ? eventos_cliente_portal_build_url((string)$row['portal_token'])
+                        : '',
+                ];
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[CLIENTE_NOTIFICACOES] locais reunioes: ' . $e->getMessage());
+    }
+
+    return $local;
+}
+
+function cliente_notificacoes_envios_enviados_por_me(PDO $pdo): array
+{
+    try {
+        $stmt = $pdo->query("
+            SELECT DISTINCT me_event_id
+            FROM cliente_notificacao_envios
+            WHERE chave_modelo = 'portal_cliente_lancamento'
+              AND status = 'enviado'
+              AND me_event_id IS NOT NULL
+        ");
+        $sent = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $id = (int)($row['me_event_id'] ?? 0);
+            if ($id > 0) {
+                $sent[$id] = true;
+            }
+        }
+        return $sent;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function cliente_notificacoes_buscar_publico_portal_lancamento(PDO $pdo, int $limit = 500): array
+{
+    cliente_notificacoes_ensure_schema($pdo);
+    $limit = max(1, min(1000, $limit));
+
+    $result = cliente_notificacoes_me_buscar_eventos_periodo($pdo, '2026-05-30', '2031-12-31');
+    if (empty($result['ok'])) {
+        throw new RuntimeException((string)($result['error'] ?? 'Erro ao consultar eventos na ME.'));
+    }
+
+    $events = array_values(array_filter((array)($result['events'] ?? []), 'is_array'));
+    $eventIds = [];
+    foreach ($events as $event) {
+        $id = cliente_notificacoes_me_evento_id($event);
+        if ($id > 0) {
+            $eventIds[] = $id;
+        }
+    }
+
+    $locais = cliente_notificacoes_locais_por_me_evento($pdo, $eventIds);
+    $enviados = cliente_notificacoes_envios_enviados_por_me($pdo);
+    $rows = [];
+
+    foreach ($events as $event) {
+        $meEventId = cliente_notificacoes_me_evento_id($event);
+        if ($meEventId <= 0 || isset($enviados[$meEventId])) {
+            continue;
+        }
+
+        $dataEvento = cliente_notificacoes_me_evento_data($event);
+        if ($dataEvento === '' || $dataEvento < '2026-05-30') {
+            continue;
+        }
+
+        $local = $locais[$meEventId] ?? [];
+        $tipo = cliente_notificacoes_classificar_tipo_evento_me($event, $local);
+        if (!in_array($tipo, ['casamento', '15anos'], true)) {
+            continue;
+        }
+
+        $email = trim((string)($local['email'] ?? ''));
+        if ($email === '') {
+            $email = cliente_notificacoes_me_evento_email_cliente($event);
+        }
+
+        $nomeCliente = trim((string)($local['nome_completo'] ?? ''));
+        if ($nomeCliente === '') {
+            $nomeCliente = cliente_notificacoes_me_evento_nome_cliente($event);
+        }
+
+        $rows[] = [
+            'id' => (int)($local['pre_contrato_id'] ?? 0),
+            'origem' => 'me_api',
+            'nome_completo' => $nomeCliente !== '' ? $nomeCliente : 'Cliente',
+            'email' => $email,
+            'tipo_evento' => $tipo,
+            'tipo_evento_real' => $tipo,
+            'data_evento' => $dataEvento,
+            'me_event_id' => $meEventId,
+            'status' => (string)($local['status'] ?? 'me_api'),
+            'meeting_id' => (int)($local['meeting_id'] ?? 0),
+            'portal_id' => (int)($local['portal_id'] ?? 0),
+            'portal_token' => (string)($local['portal_token'] ?? ''),
+            'portal_ativo' => !empty($local['portal_ativo']),
+            'portal_url' => (string)($local['portal_url'] ?? ''),
+            'email_valido' => filter_var($email, FILTER_VALIDATE_EMAIL) !== false,
+            'nome_evento_me' => eventos_me_pick_text($event, ['nomeevento', 'nome', 'titulo']),
+            'tipo_origem' => $tipo,
+        ];
+
+        if (count($rows) >= $limit) {
+            break;
+        }
+    }
+
+    usort($rows, static function (array $a, array $b): int {
+        return strcmp((string)($a['data_evento'] ?? ''), (string)($b['data_evento'] ?? ''))
+            ?: ((int)($a['me_event_id'] ?? 0) <=> (int)($b['me_event_id'] ?? 0));
+    });
+
+    return $rows;
+}
+
+function cliente_notificacoes_preparar_portal_pre_contrato(PDO $pdo, array $preContrato, int $usuarioId = 0): array
+{
+    $meEventId = (int)($preContrato['me_event_id'] ?? 0);
+    if ($meEventId <= 0) {
+        return ['ok' => false, 'error' => 'Evento sem vínculo ME.'];
+    }
+
+    $tipoEventoReal = (string)($preContrato['tipo_evento_real'] ?? $preContrato['tipo_evento'] ?? '');
+    $reuniaoResult = eventos_reuniao_get_or_create($pdo, $meEventId, $usuarioId, $tipoEventoReal);
+    if (empty($reuniaoResult['ok']) || empty($reuniaoResult['reuniao']['id'])) {
+        return ['ok' => false, 'error' => (string)($reuniaoResult['error'] ?? 'Não foi possível criar a reunião.')];
+    }
+
+    $meetingId = (int)$reuniaoResult['reuniao']['id'];
+    $portalResult = eventos_cliente_portal_get_or_create($pdo, $meetingId, $usuarioId);
+    if (empty($portalResult['ok']) || empty($portalResult['portal']['url'])) {
+        return ['ok' => false, 'error' => (string)($portalResult['error'] ?? 'Não foi possível criar o portal do cliente.')];
+    }
+
+    return [
+        'ok' => true,
+        'meeting_id' => $meetingId,
+        'portal' => $portalResult['portal'],
+    ];
+}
+
+function cliente_notificacoes_registrar_envio(PDO $pdo, array $modelo, array $preContrato, int $meetingId, array $portal, string $assunto): int
+{
+    $stmtLog = $pdo->prepare("
+        INSERT INTO cliente_notificacao_envios
+            (modelo_id, chave_modelo, pre_contrato_id, me_event_id, meeting_id, portal_id, cliente_nome, cliente_email, canal, assunto, status)
+        VALUES
+            (:modelo_id, :chave_modelo, :pre_contrato_id, :me_event_id, :meeting_id, :portal_id, :cliente_nome, :cliente_email, 'email', :assunto, 'pendente')
+        RETURNING id
+    ");
+    $stmtLog->execute([
+        ':modelo_id' => (int)($modelo['id'] ?? 0),
+        ':chave_modelo' => (string)($modelo['chave'] ?? ''),
+        ':pre_contrato_id' => (int)($preContrato['id'] ?? 0) ?: null,
+        ':me_event_id' => (int)($preContrato['me_event_id'] ?? 0) ?: null,
+        ':meeting_id' => $meetingId > 0 ? $meetingId : null,
+        ':portal_id' => (int)($portal['id'] ?? 0) ?: null,
+        ':cliente_nome' => (string)($preContrato['nome_completo'] ?? ''),
+        ':cliente_email' => (string)($preContrato['email'] ?? ''),
+        ':assunto' => $assunto,
+    ]);
+    return (int)$stmtLog->fetchColumn();
+}
+
+function cliente_notificacoes_atualizar_log_envio(PDO $pdo, int $logId, bool $enviado, string $erro = ''): void
+{
+    if ($logId <= 0) {
+        return;
+    }
+
+    if ($enviado) {
+        $stmtUpdate = $pdo->prepare("
+            UPDATE cliente_notificacao_envios
+            SET status = 'enviado', enviado_em = NOW(), erro = NULL
+            WHERE id = :id
+        ");
+        $stmtUpdate->bindValue(':id', $logId, PDO::PARAM_INT);
+        $stmtUpdate->execute();
+        return;
+    }
+
+    $stmtUpdate = $pdo->prepare("
+        UPDATE cliente_notificacao_envios
+        SET status = 'erro', enviado_em = NULL, erro = :erro
+        WHERE id = :id
+    ");
+    $stmtUpdate->bindValue(':erro', $erro !== '' ? $erro : 'Falha retornada pelo serviço de e-mail.');
+    $stmtUpdate->bindValue(':id', $logId, PDO::PARAM_INT);
+    $stmtUpdate->execute();
+}
+
+function cliente_notificacoes_enviar_modelo_para_pre_contrato(PDO $pdo, array $modelo, array $preContrato, int $usuarioId = 0): bool
+{
+    $emailCliente = trim((string)($preContrato['email'] ?? ''));
+    if ($emailCliente === '' || !filter_var($emailCliente, FILTER_VALIDATE_EMAIL)) {
+        throw new RuntimeException('Cliente sem e-mail válido para notificação.');
+    }
+
+    $portalContext = cliente_notificacoes_preparar_portal_pre_contrato($pdo, $preContrato, $usuarioId);
+    if (empty($portalContext['ok'])) {
+        throw new RuntimeException((string)($portalContext['error'] ?? 'Não foi possível preparar o portal.'));
+    }
+
+    $meetingId = (int)($portalContext['meeting_id'] ?? 0);
+    $portal = (array)($portalContext['portal'] ?? []);
+    $variaveis = cliente_notificacoes_variaveis_pre_contrato($preContrato, $portal);
+    $assunto = cliente_notificacoes_substituir((string)($modelo['assunto'] ?? ''), $variaveis);
+    $html = cliente_notificacoes_render_email($modelo, $variaveis);
+
+    $logId = cliente_notificacoes_registrar_envio($pdo, $modelo, $preContrato, $meetingId, $portal, $assunto);
+
+    $emailHelper = new EmailGlobalHelper();
+    $enviado = $emailHelper->enviarEmail($emailCliente, $assunto, $html, true);
+    cliente_notificacoes_atualizar_log_envio($pdo, $logId, (bool)$enviado);
+
+    return (bool)$enviado;
+}
+
+function cliente_notificacoes_enviar_campanha_portal_lancamento(PDO $pdo, int $usuarioId = 0, int $limit = 500): array
+{
+    $modelo = cliente_notificacoes_get_modelo($pdo, 'portal_cliente_lancamento');
+    if (!$modelo || empty($modelo['ativo']) || empty($modelo['canal_email'])) {
+        return ['ok' => false, 'error' => 'Campanha inativa ou sem canal de e-mail habilitado.'];
+    }
+
+    $publico = cliente_notificacoes_buscar_publico_portal_lancamento($pdo, $limit);
+    $resultado = [
+        'ok' => true,
+        'total' => count($publico),
+        'enviados' => 0,
+        'erros' => 0,
+        'ignorados' => 0,
+        'detalhes' => [],
+    ];
+
+    foreach ($publico as $item) {
+        $preContrato = (array)$item;
+        try {
+            if (empty($item['email_valido'])) {
+                $resultado['ignorados']++;
+                $resultado['detalhes'][] = ['id' => (int)$item['id'], 'status' => 'ignorado', 'erro' => 'E-mail inválido'];
+                continue;
+            }
+
+            $ok = cliente_notificacoes_enviar_modelo_para_pre_contrato($pdo, $modelo, $preContrato, $usuarioId);
+            if ($ok) {
+                $resultado['enviados']++;
+                $resultado['detalhes'][] = ['id' => (int)$item['id'], 'status' => 'enviado'];
+            } else {
+                $resultado['erros']++;
+                $resultado['detalhes'][] = ['id' => (int)$item['id'], 'status' => 'erro', 'erro' => 'Falha retornada pelo serviço de e-mail'];
+            }
+        } catch (Throwable $e) {
+            $resultado['erros']++;
+            $resultado['detalhes'][] = ['id' => (int)$item['id'], 'status' => 'erro', 'erro' => $e->getMessage()];
+            try {
+                $stmt = $pdo->prepare("
+                    INSERT INTO cliente_notificacao_envios
+                        (modelo_id, chave_modelo, pre_contrato_id, me_event_id, cliente_nome, cliente_email, canal, status, erro)
+                    VALUES
+                        (:modelo_id, 'portal_cliente_lancamento', :pre_contrato_id, :me_event_id, :cliente_nome, :cliente_email, 'email', 'erro', :erro)
+                ");
+                $stmt->execute([
+                    ':modelo_id' => (int)($modelo['id'] ?? 0),
+                    ':pre_contrato_id' => (int)($item['id'] ?? 0) ?: null,
+                    ':me_event_id' => (int)($item['me_event_id'] ?? 0) ?: null,
+                    ':cliente_nome' => (string)($item['nome_completo'] ?? ''),
+                    ':cliente_email' => (string)($item['email'] ?? ''),
+                    ':erro' => $e->getMessage(),
+                ]);
+            } catch (Throwable $ignored) {
+                error_log('[CLIENTE_NOTIFICACOES] campanha erro log: ' . $ignored->getMessage());
+            }
+        }
+    }
+
+    return $resultado;
 }
 
 function cliente_notificacoes_enviar_contrato_aprovado(PDO $pdo, array $preContrato, int $meEventId, int $usuarioId = 0): bool

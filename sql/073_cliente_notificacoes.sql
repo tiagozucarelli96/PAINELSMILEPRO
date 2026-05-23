@@ -61,3 +61,32 @@ Qualquer dúvida durante o preenchimento, pode falar comigo, estou por aqui para
         'Acessar painel do evento'
     )
 ON CONFLICT (chave) DO NOTHING;
+
+INSERT INTO cliente_notificacao_modelos
+    (chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto)
+VALUES
+    (
+        'portal_cliente_lancamento',
+        'Lançamento do Portal do Cliente',
+        'Campanha em massa para apresentar o Portal do Cliente a eventos futuros de casamento e 15 anos.',
+        'Disparo em massa para eventos a partir de 30/05/2026',
+        TRUE,
+        FALSE,
+        TRUE,
+        'Novidade: seu Portal do Cliente Smile está disponível',
+        'Olá {{nome_cliente}}, tudo bem?
+
+Temos uma novidade para deixar a organização do seu evento ainda mais prática: agora você conta com o Portal do Cliente Smile.
+
+Por lá, vamos centralizar as principais informações do seu evento em um só lugar. Você poderá preencher formulários importantes, enviar informações para o DJ, acompanhar detalhes de decoração, revisar opções disponíveis de cardápio, consultar lista de convidados e acessar outros pontos essenciais da organização.
+
+Acesse seu portal pelo botão abaixo:
+
+{{link_painel}}
+
+Caso você já tenha preenchido ou enviado essas informações para nossa equipe, pode desconsiderar este aviso. Se ainda houver algo pendente, pedimos que acesse com calma e complete os formulários disponíveis dentro dos prazos solicitados.
+
+Qualquer dúvida durante o acesso ou preenchimento, fale com a nossa equipe. Estamos por aqui para te ajudar!',
+        'Acessar meu portal'
+    )
+ON CONFLICT (chave) DO NOTHING;

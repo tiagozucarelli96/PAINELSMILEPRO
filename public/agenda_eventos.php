@@ -133,9 +133,81 @@ function agenda_eventos_clamp_month(
     return $mesSelecionado;
 }
 
+function agenda_eventos_normalize_label(string $value): string
+{
+    $value = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value;
+    $value = strtolower($value);
+    return preg_replace('/[^a-z0-9]+/', ' ', $value) ?: '';
+}
+
+function agenda_eventos_color_class(array $evento): string
+{
+    $text = agenda_eventos_normalize_label(
+        (string)($evento['space_visivel'] ?? '') . ' ' . (string)($evento['local_evento'] ?? '')
+    );
+
+    if (strpos($text, 'diverkids') !== false) {
+        return 'event-chip--diverkids';
+    }
+
+    if (strpos($text, 'cristal') !== false) {
+        return 'event-chip--cristal';
+    }
+
+    if (strpos($text, 'garden') !== false) {
+        return 'event-chip--garden';
+    }
+
+    if (
+        strpos($text, 'lisbon 1') !== false
+        || strpos($text, 'unidade 1') !== false
+        || strpos($text, 'parque dos sinos') !== false
+        || strpos($text, 'lisbon buffet') !== false
+    ) {
+        return 'event-chip--lisbon';
+    }
+
+    return 'event-chip--default';
+}
+
+function agenda_eventos_format_date(?string $iso): string
+{
+    $iso = trim((string)$iso);
+    if ($iso === '') {
+        return '-';
+    }
+
+    $ts = strtotime($iso);
+    return $ts ? date('d/m/Y', $ts) : $iso;
+}
+
+function agenda_eventos_format_weekday(?string $iso): string
+{
+    $iso = trim((string)$iso);
+    if ($iso === '') {
+        return 'Evento';
+    }
+
+    $ts = strtotime($iso);
+    return $ts ? dow_pt($ts) : 'Evento';
+}
+
+function agenda_eventos_format_time(array $evento): string
+{
+    $horaInicio = trim((string)($evento['hora_inicio'] ?? ''));
+    $horaFim = trim((string)($evento['hora_fim'] ?? ''));
+    if ($horaInicio === '') {
+        return 'Sem horário informado';
+    }
+
+    return $horaFim !== '' ? $horaInicio . ' às ' . $horaFim : $horaInicio;
+}
+
 $usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $isSuperadmin = !empty($_SESSION['perm_superadmin']);
 $spacesUsuario = $isSuperadmin ? [] : agenda_eventos_fetch_user_spaces($pdo, $usuarioId);
+$eventoSelecionadoId = isset($_GET['evento_id']) ? (int)$_GET['evento_id'] : 0;
+$eventoSelecionado = null;
 
 $mesAtual = new DateTimeImmutable('first day of this month');
 $mesLimiteInicial = $mesAtual;
@@ -244,6 +316,88 @@ if (!$temTabelaEventos) {
     }
 }
 
+if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
+    try {
+        $joinReunioesDetalhe = $temTabelaReunioes
+            ? "
+                LEFT JOIN LATERAL (
+                    SELECT er.me_event_snapshot
+                    FROM eventos_reunioes er
+                    WHERE er.me_event_id = e.me_event_id
+                    ORDER BY er.updated_at DESC NULLS LAST, er.id DESC
+                    LIMIT 1
+                ) r ON TRUE
+            "
+            : '';
+
+        $nomeEventoDetalheSql = $temColunaNomeEvento
+            ? "COALESCE(NULLIF(TRIM(e.nome_evento), ''), 'Evento sem nome')"
+            : "'Evento sem nome'";
+
+        $horaFimDetalheSql = $temTabelaReunioes
+            ? "COALESCE(
+                    NULLIF(TRIM(r.me_event_snapshot->>'hora_fim'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'horafim'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'horatermino'), '')
+               )"
+            : "NULL";
+
+        $snapshotLocalDetalheSql = $temTabelaReunioes
+            ? "COALESCE(
+                    NULLIF(TRIM(r.me_event_snapshot->>'local'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'nomelocal'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'localevento'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'localEvento'), '')
+               )"
+            : "NULL";
+
+        $sqlDetalhe = "
+            SELECT
+                e.id,
+                e.me_event_id,
+                e.data_evento::text AS data_evento,
+                COALESCE(TO_CHAR(e.hora_inicio, 'HH24:MI'), '') AS hora_inicio,
+                {$horaFimDetalheSql} AS hora_fim,
+                {$nomeEventoDetalheSql} AS nome_evento,
+                COALESCE(NULLIF(TRIM(e.localevento), ''), {$snapshotLocalDetalheSql}, 'Local não informado') AS local_evento,
+                COALESCE(NULLIF(TRIM(e.space_visivel), ''), 'Não mapeado') AS space_visivel,
+                COALESCE(NULLIF(TRIM(e.status_mapeamento), ''), 'PENDENTE') AS status_mapeamento,
+                COALESCE(e.convidados, 0) AS convidados,
+                COALESCE(e.idlocalevento, 0) AS id_local_me
+            FROM logistica_eventos_espelho e
+            {$joinReunioesDetalhe}
+            WHERE COALESCE(e.arquivado, FALSE) = FALSE
+              AND e.id = :evento_id
+        ";
+
+        $paramsDetalhe = [':evento_id' => $eventoSelecionadoId];
+        if (!$isSuperadmin) {
+            if (empty($spacesUsuario)) {
+                $sqlDetalhe .= " AND 1 = 0";
+            } else {
+                $placeholdersDetalhe = [];
+                foreach ($spacesUsuario as $index => $space) {
+                    $key = ':space_detalhe_' . $index;
+                    $placeholdersDetalhe[] = $key;
+                    $paramsDetalhe[$key] = $space;
+                }
+                $sqlDetalhe .= ' AND TRIM(COALESCE(e.space_visivel, \'\')) IN (' . implode(', ', $placeholdersDetalhe) . ')';
+            }
+        }
+
+        $stmtDetalhe = $pdo->prepare($sqlDetalhe);
+        $stmtDetalhe->execute($paramsDetalhe);
+        $eventoSelecionado = $stmtDetalhe->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if (!$eventoSelecionado) {
+            $errors[] = 'Evento não encontrado ou sem acesso para este usuário.';
+        }
+    } catch (Throwable $e) {
+        $errors[] = 'Não foi possível carregar o detalhe do evento.';
+        error_log('[AGENDA_EVENTOS_DETALHE] ' . $e->getMessage());
+    }
+}
+
 foreach ($eventos as $evento) {
     $dataEvento = (string)($evento['data_evento'] ?? '');
     if ($dataEvento === '') {
@@ -255,7 +409,7 @@ foreach ($eventos as $evento) {
     $eventosPorData[$dataEvento][] = $evento;
 }
 
-includeSidebar('Agenda de eventos');
+includeSidebar('Agenda Geral');
 ?>
 
 <style>
@@ -458,13 +612,14 @@ includeSidebar('Agenda de eventos');
 }
 
 .event-chip {
+    display: block;
     width: 100%;
     text-align: left;
-    border: 1px solid #dbeafe;
-    background: #eff6ff;
-    border-radius: 12px;
+    border: none;
+    border-radius: 4px;
     padding: 0.55rem 0.6rem;
     cursor: pointer;
+    text-decoration: none;
     transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
@@ -474,24 +629,49 @@ includeSidebar('Agenda de eventos');
     border-color: #93c5fd;
 }
 
+.event-chip--lisbon {
+    background: #f0643d;
+    color: #ffffff;
+}
+
+.event-chip--diverkids {
+    background: #62b4ee;
+    color: #ffffff;
+}
+
+.event-chip--garden {
+    background: #3b7f31;
+    color: #ffffff;
+}
+
+.event-chip--cristal {
+    background: #1500f5;
+    color: #ffffff;
+}
+
+.event-chip--default {
+    background: #64748b;
+    color: #ffffff;
+}
+
 .event-chip-time {
     font-size: 0.72rem;
     font-weight: 700;
-    color: #1d4ed8;
+    color: rgba(255, 255, 255, 0.95);
     margin-bottom: 0.18rem;
 }
 
 .event-chip-name {
     font-size: 0.8rem;
     font-weight: 700;
-    color: #1e293b;
+    color: #ffffff;
     line-height: 1.25;
 }
 
 .event-chip-meta {
     margin-top: 0.18rem;
     font-size: 0.72rem;
-    color: #64748b;
+    color: rgba(255, 255, 255, 0.9);
     line-height: 1.25;
 }
 
@@ -499,7 +679,7 @@ includeSidebar('Agenda de eventos');
     margin-top: 0.3rem;
     font-size: 0.72rem;
     font-weight: 700;
-    color: #0f766e;
+    color: rgba(255, 255, 255, 0.95);
 }
 
 .event-more {
@@ -612,6 +792,176 @@ includeSidebar('Agenda de eventos');
     word-break: break-word;
 }
 
+.agenda-detail-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.event-side-panel,
+.event-functions-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
+.event-side-panel {
+    padding: 1.5rem;
+}
+
+.event-side-title {
+    margin: 0 0 1.25rem;
+    color: #e05a43;
+    font-size: 1.35rem;
+    font-weight: 800;
+    text-align: center;
+}
+
+.event-avatar {
+    width: 150px;
+    height: 150px;
+    margin: 0 auto 1.2rem;
+    border-radius: 999px;
+    background: #c7cdd6;
+    position: relative;
+}
+
+.event-avatar::before,
+.event-avatar::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ffffff;
+}
+
+.event-avatar::before {
+    top: 34px;
+    width: 54px;
+    height: 54px;
+    border-radius: 999px;
+}
+
+.event-avatar::after {
+    bottom: 28px;
+    width: 96px;
+    height: 48px;
+    border-radius: 48px 48px 18px 18px;
+}
+
+.event-side-summary {
+    text-align: center;
+    color: #4b5563;
+    font-size: 0.98rem;
+    line-height: 1.55;
+}
+
+.event-type-dot {
+    display: inline-flex;
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    align-items: center;
+    justify-content: center;
+    margin: 0.7rem auto 1rem;
+    color: #ffffff;
+    font-weight: 800;
+}
+
+.event-info-block {
+    margin-top: 1rem;
+    border-left: 5px solid #62b4ee;
+    background: #f8fafc;
+    padding: 0.95rem 1rem;
+    color: #4b5563;
+    line-height: 1.55;
+}
+
+.event-info-block.event-info-block--place {
+    border-left-color: #70bd68;
+    background: #f5fbf4;
+}
+
+.event-info-label {
+    display: block;
+    color: #374151;
+    font-weight: 800;
+    margin-bottom: 0.35rem;
+}
+
+.event-functions-panel {
+    min-height: 680px;
+    padding: 2rem;
+}
+
+.event-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.event-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: none;
+    border-radius: 8px;
+    padding: 0.75rem 1.1rem;
+    color: #ffffff;
+    background: #5ebfd4;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.event-action-btn.event-action-btn--green {
+    background: #58c786;
+}
+
+.event-functions-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.5rem;
+}
+
+.event-function-card {
+    min-height: 178px;
+    border: 1px solid #d7dde7;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    padding: 1.25rem;
+    text-align: center;
+}
+
+.event-function-icon {
+    font-size: 3.4rem;
+    line-height: 1;
+    color: #4d8df7;
+}
+
+.event-function-title {
+    color: #4d80a8;
+    font-size: 1.35rem;
+    font-weight: 800;
+}
+
+.event-function-pill {
+    display: inline-flex;
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+    background: #72bd61;
+    color: #ffffff;
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
 @media (max-width: 720px) {
     .agenda-eventos-page {
         padding: 1rem;
@@ -633,14 +983,27 @@ includeSidebar('Agenda de eventos');
     .calendar-title {
         font-size: 1rem;
     }
+
+    .agenda-detail-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .event-functions-panel {
+        padding: 1rem;
+        min-height: 0;
+    }
+
+    .event-functions-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>
 
 <div class="agenda-eventos-page">
     <div class="agenda-eventos-header">
         <div>
-            <h1 class="agenda-eventos-title">Agenda de eventos</h1>
-            <p class="agenda-eventos-subtitle">Calendário mensal de eventos, filtrado pelas unidades marcadas no usuário.</p>
+            <h1 class="agenda-eventos-title">Agenda Geral</h1>
+            <p class="agenda-eventos-subtitle">Calendário mensal dos eventos importados da ME, filtrado pelas unidades marcadas no usuário.</p>
         </div>
         <div class="agenda-eventos-badges">
             <div class="agenda-badge">Período: <?= h($inicioPeriodo->format('d/m/Y')) ?> até <?= h($fimPeriodo->format('d/m/Y')) ?></div>
@@ -653,7 +1016,93 @@ includeSidebar('Agenda de eventos');
         </div>
     </div>
 
-    <?php if (empty($errors)): ?>
+    <?php if (empty($errors) && $eventoSelecionadoId > 0 && is_array($eventoSelecionado)): ?>
+        <?php
+        $eventColorClass = agenda_eventos_color_class($eventoSelecionado);
+        $eventColorMap = [
+            'event-chip--lisbon' => '#f0643d',
+            'event-chip--diverkids' => '#62b4ee',
+            'event-chip--garden' => '#3b7f31',
+            'event-chip--cristal' => '#1500f5',
+            'event-chip--default' => '#64748b',
+        ];
+        $eventColor = $eventColorMap[$eventColorClass] ?? '#64748b';
+        $eventMesLink = '';
+        if (!empty($eventoSelecionado['data_evento']) && preg_match('/^\d{4}-\d{2}/', (string)$eventoSelecionado['data_evento']) === 1) {
+            $eventMesLink = substr((string)$eventoSelecionado['data_evento'], 0, 7);
+        }
+        $cards = [
+            ['icon' => '📝', 'title' => 'Informações Gerais', 'pill' => ''],
+            ['icon' => '☑️', 'title' => 'Checklist', 'pill' => '10% / 90%'],
+            ['icon' => '🧮', 'title' => 'Financeiro do Evento', 'pill' => 'Pagamentos em Dia'],
+            ['icon' => '🖥️', 'title' => 'Área do Cliente', 'pill' => 'Área Ativa'],
+            ['icon' => '🏷️', 'title' => 'Fornecedores', 'pill' => '0'],
+            ['icon' => '📄', 'title' => 'Contratos e Documentos', 'pill' => ''],
+            ['icon' => '❕', 'title' => 'Histórico', 'pill' => ''],
+        ];
+        ?>
+        <div class="calendar-toolbar">
+            <div>
+                <h2 class="calendar-toolbar-title"><?= h((string)($eventoSelecionado['nome_evento'] ?? 'Evento')) ?></h2>
+                <p class="calendar-toolbar-subtitle">Primeira tela de substituição gradual das funções da ME Eventos.</p>
+            </div>
+            <div class="calendar-nav">
+                <a href="index.php?page=agenda_eventos<?= $eventMesLink !== '' ? '&mes=' . h($eventMesLink) : '' ?>" class="calendar-nav-btn">← Agenda</a>
+            </div>
+        </div>
+
+        <div class="agenda-detail-layout">
+            <aside class="event-side-panel">
+                <h2 class="event-side-title"><?= h((string)($eventoSelecionado['nome_evento'] ?? 'Evento')) ?></h2>
+                <div class="event-avatar" aria-hidden="true"></div>
+
+                <div class="event-side-summary">
+                    <div>★ <?= h((string)($eventoSelecionado['space_visivel'] ?? 'Unidade não mapeada')) ?></div>
+                    <div>● <?= (int)($eventoSelecionado['convidados'] ?? 0) ?> participantes</div>
+                    <div class="event-type-dot" style="background: <?= h($eventColor) ?>">TI</div>
+                </div>
+
+                <div class="event-info-block" style="border-left-color: <?= h($eventColor) ?>">
+                    <span class="event-info-label">📅 <?= h(agenda_eventos_format_date((string)($eventoSelecionado['data_evento'] ?? ''))) ?></span>
+                    <div><?= h(agenda_eventos_format_weekday((string)($eventoSelecionado['data_evento'] ?? ''))) ?></div>
+                    <div><strong>Horário:</strong> <?= h(agenda_eventos_format_time($eventoSelecionado)) ?></div>
+                    <div><strong>Local:</strong> <?= h((string)($eventoSelecionado['local_evento'] ?? 'Local não informado')) ?></div>
+                </div>
+
+                <div class="event-info-block event-info-block--place">
+                    <span class="event-info-label">📍 Local do Evento</span>
+                    <div><?= h((string)($eventoSelecionado['local_evento'] ?? 'Local não informado')) ?></div>
+                    <div><?= h((string)($eventoSelecionado['space_visivel'] ?? 'Unidade não mapeada')) ?></div>
+                </div>
+
+                <div class="event-info-block">
+                    <span class="event-info-label">ℹ️ Dados do Cliente</span>
+                    <div><?= h((string)($eventoSelecionado['nome_evento'] ?? 'Cliente não identificado')) ?></div>
+                    <div>Evento ME #<?= h((string)($eventoSelecionado['me_event_id'] ?? '-')) ?></div>
+                    <div>Status: <?= h((string)($eventoSelecionado['status_mapeamento'] ?? '-')) ?></div>
+                </div>
+            </aside>
+
+            <section class="event-functions-panel">
+                <div class="event-actions">
+                    <button type="button" class="event-action-btn" onclick="window.print()">🖨️ Imprimir</button>
+                    <a class="event-action-btn event-action-btn--green" href="index.php?page=agenda_eventos&evento_id=<?= (int)$eventoSelecionado['id'] ?>">🔗</a>
+                </div>
+
+                <div class="event-functions-grid">
+                    <?php foreach ($cards as $card): ?>
+                        <div class="event-function-card">
+                            <div class="event-function-icon" aria-hidden="true"><?= h($card['icon']) ?></div>
+                            <div class="event-function-title"><?= h($card['title']) ?></div>
+                            <?php if ($card['pill'] !== ''): ?>
+                                <div class="event-function-pill"><?= h($card['pill']) ?></div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+        </div>
+    <?php elseif (empty($errors)): ?>
         <div class="calendar-toolbar">
             <div>
                 <h2 class="calendar-toolbar-title"><?= h(agenda_eventos_month_label($mesSelecionado)) ?></h2>
@@ -709,7 +1158,7 @@ includeSidebar('Agenda de eventos');
                             <div class="day-events">
                                 <?php foreach (array_slice($dayEvents, 0, 3) as $evento): ?>
                                     <?php
-                                    $eventoPayload = htmlspecialchars(json_encode($evento, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
+                                    $eventClass = agenda_eventos_color_class($evento);
                                     $horaInicio = trim((string)($evento['hora_inicio'] ?? ''));
                                     $horaFim = trim((string)($evento['hora_fim'] ?? ''));
                                     $horario = $horaInicio !== '' ? $horaInicio : 'Sem horário';
@@ -717,12 +1166,12 @@ includeSidebar('Agenda de eventos');
                                         $horario .= ' - ' . $horaFim;
                                     }
                                     ?>
-                                    <button type="button" class="event-chip" data-event='<?= $eventoPayload ?>'>
+                                    <a class="event-chip <?= h($eventClass) ?>" href="index.php?page=agenda_eventos&evento_id=<?= (int)($evento['id'] ?? 0) ?>&mes=<?= h($mesSelecionado->format('Y-m')) ?>">
                                         <div class="event-chip-time"><?= h($horario) ?></div>
                                         <div class="event-chip-name"><?= h((string)($evento['nome_evento'] ?? 'Evento')) ?></div>
                                         <div class="event-chip-meta"><?= h((string)($evento['local_evento'] ?? 'Local não informado')) ?></div>
                                         <div class="event-chip-guests">Convidados: <?= (int)($evento['convidados'] ?? 0) ?></div>
-                                    </button>
+                                    </a>
                                 <?php endforeach; ?>
 
                                 <?php if (count($dayEvents) > 3): ?>
@@ -742,135 +1191,5 @@ includeSidebar('Agenda de eventos');
         <?php endif; ?>
     <?php endif; ?>
 </div>
-
-<div id="agendaEventosModal" class="agenda-modal" aria-hidden="true">
-    <div class="agenda-modal-card">
-        <div class="agenda-modal-header">
-            <div>
-                <h3 class="agenda-modal-title" id="agendaEventosModalTitle">Evento</h3>
-                <p class="agenda-modal-subtitle" id="agendaEventosModalSubtitle">Detalhes básicos do evento</p>
-            </div>
-            <button type="button" class="agenda-modal-close" id="agendaEventosModalClose" aria-label="Fechar">&times;</button>
-        </div>
-        <div class="agenda-modal-body">
-            <div class="agenda-modal-grid">
-                <div class="agenda-modal-field">
-                    <span class="agenda-modal-label">Local</span>
-                    <div class="agenda-modal-value" id="modalLocalEvento">-</div>
-                </div>
-                <div class="agenda-modal-field">
-                    <span class="agenda-modal-label">Space</span>
-                    <div class="agenda-modal-value" id="modalSpaceEvento">-</div>
-                </div>
-                <div class="agenda-modal-field">
-                    <span class="agenda-modal-label">Data</span>
-                    <div class="agenda-modal-value" id="modalDataEvento">-</div>
-                </div>
-                <div class="agenda-modal-field">
-                    <span class="agenda-modal-label">Horário</span>
-                    <div class="agenda-modal-value" id="modalHorarioEvento">-</div>
-                </div>
-                <div class="agenda-modal-field">
-                    <span class="agenda-modal-label">Convidados</span>
-                    <div class="agenda-modal-value" id="modalConvidadosEvento">-</div>
-                </div>
-                <div class="agenda-modal-field">
-                    <span class="agenda-modal-label">Status do mapeamento</span>
-                    <div class="agenda-modal-value" id="modalStatusEvento">-</div>
-                </div>
-                <div class="agenda-modal-field">
-                    <span class="agenda-modal-label">ID evento ME</span>
-                    <div class="agenda-modal-value" id="modalMeEvento">-</div>
-                </div>
-                <div class="agenda-modal-field">
-                    <span class="agenda-modal-label">ID local ME</span>
-                    <div class="agenda-modal-value" id="modalLocalMeEvento">-</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-(() => {
-    const modal = document.getElementById('agendaEventosModal');
-    const closeButton = document.getElementById('agendaEventosModalClose');
-
-    if (!modal || !closeButton) {
-        return;
-    }
-
-    const fields = {
-        title: document.getElementById('agendaEventosModalTitle'),
-        subtitle: document.getElementById('agendaEventosModalSubtitle'),
-        local: document.getElementById('modalLocalEvento'),
-        space: document.getElementById('modalSpaceEvento'),
-        data: document.getElementById('modalDataEvento'),
-        horario: document.getElementById('modalHorarioEvento'),
-        convidados: document.getElementById('modalConvidadosEvento'),
-        status: document.getElementById('modalStatusEvento'),
-        me: document.getElementById('modalMeEvento'),
-        localMe: document.getElementById('modalLocalMeEvento')
-    };
-
-    const formatDate = (iso) => {
-        if (!iso) return '-';
-        const parts = String(iso).split('-');
-        if (parts.length !== 3) return iso;
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    };
-
-    const openModal = (evento) => {
-        const horaInicio = String(evento.hora_inicio || '').trim();
-        const horaFim = String(evento.hora_fim || '').trim();
-        let horario = horaInicio || 'Sem horário informado';
-        if (horaInicio && horaFim) {
-            horario = `${horaInicio} - ${horaFim}`;
-        }
-
-        fields.title.textContent = evento.nome_evento || 'Evento';
-        fields.subtitle.textContent = `ME #${evento.me_event_id || '-'} • ${evento.space_visivel || 'Sem space'}`;
-        fields.local.textContent = evento.local_evento || '-';
-        fields.space.textContent = evento.space_visivel || '-';
-        fields.data.textContent = formatDate(evento.data_evento || '');
-        fields.horario.textContent = horario;
-        fields.convidados.textContent = String(evento.convidados ?? '-');
-        fields.status.textContent = evento.status_mapeamento || '-';
-        fields.me.textContent = String(evento.me_event_id || '-');
-        fields.localMe.textContent = String(evento.id_local_me || '-');
-
-        modal.classList.add('is-open');
-        modal.setAttribute('aria-hidden', 'false');
-    };
-
-    const closeModal = () => {
-        modal.classList.remove('is-open');
-        modal.setAttribute('aria-hidden', 'true');
-    };
-
-    document.querySelectorAll('.event-chip').forEach((button) => {
-        button.addEventListener('click', () => {
-            try {
-                const payload = JSON.parse(button.dataset.event || '{}');
-                openModal(payload);
-            } catch (error) {
-                console.error('Falha ao abrir modal do evento:', error);
-            }
-        });
-    });
-
-    closeButton.addEventListener('click', closeModal);
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
-            closeModal();
-        }
-    });
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            closeModal();
-        }
-    });
-})();
-</script>
 
 <?php endSidebar(); ?>

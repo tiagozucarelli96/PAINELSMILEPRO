@@ -1282,7 +1282,7 @@ if ($current_page === 'dashboard') {
                 <?php if (!empty($_SESSION['perm_agenda_eventos'])): ?>
                 <a href="index.php?page=agenda_eventos" class="nav-item <?= isActiveUnified('agenda_eventos') ?>">
                     <span class="nav-item-icon">🗓️</span>
-                    Agenda de eventos
+                    Agenda Geral
                 </a>
                 <?php endif; ?>
                 
