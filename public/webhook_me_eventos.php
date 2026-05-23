@@ -128,6 +128,20 @@ function processarWebhook($data) {
             ':webhook_data' => json_encode($data) // Salvar payload completo original
         ]);
 
+        // Atualiza o espelho local usado pela Agenda Geral.
+        // A agenda nunca consulta a ME ao abrir tela; o webhook mantém o banco local quente.
+        try {
+            require_once __DIR__ . '/agenda_eventos_sync_helper.php';
+            $agendaSync = agenda_eventos_sync_me_payload(
+                $pdo,
+                is_array($evento_data) ? $evento_data : [],
+                (string)$webhook_tipo_original
+            );
+            logWebhook("Agenda Geral sync: " . json_encode($agendaSync, JSON_UNESCAPED_UNICODE));
+        } catch (Throwable $e) {
+            logWebhook("Aviso: falha ao atualizar Agenda Geral pelo webhook: " . $e->getMessage());
+        }
+
         // Aplicar atualização na reunião (snapshot) e invalidar cache ME local.
         // Isso garante que o Portal/Calendários não fiquem com dados desatualizados (data/hora/local).
         try {
