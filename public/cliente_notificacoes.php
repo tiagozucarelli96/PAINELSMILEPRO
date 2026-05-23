@@ -129,6 +129,7 @@ $modelos = [];
 $modeloAtual = null;
 $enviosRecentes = [];
 $publicoCampanha = [];
+$publicoCampanhaConsultado = false;
 if (empty($erro)) {
     $modelos = $pdo->query("SELECT * FROM cliente_notificacao_modelos ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
     $modeloId = (int)($_GET['modelo'] ?? 0);
@@ -145,11 +146,14 @@ if (empty($erro)) {
     ")->fetchAll(PDO::FETCH_ASSOC);
 
     if (($modeloAtual['chave'] ?? '') === 'portal_cliente_lancamento') {
-        try {
-            $publicoCampanha = cliente_notificacoes_buscar_publico_portal_lancamento($pdo, 500);
-        } catch (Throwable $e) {
-            $erro = 'Não foi possível consultar a ME Eventos para montar o público da campanha: ' . $e->getMessage();
-            $publicoCampanha = [];
+        $publicoCampanhaConsultado = isset($_GET['consultar_publico']) || ($_POST['acao'] ?? '') === 'enviar_campanha_portal';
+        if ($publicoCampanhaConsultado) {
+            try {
+                $publicoCampanha = cliente_notificacoes_buscar_publico_portal_lancamento($pdo, 500);
+            } catch (Throwable $e) {
+                $erro = 'Não foi possível consultar a ME Eventos para montar o público da campanha: ' . $e->getMessage();
+                $publicoCampanha = [];
+            }
         }
     }
 }
@@ -194,6 +198,7 @@ ob_start();
 .notif-btn.secondary { background: #e2e8f0; color: #0f172a; text-decoration: none; display: inline-flex; align-items: center; }
 .notif-btn.primary-blue { background: #1e3a8a; }
 .notif-btn.danger { background: #b91c1c; }
+.notif-btn[disabled] { opacity: .55; cursor: not-allowed; }
 .notif-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
 .notif-campaign { margin-top: 1rem; }
 .notif-campaign-summary { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: .75rem; padding: 1.1rem; }
@@ -331,12 +336,15 @@ ob_start();
                     </div>
                     <div class="notif-campaign-actions">
                         <div class="notif-warning">
-                            Ao enviar, o sistema usa a lista consultada na ME Eventos, cria automaticamente o portal para quem ainda não tiver e dispara o e-mail com o link individual. Clientes já enviados com sucesso nesta campanha não entram novamente.
+                            A tela abre sem consultar a ME Eventos para não travar. Primeiro clique em consultar público; depois confira a lista e envie. No envio, o sistema cria automaticamente o portal para quem ainda não tiver e dispara o e-mail com o link individual.
                         </div>
-                        <form method="post" onsubmit="return confirm('Enviar esta campanha para os clientes elegíveis agora?');">
-                            <input type="hidden" name="acao" value="enviar_campanha_portal">
-                            <button type="submit" class="notif-btn primary-blue" <?= $totalPublico <= 0 ? 'disabled' : '' ?>>Enviar campanha</button>
-                        </form>
+                        <div style="display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end;">
+                            <a class="notif-btn secondary" href="index.php?page=cliente_notificacoes&modelo=<?= (int)$modeloAtual['id'] ?>&consultar_publico=1">Consultar público na ME</a>
+                            <form method="post" onsubmit="return confirm('Enviar esta campanha para os clientes elegíveis agora?');">
+                                <input type="hidden" name="acao" value="enviar_campanha_portal">
+                                <button type="submit" class="notif-btn primary-blue" <?= (!$publicoCampanhaConsultado || $totalPublico <= 0) ? 'disabled' : '' ?>>Enviar campanha</button>
+                            </form>
+                        </div>
                     </div>
                     <div class="notif-audience">
                         <table>
@@ -349,7 +357,9 @@ ob_start();
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php if (empty($publicoCampanha)): ?>
+                                <?php if (!$publicoCampanhaConsultado): ?>
+                                    <tr><td colspan="4">Clique em “Consultar público na ME” para carregar os clientes elegíveis.</td></tr>
+                                <?php elseif (empty($publicoCampanha)): ?>
                                     <tr><td colspan="4">Nenhum cliente elegível pendente para esta campanha.</td></tr>
                                 <?php endif; ?>
                                 <?php foreach (array_slice($publicoCampanha, 0, 80) as $item): ?>
