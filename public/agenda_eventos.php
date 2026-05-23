@@ -1000,21 +1000,23 @@ includeSidebar('Agenda Geral');
 </style>
 
 <div class="agenda-eventos-page">
-    <div class="agenda-eventos-header">
-        <div>
-            <h1 class="agenda-eventos-title">Agenda Geral</h1>
-            <p class="agenda-eventos-subtitle">Calendário mensal dos eventos importados da ME, filtrado pelas unidades marcadas no usuário.</p>
+    <?php if (!($eventoSelecionadoId > 0 && is_array($eventoSelecionado))): ?>
+        <div class="agenda-eventos-header">
+            <div>
+                <h1 class="agenda-eventos-title">Agenda Geral</h1>
+                <p class="agenda-eventos-subtitle">Calendário mensal dos eventos importados da ME, filtrado pelas unidades marcadas no usuário.</p>
+            </div>
+            <div class="agenda-eventos-badges">
+                <div class="agenda-badge">Período: <?= h($inicioPeriodo->format('d/m/Y')) ?> até <?= h($fimPeriodo->format('d/m/Y')) ?></div>
+                <div class="agenda-badge">Eventos: <?= count($eventos) ?></div>
+                <?php if ($isSuperadmin): ?>
+                    <div class="agenda-badge">Visualização: todas as unidades</div>
+                <?php else: ?>
+                    <div class="agenda-badge">Unidades: <?= h(implode(', ', $spacesUsuario)) ?></div>
+                <?php endif; ?>
+            </div>
         </div>
-        <div class="agenda-eventos-badges">
-            <div class="agenda-badge">Período: <?= h($inicioPeriodo->format('d/m/Y')) ?> até <?= h($fimPeriodo->format('d/m/Y')) ?></div>
-            <div class="agenda-badge">Eventos: <?= count($eventos) ?></div>
-            <?php if ($isSuperadmin): ?>
-                <div class="agenda-badge">Visualização: todas as unidades</div>
-            <?php else: ?>
-                <div class="agenda-badge">Unidades: <?= h(implode(', ', $spacesUsuario)) ?></div>
-            <?php endif; ?>
-        </div>
-    </div>
+    <?php endif; ?>
 
     <?php if (empty($errors) && $eventoSelecionadoId > 0 && is_array($eventoSelecionado)): ?>
         <?php
@@ -1119,7 +1121,7 @@ includeSidebar('Agenda Geral');
         <div class="agenda-alert error"><?= h($error) ?></div>
     <?php endforeach; ?>
 
-    <?php if (empty($errors)): ?>
+    <?php if (empty($errors) && !($eventoSelecionadoId > 0 && is_array($eventoSelecionado))): ?>
         <?php
         $monthStart = $mesSelecionado->modify('first day of this month');
         $daysInMonth = (int)$monthStart->format('t');
