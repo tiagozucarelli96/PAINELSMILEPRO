@@ -5,8 +5,16 @@
  */
 
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/core/email_global_helper.php';
-require_once __DIR__ . '/eventos_reuniao_helper.php';
+
+function cliente_notificacoes_require_eventos_helpers(): void
+{
+    require_once __DIR__ . '/eventos_reuniao_helper.php';
+}
+
+function cliente_notificacoes_require_email_helper(): void
+{
+    require_once __DIR__ . '/core/email_global_helper.php';
+}
 
 function cliente_notificacoes_ensure_schema(PDO $pdo): void
 {
@@ -366,6 +374,8 @@ function cliente_notificacoes_texto_normalizado(string $texto): string
 
 function cliente_notificacoes_classificar_tipo_evento_me(array $event, array $local = []): string
 {
+    cliente_notificacoes_require_eventos_helpers();
+
     foreach ([
         (string)($local['tipo_evento_real'] ?? ''),
         (string)($local['tipo_evento'] ?? ''),
@@ -398,6 +408,8 @@ function cliente_notificacoes_classificar_tipo_evento_me(array $event, array $lo
 
 function cliente_notificacoes_me_buscar_eventos_periodo(PDO $pdo, string $start = '2026-05-30', string $end = '2031-12-31', bool $forceRefresh = false): array
 {
+    cliente_notificacoes_require_eventos_helpers();
+
     $cacheKey = 'cliente_notif_me_events_' . $start . '_' . $end;
     if (!$forceRefresh) {
         $cached = eventos_me_cache_get($pdo, $cacheKey);
@@ -427,6 +439,8 @@ function cliente_notificacoes_me_buscar_eventos_periodo(PDO $pdo, string $start 
 
 function cliente_notificacoes_locais_por_me_evento(PDO $pdo, array $eventIds): array
 {
+    cliente_notificacoes_require_eventos_helpers();
+
     $eventIds = array_values(array_unique(array_filter(array_map('intval', $eventIds), static fn($id) => $id > 0)));
     if (empty($eventIds)) {
         return [];
@@ -554,6 +568,8 @@ function cliente_notificacoes_envios_enviados_por_me(PDO $pdo): array
 
 function cliente_notificacoes_buscar_publico_portal_lancamento(PDO $pdo, int $limit = 500): array
 {
+    cliente_notificacoes_require_eventos_helpers();
+
     cliente_notificacoes_ensure_schema($pdo);
     $limit = max(1, min(1000, $limit));
 
@@ -637,6 +653,8 @@ function cliente_notificacoes_buscar_publico_portal_lancamento(PDO $pdo, int $li
 
 function cliente_notificacoes_preparar_portal_pre_contrato(PDO $pdo, array $preContrato, int $usuarioId = 0): array
 {
+    cliente_notificacoes_require_eventos_helpers();
+
     $meEventId = (int)($preContrato['me_event_id'] ?? 0);
     if ($meEventId <= 0) {
         return ['ok' => false, 'error' => 'Evento sem vínculo ME.'];
@@ -713,6 +731,8 @@ function cliente_notificacoes_atualizar_log_envio(PDO $pdo, int $logId, bool $en
 
 function cliente_notificacoes_enviar_modelo_para_pre_contrato(PDO $pdo, array $modelo, array $preContrato, int $usuarioId = 0): bool
 {
+    cliente_notificacoes_require_email_helper();
+
     $emailCliente = trim((string)($preContrato['email'] ?? ''));
     if ($emailCliente === '' || !filter_var($emailCliente, FILTER_VALIDATE_EMAIL)) {
         throw new RuntimeException('Cliente sem e-mail válido para notificação.');
@@ -801,6 +821,9 @@ function cliente_notificacoes_enviar_campanha_portal_lancamento(PDO $pdo, int $u
 
 function cliente_notificacoes_enviar_contrato_aprovado(PDO $pdo, array $preContrato, int $meEventId, int $usuarioId = 0): bool
 {
+    cliente_notificacoes_require_eventos_helpers();
+    cliente_notificacoes_require_email_helper();
+
     try {
         $modelo = cliente_notificacoes_get_modelo($pdo, 'contrato_aprovado');
         if (!$modelo || empty($modelo['ativo']) || empty($modelo['envio_automatico']) || empty($modelo['canal_email'])) {
