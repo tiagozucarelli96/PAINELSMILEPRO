@@ -178,6 +178,8 @@ ob_start();
 .notif-alert.ok { background: #ecfdf5; color: #065f46; border-color: #bbf7d0; }
 .notif-alert.err { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
 .notif-layout { display: grid; grid-template-columns: minmax(260px, 330px) 1fr; gap: 1rem; align-items: start; }
+.notif-modelos { min-width: 0; }
+.notif-main { min-width: 0; }
 .notif-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 5px rgba(15,23,42,.06); }
 .notif-panel-head { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; }
 .notif-panel-head h2 { margin: 0; font-size: 1rem; }
@@ -227,6 +229,8 @@ ob_start();
 .notif-history th { color: #64748b; font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; }
 @media (max-width: 960px) {
     .notif-layout, .notif-meta, .notif-grid, .notif-campaign-summary { grid-template-columns: 1fr; }
+    .notif-main { order: 1; }
+    .notif-modelos { order: 2; }
     .notif-campaign-actions { align-items: stretch; flex-direction: column; }
     .notif-code { grid-template-columns: 1fr; }
 }
@@ -243,7 +247,7 @@ ob_start();
 
     <?php if ($modeloAtual): ?>
     <div class="notif-layout">
-        <aside class="notif-panel">
+        <aside class="notif-panel notif-modelos">
             <div class="notif-panel-head">
                 <h2>Modelos</h2>
                 <span>Novas regras futuras entram nesta lista.</span>
@@ -262,7 +266,7 @@ ob_start();
             </div>
         </aside>
 
-        <main>
+        <div class="notif-main">
             <section class="notif-panel">
                 <div class="notif-panel-head">
                     <h2><?= h($modeloAtual['nome']) ?></h2>
@@ -440,7 +444,7 @@ ob_start();
                     </div>
                 </section>
             </div>
-        </main>
+        </div>
     </div>
     <?php endif; ?>
 </div>
