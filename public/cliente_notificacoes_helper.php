@@ -64,6 +64,17 @@ function cliente_notificacoes_ensure_schema(PDO $pdo): void
     cliente_notificacoes_seed_modelos($pdo);
 }
 
+function cliente_notificacoes_schema_pronto(PDO $pdo): bool
+{
+    try {
+        $stmt = $pdo->query("SELECT to_regclass('cliente_notificacao_modelos') AS modelos, to_regclass('cliente_notificacao_envios') AS envios");
+        $row = $stmt ? ($stmt->fetch(PDO::FETCH_ASSOC) ?: []) : [];
+        return !empty($row['modelos']) && !empty($row['envios']);
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
 function cliente_notificacoes_seed_modelos(PDO $pdo): void
 {
     $mensagem = "Olá {{nome_cliente}}, tudo bem?\n\n"
@@ -128,7 +139,6 @@ function cliente_notificacoes_codigos(): array
 
 function cliente_notificacoes_get_modelo(PDO $pdo, string $chave): ?array
 {
-    cliente_notificacoes_ensure_schema($pdo);
     $stmt = $pdo->prepare("SELECT * FROM cliente_notificacao_modelos WHERE chave = :chave LIMIT 1");
     $stmt->execute([':chave' => $chave]);
     return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;

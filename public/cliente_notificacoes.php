@@ -21,10 +21,8 @@ $mensagem = '';
 $erro = '';
 $campanhaResultado = null;
 
-try {
-    cliente_notificacoes_ensure_schema($pdo);
-} catch (Throwable $e) {
-    $erro = 'Não foi possível preparar a estrutura de notificações: ' . $e->getMessage();
+if (!cliente_notificacoes_schema_pronto($pdo)) {
+    $erro = 'Estrutura de notificações ainda não instalada. Execute a migração sql/073_cliente_notificacoes.sql.';
 }
 
 if (empty($erro) && isset($_GET['preview'])) {
@@ -57,6 +55,7 @@ if (empty($erro) && isset($_GET['preview'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro) && ($_POST['acao'] ?? '') === 'enviar_campanha_portal') {
     try {
+        cliente_notificacoes_ensure_schema($pdo);
         $usuarioId = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
         $campanhaResultado = cliente_notificacoes_enviar_campanha_portal_lancamento($pdo, $usuarioId, 500);
         if (empty($campanhaResultado['ok'])) {
@@ -72,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro) && ($_POST['acao'] ?? 
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro) && ($_POST['acao'] ?? '') !== 'enviar_campanha_portal') {
     try {
+        cliente_notificacoes_ensure_schema($pdo);
         $id = (int)($_POST['id'] ?? 0);
         $nome = trim((string)($_POST['nome'] ?? ''));
         $descricao = trim((string)($_POST['descricao'] ?? ''));
@@ -131,19 +131,25 @@ $enviosRecentes = [];
 $publicoCampanha = [];
 $publicoCampanhaConsultado = false;
 if (empty($erro)) {
-    $modelos = $pdo->query("SELECT * FROM cliente_notificacao_modelos ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $modelos = $pdo->query("
+        SELECT id, chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto
+        FROM cliente_notificacao_modelos
+        ORDER BY id ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
     $modeloId = (int)($_GET['modelo'] ?? 0);
     foreach ($modelos as $modelo) {
         if ($modeloAtual === null || ($modeloId > 0 && (int)$modelo['id'] === $modeloId)) {
             $modeloAtual = $modelo;
         }
     }
-    $enviosRecentes = $pdo->query("
-        SELECT *
-        FROM cliente_notificacao_envios
-        ORDER BY created_at DESC, id DESC
-        LIMIT 8
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    if (($modeloAtual['chave'] ?? '') !== 'portal_cliente_lancamento') {
+        $enviosRecentes = $pdo->query("
+            SELECT id, chave_modelo, cliente_nome, cliente_email, status, created_at
+            FROM cliente_notificacao_envios
+            ORDER BY id DESC
+            LIMIT 8
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     if (($modeloAtual['chave'] ?? '') === 'portal_cliente_lancamento') {
         $publicoCampanhaConsultado = isset($_GET['consultar_publico']) || ($_POST['acao'] ?? '') === 'enviar_campanha_portal';
