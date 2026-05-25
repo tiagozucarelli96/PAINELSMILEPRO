@@ -27,7 +27,10 @@ if (!cliente_notificacoes_schema_pronto($pdo)) {
 
 if (empty($erro) && isset($_GET['preview'])) {
     $modeloIdPreview = (int)($_GET['modelo'] ?? 0);
-    if ($modeloIdPreview <= 0) {
+    $modeloChavePreview = trim((string)($_GET['modelo_chave'] ?? $_GET['chave'] ?? ''));
+    if ($modeloChavePreview !== '') {
+        $modeloPreview = cliente_notificacoes_get_modelo($pdo, $modeloChavePreview);
+    } elseif ($modeloIdPreview <= 0) {
         $modeloPreview = cliente_notificacoes_get_modelo($pdo, 'contrato_aprovado');
     } else {
         $stmtPreview = $pdo->prepare("SELECT * FROM cliente_notificacao_modelos WHERE id = :id LIMIT 1");
@@ -137,10 +140,24 @@ if (empty($erro)) {
         ORDER BY id ASC
     ")->fetchAll(PDO::FETCH_ASSOC);
     $modeloId = (int)($_GET['modelo'] ?? 0);
+    $modeloChave = trim((string)($_GET['modelo_chave'] ?? $_GET['chave'] ?? ''));
+    $modeloAtual = null;
     foreach ($modelos as $modelo) {
-        if ($modeloAtual === null || ($modeloId > 0 && (int)$modelo['id'] === $modeloId)) {
+        if ($modeloChave !== '' && hash_equals((string)$modelo['chave'], $modeloChave)) {
             $modeloAtual = $modelo;
+            break;
         }
+    }
+    if ($modeloAtual === null && $modeloId > 0) {
+        foreach ($modelos as $modelo) {
+            if ((int)$modelo['id'] === $modeloId) {
+                $modeloAtual = $modelo;
+                break;
+            }
+        }
+    }
+    if ($modeloAtual === null) {
+        $modeloAtual = $modelos[0] ?? null;
     }
     if (($modeloAtual['chave'] ?? '') !== 'portal_cliente_lancamento') {
         $enviosRecentes = $pdo->query("
@@ -254,7 +271,7 @@ ob_start();
             </div>
             <div class="notif-list">
                 <?php foreach ($modelos as $modelo): ?>
-                    <a class="notif-list-item <?= (int)$modelo['id'] === (int)$modeloAtual['id'] ? 'active' : '' ?>" href="index.php?page=cliente_notificacoes&modelo=<?= (int)$modelo['id'] ?>">
+                    <a class="notif-list-item <?= (int)$modelo['id'] === (int)$modeloAtual['id'] ? 'active' : '' ?>" href="index.php?page=cliente_notificacoes&modelo_chave=<?= urlencode((string)$modelo['chave']) ?>">
                         <strong><?= h($modelo['nome']) ?></strong>
                         <small><?= h($modelo['gatilho'] ?: $modelo['descricao']) ?></small>
                         <span class="notif-badges">
@@ -317,7 +334,7 @@ ob_start();
                     <div class="notif-actions">
                         <a
                             class="notif-btn secondary"
-                            href="index.php?page=cliente_notificacoes&modelo=<?= (int)$modeloAtual['id'] ?>&preview=1"
+                            href="index.php?page=cliente_notificacoes&modelo_chave=<?= urlencode((string)$modeloAtual['chave']) ?>&preview=1"
                             target="_blank"
                             rel="noopener"
                         >Ver prévia</a>
@@ -349,7 +366,7 @@ ob_start();
                             A tela abre sem consultar a ME Eventos para não travar. Primeiro clique em consultar público; depois confira a lista e envie. No envio, o sistema cria automaticamente o portal para quem ainda não tiver e dispara o e-mail com o link individual.
                         </div>
                         <div style="display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end;">
-                            <a class="notif-btn secondary" href="index.php?page=cliente_notificacoes&modelo=<?= (int)$modeloAtual['id'] ?>&consultar_publico=1">Consultar público na ME</a>
+                            <a class="notif-btn secondary" href="index.php?page=cliente_notificacoes&modelo_chave=<?= urlencode((string)$modeloAtual['chave']) ?>&consultar_publico=1">Consultar público na ME</a>
                             <form method="post" onsubmit="return confirm('Enviar esta campanha para os clientes elegíveis agora?');">
                                 <input type="hidden" name="acao" value="enviar_campanha_portal">
                                 <button type="submit" class="notif-btn primary-blue" <?= (!$publicoCampanhaConsultado || $totalPublico <= 0) ? 'disabled' : '' ?>>Enviar campanha</button>
