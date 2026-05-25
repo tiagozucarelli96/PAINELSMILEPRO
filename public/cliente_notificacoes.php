@@ -134,16 +134,31 @@ $enviosRecentes = [];
 $publicoCampanha = [];
 $publicoCampanhaConsultado = false;
 if (empty($erro)) {
-    $modelos = $pdo->query("
-        SELECT id, chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto
-        FROM cliente_notificacao_modelos
-        ORDER BY id ASC
-    ")->fetchAll(PDO::FETCH_ASSOC);
     $modeloId = (int)($_GET['modelo'] ?? 0);
     $modeloChave = trim((string)($_GET['modelo_chave'] ?? $_GET['chave'] ?? ''));
+    $modeloChaveNormalizada = strtolower($modeloChave);
+
+    $stmtModelos = $pdo->prepare("
+        SELECT id, chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto
+        FROM cliente_notificacao_modelos
+        ORDER BY
+            CASE
+                WHEN :modelo_chave_filtro <> '' AND chave = :modelo_chave_match THEN 0
+                WHEN :modelo_id_filtro > 0 AND id = :modelo_id_match THEN 0
+                ELSE 1
+            END,
+            id ASC
+    ");
+    $stmtModelos->bindValue(':modelo_chave_filtro', $modeloChave);
+    $stmtModelos->bindValue(':modelo_chave_match', $modeloChave);
+    $stmtModelos->bindValue(':modelo_id_filtro', $modeloId, PDO::PARAM_INT);
+    $stmtModelos->bindValue(':modelo_id_match', $modeloId, PDO::PARAM_INT);
+    $stmtModelos->execute();
+    $modelos = $stmtModelos->fetchAll(PDO::FETCH_ASSOC);
     $modeloAtual = null;
     foreach ($modelos as $modelo) {
-        if ($modeloChave !== '' && hash_equals((string)$modelo['chave'], $modeloChave)) {
+        $chaveModelo = strtolower(trim((string)($modelo['chave'] ?? '')));
+        if ($modeloChaveNormalizada !== '' && $chaveModelo === $modeloChaveNormalizada) {
             $modeloAtual = $modelo;
             break;
         }
