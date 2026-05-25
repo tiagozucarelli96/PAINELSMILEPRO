@@ -180,6 +180,17 @@ if ($page === '' || $page === null) {
   exit;
 }
 
+if ($page === 'cliente_notificacoes') {
+  $redirectQuery = $_GET;
+  unset($redirectQuery['page']);
+  $redirectUrl = 'cliente_notificacoes.php';
+  if (!empty($redirectQuery)) {
+    $redirectUrl .= '?' . http_build_query($redirectQuery);
+  }
+  header('Location: ' . $redirectUrl);
+  exit;
+}
+
 /* ===== MAPA DE ROTAS UNIFICADO ===== */
 $routes = [
   // Dashboard e blocos

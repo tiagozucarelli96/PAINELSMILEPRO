@@ -286,7 +286,7 @@ ob_start();
             </div>
             <div class="notif-list">
                 <?php foreach ($modelos as $modelo): ?>
-                    <a class="notif-list-item <?= (int)$modelo['id'] === (int)$modeloAtual['id'] ? 'active' : '' ?>" href="index.php?page=cliente_notificacoes&modelo_chave=<?= urlencode((string)$modelo['chave']) ?>">
+                    <a class="notif-list-item <?= (int)$modelo['id'] === (int)$modeloAtual['id'] ? 'active' : '' ?>" href="cliente_notificacoes.php?modelo_chave=<?= urlencode((string)$modelo['chave']) ?>">
                         <strong><?= h($modelo['nome']) ?></strong>
                         <small><?= h($modelo['gatilho'] ?: $modelo['descricao']) ?></small>
                         <span class="notif-badges">
@@ -349,7 +349,7 @@ ob_start();
                     <div class="notif-actions">
                         <a
                             class="notif-btn secondary"
-                            href="index.php?page=cliente_notificacoes&modelo_chave=<?= urlencode((string)$modeloAtual['chave']) ?>&preview=1"
+                            href="cliente_notificacoes.php?modelo_chave=<?= urlencode((string)$modeloAtual['chave']) ?>&preview=1"
                             target="_blank"
                             rel="noopener"
                         >Ver prévia</a>
@@ -381,7 +381,7 @@ ob_start();
                             A tela abre sem consultar a ME Eventos para não travar. Primeiro clique em consultar público; depois confira a lista e envie. No envio, o sistema cria automaticamente o portal para quem ainda não tiver e dispara o e-mail com o link individual.
                         </div>
                         <div style="display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end;">
-                            <a class="notif-btn secondary" href="index.php?page=cliente_notificacoes&modelo_chave=<?= urlencode((string)$modeloAtual['chave']) ?>&consultar_publico=1">Consultar público na ME</a>
+                            <a class="notif-btn secondary" href="cliente_notificacoes.php?modelo_chave=<?= urlencode((string)$modeloAtual['chave']) ?>&consultar_publico=1">Consultar público na ME</a>
                             <form method="post" onsubmit="return confirm('Enviar esta campanha para os clientes elegíveis agora?');">
                                 <input type="hidden" name="acao" value="enviar_campanha_portal">
                                 <button type="submit" class="notif-btn primary-blue" <?= (!$publicoCampanhaConsultado || $totalPublico <= 0) ? 'disabled' : '' ?>>Enviar campanha</button>
