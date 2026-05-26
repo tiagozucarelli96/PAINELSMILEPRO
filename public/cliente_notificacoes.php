@@ -289,6 +289,9 @@ ob_start();
     .notif-code { grid-template-columns: 1fr; }
 }
 </style>
+<script>
+window.sidebarUnifiedConfig = Object.assign({}, window.sidebarUnifiedConfig || {}, { currentPage: 'vendas_pre_contratos' });
+</script>
 
 <div class="notif-page">
     <div class="notif-header">
