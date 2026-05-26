@@ -11,6 +11,23 @@ if (empty($_GET['page'])) {
     $_GET['page'] = 'cliente_notificacoes';
 }
 
+$rawQueryParams = [];
+parse_str((string)($_SERVER['QUERY_STRING'] ?? ''), $rawQueryParams);
+$requestedModeloChave = trim((string)($rawQueryParams['modelo_chave'] ?? $rawQueryParams['chave'] ?? $_GET['modelo_chave'] ?? $_GET['chave'] ?? ''));
+if (
+    $requestedModeloChave === 'portal_cliente_lancamento'
+    && empty($_GET['preview'])
+    && basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) !== 'cliente_notificacoes_portal.php'
+) {
+    unset($rawQueryParams['modelo_chave'], $rawQueryParams['chave'], $rawQueryParams['page']);
+    $redirectUrl = 'cliente_notificacoes_portal.php';
+    if (!empty($rawQueryParams)) {
+        $redirectUrl .= '?' . http_build_query($rawQueryParams);
+    }
+    header('Location: ' . $redirectUrl);
+    exit;
+}
+
 if (empty($_SESSION['logado']) || (empty($_SESSION['perm_configuracoes']) && empty($_SESSION['perm_administrativo']) && empty($_SESSION['perm_superadmin']))) {
     header('Location: index.php?page=login');
     exit;
@@ -281,7 +298,8 @@ ob_start();
             </div>
             <div class="notif-list">
                 <?php foreach ($modelos as $modelo): ?>
-                    <a class="notif-list-item <?= (int)$modelo['id'] === (int)$modeloAtual['id'] ? 'active' : '' ?>" href="cliente_notificacoes.php?modelo_chave=<?= urlencode((string)$modelo['chave']) ?>">
+                    <?php $modeloHref = ((string)$modelo['chave'] === 'portal_cliente_lancamento') ? 'cliente_notificacoes_portal.php' : ('cliente_notificacoes.php?modelo_chave=' . urlencode((string)$modelo['chave'])); ?>
+                    <a class="notif-list-item <?= (int)$modelo['id'] === (int)$modeloAtual['id'] ? 'active' : '' ?>" href="<?= h($modeloHref) ?>">
                         <strong><?= h($modelo['nome']) ?></strong>
                         <small><?= h($modelo['gatilho'] ?: $modelo['descricao']) ?></small>
                         <span class="notif-badges">
