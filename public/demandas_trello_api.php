@@ -1,7 +1,7 @@
 <?php
 /**
  * demandas_trello_api.php
- * API REST para sistema de Demandas estilo Trello
+ * API REST para sistema Trello
  */
 
 ob_start();
@@ -2034,7 +2034,7 @@ function criarNotificacao($pdo, $usuario_id, $tipo, $referencia_id, $mensagem, $
         }
 
         if (trim($url_destino) === '' && $cardId) {
-            $url_destino = 'index.php?page=demandas#card-' . $cardId;
+            $url_destino = 'index.php?page=trello#card-' . $cardId;
         }
 
         static $dispatcher = null;

@@ -43,7 +43,7 @@ try {
     $board_existente = $stmt->fetch();
     
     if ($board_existente) {
-        echo '<div class="success">✅ Você já possui um quadro. <a href="index.php?page=demandas">Acessar</a></div>';
+        echo '<div class="success">✅ Você já possui um quadro. <a href="index.php?page=trello">Acessar</a></div>';
     } else {
         $pdo->beginTransaction();
         
@@ -82,7 +82,7 @@ try {
         $pdo->commit();
         
         echo '<div class="success">✅ Quadro inicial criado com sucesso!</div>';
-        echo '<p><a href="index.php?page=demandas&board_id=' . $board_id . '" class="btn">Acessar Quadro</a></p>';
+        echo '<p><a href="index.php?page=trello&board_id=' . $board_id . '" class="btn">Acessar Quadro</a></p>';
     }
     
 } catch (Exception $e) {
@@ -95,4 +95,3 @@ try {
 
 </body>
 </html>
-

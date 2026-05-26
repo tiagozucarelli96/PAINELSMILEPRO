@@ -493,8 +493,8 @@ if ($current_page === 'dashboard') {
         }
     }
     
-    // Buscar demandas do dia atual (sistema Trello - demandas_cards)
-    // IMPORTANTE: Sistema atual usa demandas_cards (Trello), não a tabela antiga 'demandas'
+    // Buscar cards do dia atual (Trello - demandas_cards)
+    // IMPORTANTE: Trello usa demandas_cards, separado do novo módulo Demandas internas.
     // Removido fallback para tabela antiga - só mostra cards do sistema atual
     $demandas_hoje = [];
     $is_admin_dashboard = (
@@ -1027,17 +1027,17 @@ if ($current_page === 'dashboard') {
                 </div>
             </div>
 
-	        <!-- Demandas do Dia -->
+	        <!-- Trello do Dia -->
 	        <div class="dashboard-section">
             <div class="section-header">
-                <h2>📋 Demandas do Dia</h2>
-                <span class="section-badge">' . count($demandas_hoje) . ' demandas</span>
+                <h2>📌 Trello do Dia</h2>
+                <span class="section-badge">' . count($demandas_hoje) . ' cards</span>
             </div>
             <div class="demandas-list">
                 ' . (empty($demandas_hoje) ? 
                     '<div class="empty-state">
-                        <div class="empty-icon">📋</div>
-                        <p>Nenhuma demanda para hoje</p>
+                        <div class="empty-icon">📌</div>
+                        <p>Nenhum card para hoje</p>
                     </div>' : 
                     implode('', array_map(function($demanda) {
                         $status_color = $demanda['status'] === 'concluido' ? '#10b981' : 
@@ -1290,6 +1290,10 @@ if ($current_page === 'dashboard') {
                 <a href="index.php?page=demandas" class="nav-item <?= isActiveUnified('demandas') ?>">
                     <span class="nav-item-icon">📝</span>
                     Demandas
+                </a>
+                <a href="index.php?page=trello" class="nav-item <?= isActiveUnified('trello') ?>">
+                    <span class="nav-item-icon">📌</span>
+                    Trello
                 </a>
                 <?php endif; ?>
                 

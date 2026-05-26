@@ -251,7 +251,7 @@
             // NOTA: Páginas que usam includeSidebar/endSidebar já renderizam o conteúdo, não carregar via AJAX
             const pagesWithOwnRender = [
                 'dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 
-                'agenda', 'agenda_eventos', 'demandas', 'demandas_quadro',
+                'agenda', 'agenda_eventos', 'demandas', 'trello', 'demandas_quadro',
                 'comercial', 'comercial_degust_inscritos', 'comercial_degust_inscricoes', 'comercial_degustacao_editar',
                 'comercial_degust_public', 'comercial_pagamento', 'comercial_realizar_degustacao',
                 'pagamento_degustacao', 'testar_identificacao_pagamento',
@@ -588,7 +588,7 @@
             
             if (tipoNotificacao.includes('demanda') || tipoNotificacao.includes('card') || tipoNotificacao.includes('menção') || notif.referencia_id) {
                 // Notificação de demanda - ir para a página de demandas
-                urlDestino = 'index.php?page=demandas';
+                urlDestino = 'index.php?page=trello';
                 // Se tiver referencia_id (card_id), pode adicionar parâmetro para destacar o card
                 if (notif.referencia_id || notif.card_id) {
                     urlDestino += '#card-' + (notif.referencia_id || notif.card_id);

@@ -42,7 +42,7 @@ try {
                 <p>É necessário aplicar o schema no banco de dados antes de usar esta página.</p>
                 <a href="apply_trello_schema.php" class="btn">📦 Criar Tabelas Agora</a>
                 <br><br>
-                <a href="index.php?page=demandas">← Voltar</a>
+                <a href="index.php?page=trello">← Voltar</a>
             </div>
         </body>
         </html>';
@@ -86,7 +86,7 @@ $stmt = $pdo->query("
 ");
 $fixas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-includeSidebar('Demandas Fixas');
+includeSidebar('Cards Fixos');
 ?>
 
 <style>
@@ -238,7 +238,7 @@ includeSidebar('Demandas Fixas');
 
 <div class="page-container">
     <div class="header-actions">
-        <h1>📅 Demandas Fixas</h1>
+        <h1>📅 Cards Fixos</h1>
         <button class="btn btn-primary" onclick="abrirModalNovaFixa()">➕ Nova Demanda Fixa</button>
     </div>
     
@@ -532,4 +532,3 @@ function fecharModal(id) {
 </script>
 
 <?php endSidebar(); ?>
-

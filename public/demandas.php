@@ -1,1475 +1,987 @@
 <?php
-// demandas.php - UI principal do sistema de demandas
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+declare(strict_types=1);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 
-// Verificar se usuário está logado
-if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
+if (empty($_SESSION['logado'])) {
     header('Location: login.php');
     exit;
 }
-
-$pdo = $GLOBALS['pdo'];
-$usuario_id = $_SESSION['user_id'] ?? 1;
-
-// Buscar usuários para filtros
-$stmt = $pdo->prepare("SELECT id, nome FROM usuarios ORDER BY nome");
-$stmt->execute();
-$usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 includeSidebar('Demandas');
 ?>
 
 <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    .page-container {
-        padding: 2rem;
-        max-width: 100%;
+.demandas-page {
+    background: #f6f7fb;
+    color: #172033;
+    min-height: calc(100vh - 64px);
+    padding: 1.25rem;
+}
+.demandas-shell {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    gap: 1rem;
+    height: calc(100vh - 108px);
+}
+.demandas-panel,
+.demandas-detail {
+    background: #ffffff;
+    border: 1px solid #dfe4ee;
+    border-radius: 8px;
+    min-height: 0;
+}
+.demandas-panel {
+    display: flex;
+    flex-direction: column;
+}
+.demandas-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.demandas-header h1 {
+    font-size: 1.55rem;
+    margin: 0;
+    color: #101827;
+}
+.demandas-header p {
+    margin: 0.15rem 0 0;
+    color: #6a7280;
+    font-size: 0.9rem;
+}
+.demandas-tabs {
+    display: flex;
+    gap: 0.35rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid #e7ebf2;
+    overflow-x: auto;
+}
+.demandas-tab {
+    border: 1px solid transparent;
+    background: transparent;
+    color: #526073;
+    border-radius: 6px;
+    padding: 0.48rem 0.68rem;
+    cursor: pointer;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 0.84rem;
+}
+.demandas-tab.active {
+    border-color: #b8c5d8;
+    background: #edf3fb;
+    color: #153e75;
+}
+.demandas-admin-filter {
+    display: none;
+    padding: 0 0.75rem 0.75rem;
+    border-bottom: 1px solid #e7ebf2;
+}
+.demandas-list {
+    overflow: auto;
+    padding: 0.75rem;
+}
+.demanda-card {
+    border: 1px solid #e0e6ef;
+    border-left: 4px solid #6b7280;
+    background: #fff;
+    border-radius: 8px;
+    padding: 0.85rem;
+    margin-bottom: 0.65rem;
+    cursor: pointer;
+}
+.demanda-card:hover,
+.demanda-card.active {
+    border-color: #93afd6;
+    box-shadow: 0 6px 18px rgba(36, 64, 96, 0.1);
+}
+.demanda-card.prioridade-baixa { border-left-color: #64748b; }
+.demanda-card.prioridade-normal { border-left-color: #2563eb; }
+.demanda-card.prioridade-alta { border-left-color: #d97706; }
+.demanda-card.prioridade-urgente { border-left-color: #dc2626; }
+.demanda-card-title {
+    font-weight: 750;
+    color: #111827;
+    margin-bottom: 0.35rem;
+}
+.demanda-card-desc {
+    color: #5f6978;
+    font-size: 0.86rem;
+    line-height: 1.35;
+    max-height: 2.7em;
+    overflow: hidden;
+}
+.demanda-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.65rem;
+}
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 999px;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.74rem;
+    font-weight: 650;
+    background: #eef2f7;
+    color: #475569;
+}
+.pill.status-aberta { background: #e0f2fe; color: #075985; }
+.pill.status-em_andamento { background: #dcfce7; color: #166534; }
+.pill.status-aguardando { background: #fef3c7; color: #92400e; }
+.pill.status-resolvida { background: #ede9fe; color: #5b21b6; }
+.pill.status-encerrada { background: #e5e7eb; color: #374151; }
+.pill.status-cancelada { background: #fee2e2; color: #991b1b; }
+.demandas-detail {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.detail-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #6b7280;
+    text-align: center;
+    padding: 2rem;
+}
+.detail-head {
+    padding: 1rem;
+    border-bottom: 1px solid #e7ebf2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+}
+.detail-head h2 {
+    margin: 0 0 0.4rem;
+    font-size: 1.2rem;
+    color: #101827;
+}
+.detail-actions {
+    display: flex;
+    gap: 0.45rem;
+    align-items: flex-start;
+}
+.event-box {
+    margin-top: 0.8rem;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 0.5rem;
+    padding: 0.7rem;
+    border: 1px solid #dce6f2;
+    background: #f8fbff;
+    border-radius: 8px;
+}
+.event-box strong {
+    display: block;
+    color: #526073;
+    font-size: 0.72rem;
+    margin-bottom: 0.12rem;
+}
+.event-box span {
+    color: #172033;
+    font-size: 0.86rem;
+}
+.chat-area {
+    padding: 1rem;
+    overflow: auto;
+    flex: 1;
+    background: #fbfcfe;
+}
+.message {
+    max-width: 780px;
+    background: #ffffff;
+    border: 1px solid #e0e6ef;
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.7rem;
+}
+.message strong {
+    color: #172033;
+}
+.message time {
+    color: #7b8493;
+    font-size: 0.75rem;
+    margin-left: 0.4rem;
+}
+.message p {
+    white-space: pre-wrap;
+    margin: 0.4rem 0 0;
+    color: #384454;
+    line-height: 1.45;
+}
+.attachments {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #e7ebf2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+.attachment-link {
+    border: 1px solid #d7dee9;
+    background: #fff;
+    color: #1f4f82;
+    text-decoration: none;
+    border-radius: 6px;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.82rem;
+}
+.composer {
+    border-top: 1px solid #e7ebf2;
+    padding: 0.75rem;
+    background: #ffffff;
+}
+.composer textarea {
+    width: 100%;
+    min-height: 72px;
+    resize: vertical;
+}
+.composer-row {
+    margin-top: 0.55rem;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+    align-items: center;
+}
+.btn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #1f2937;
+    border-radius: 6px;
+    padding: 0.58rem 0.8rem;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.86rem;
+}
+.btn:hover {
+    background: #f8fafc;
+}
+.btn-primary {
+    border-color: #1d4ed8;
+    background: #1d4ed8;
+    color: #fff;
+}
+.btn-primary:hover {
+    background: #1e40af;
+}
+.btn-icon {
+    width: 38px;
+    height: 36px;
+    padding: 0;
+}
+.field,
+.field textarea,
+.field input,
+.field select {
+    width: 100%;
+}
+.field label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 750;
+    color: #4b5563;
+    margin-bottom: 0.28rem;
+}
+.field input,
+.field select,
+.field textarea {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 0.6rem 0.65rem;
+    font: inherit;
+    color: #172033;
+}
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    background: rgba(15, 23, 42, 0.48);
+    padding: 2rem;
+    overflow: auto;
+}
+.modal.open {
+    display: block;
+}
+.modal-card {
+    background: #ffffff;
+    border-radius: 8px;
+    max-width: 760px;
+    margin: 0 auto;
+    border: 1px solid #d9e1ec;
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.25);
+}
+.modal-head,
+.modal-foot {
+    padding: 1rem;
+    border-bottom: 1px solid #e7ebf2;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+.modal-foot {
+    border-top: 1px solid #e7ebf2;
+    border-bottom: 0;
+    justify-content: flex-end;
+}
+.modal-body {
+    padding: 1rem;
+    display: grid;
+    gap: 0.85rem;
+}
+.event-search-results,
+.history-list {
+    display: grid;
+    gap: 0.5rem;
+}
+.event-result,
+.history-item {
+    border: 1px solid #e0e6ef;
+    border-radius: 6px;
+    padding: 0.65rem;
+    background: #fff;
+}
+.event-result {
+    cursor: pointer;
+}
+.event-result:hover {
+    border-color: #8aa7d2;
+}
+.hidden {
+    display: none !important;
+}
+.empty-list,
+.loading {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: #6b7280;
+}
+@media (max-width: 980px) {
+    .demandas-shell {
+        grid-template-columns: 1fr;
+        height: auto;
     }
-    
-    .header-actions {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 2rem;
+    .demandas-panel,
+    .demandas-detail {
+        min-height: 420px;
     }
-    
-    .header-actions h1 {
-        font-size: 2rem;
-        color: #1f2937;
+    .event-box,
+    .grid-2 {
+        grid-template-columns: 1fr;
     }
-    
-    .filters {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        margin-bottom: 2rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    
-    .filters-row {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    .form-group {
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .form-group label {
-        font-weight: 500;
-        margin-bottom: 0.5rem;
-        color: #374151;
-    }
-    
-    .form-group input,
-    .form-group select {
-        padding: 0.75rem;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        font-size: 0.875rem;
-    }
-    
-    .btn {
-        padding: 0.75rem 1.5rem;
-        border-radius: 6px;
-        font-weight: 500;
-        cursor: pointer;
-        text-decoration: none;
-        display: inline-block;
-        transition: all 0.2s;
-        border: none;
-    }
-    
-    .btn-primary {
-        background: #3b82f6;
-        color: white;
-    }
-    
-    .btn-primary:hover {
-        background: #2563eb;
-    }
-    
-    .btn-outline {
-        background: white;
-        color: #3b82f6;
-        border: 1px solid #3b82f6;
-    }
-    
-    .btn-outline:hover {
-        background: #f8fafc;
-    }
-    
-    .btn-success {
-        background: #10b981;
-        color: white;
-    }
-    
-    .btn-warning {
-        background: #f59e0b;
-        color: white;
-    }
-    
-    .btn-danger {
-        background: #ef4444;
-        color: white;
-    }
-    
-    .demandas-grid {
-        display: grid;
-        gap: 1rem;
-    }
-    
-    .demanda-card {
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        transition: all 0.2s;
-        border-left: 4px solid #3b82f6;
-    }
-    
-    .demanda-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    
-    .demanda-card.vencida {
-        border-left-color: #ef4444;
-    }
-    
-    .demanda-card.concluida {
-        border-left-color: #10b981;
-        opacity: 0.7;
-    }
-    
-    .demanda-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 1rem;
-    }
-    
-    .demanda-descricao {
-        font-size: 1rem;
-        color: #1f2937;
-        margin-bottom: 0.5rem;
-        line-height: 1.5;
-    }
-    
-    .demanda-meta {
-        display: flex;
-        gap: 1rem;
-        font-size: 0.875rem;
-        color: #6b7280;
-        margin-bottom: 1rem;
-    }
-    
-    .badge {
-        padding: 0.25rem 0.75rem;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 500;
-    }
-    
-    .badge-pendente {
-        background: #fef3c7;
-        color: #92400e;
-    }
-    
-    .badge-vencida {
-        background: #fee2e2;
-        color: #991b1b;
-    }
-    
-    .badge-concluida {
-        background: #d1fae5;
-        color: #065f46;
-    }
-    
-    .badge-prioridade {
-        font-size: 0.75rem;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        color: white;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .badge-media {
-        background: #3b82f6;
-    }
-    
-    .demanda-actions {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-    
-    .modal {
-        display: none;
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-    }
-    
-    .modal-content {
-        background: white;
-        margin: 5% auto;
-        padding: 2rem;
-        border-radius: 12px;
-        width: 90%;
-        max-width: 600px;
-        max-height: 80vh;
-        overflow-y: auto;
-    }
-    
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-    
-    .close {
-        font-size: 1.5rem;
-        cursor: pointer;
-        color: #6b7280;
-    }
-    
-    .comentarios-section {
-        margin-top: 2rem;
-        padding-top: 1.5rem;
-        border-top: 1px solid #e5e7eb;
-    }
-    
-    .comentario {
-        background: #f9fafb;
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-    }
-    
-    .comentario-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5rem;
-    }
-    
-    .comentario-autor {
-        font-weight: 500;
-        color: #1f2937;
-    }
-    
-    .comentario-data {
-        font-size: 0.875rem;
-        color: #6b7280;
-    }
-    
-    .comentario-texto {
-        color: #374151;
-        line-height: 1.5;
-    }
-    
-    .anexos-section {
-        margin-top: 1.5rem;
-        padding-top: 1.5rem;
-        border-top: 1px solid #e5e7eb;
-    }
-    
-    .anexo-item {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem;
-        background: #f9fafb;
-        border-radius: 6px;
-        margin-bottom: 0.5rem;
-    }
-    
-    .anexo-icon {
-        font-size: 1.25rem;
-    }
-    
-    .empty-state {
-        text-align: center;
-        padding: 3rem;
-        color: #6b7280;
-    }
-    
-    .empty-state-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-    }
+}
 </style>
 
-<div class="page-container">
-            <div class="header-actions">
-                <h1>📋 Demandas</h1>
-        <button class="btn btn-primary" onclick="openCreateModal()">➕ Nova Demanda</button>
-                </div>
-    
-    <!-- Filtros -->
-    <div class="filters">
-        <div class="filters-row">
-            <div class="form-group">
-                <label for="filtro-status">Status</label>
-                <select id="filtro-status">
-                    <option value="">Todos</option>
-                    <option value="pendente">Pendente</option>
-                    <option value="vencida">Vencida</option>
-                    <option value="concluida">Concluída</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="filtro-responsavel">Responsável</label>
-                <select id="filtro-responsavel">
-                    <option value="">Todos</option>
-                    <?php foreach ($usuarios as $usuario): ?>
-                        <option value="<?= $usuario['id'] ?>"><?= htmlspecialchars($usuario['nome']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="filtro-texto">Buscar texto</label>
-                <input type="text" id="filtro-texto" placeholder="Digite para buscar...">
-                            </div>
-                            
-            <div class="form-group">
-                <label for="filtro-data">Até data</label>
-                <input type="date" id="filtro-data">
-            </div>
-            
-            <div class="form-group">
-                <label for="filtro-prioridade">Prioridade</label>
-                <select id="filtro-prioridade">
-                    <option value="">Todas</option>
-                    <option value="baixa">Baixa</option>
-                    <option value="media">Média</option>
-                    <option value="alta">Alta</option>
-                    <option value="urgente">Urgente</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="filtro-categoria">Categoria</label>
-                <input type="text" id="filtro-categoria" placeholder="Buscar categoria...">
-            </div>
-            
-            <div class="form-group">
-                <label for="filtro-sort">Ordenar por</label>
-                <select id="filtro-sort">
-                    <option value="prazo">Prazo</option>
-                    <option value="data_criacao">Data de Criação</option>
-                    <option value="prioridade">Prioridade</option>
-                    <option value="progresso">Progresso</option>
-                    <option value="status">Status</option>
-                </select>
-                                </div>
-            
-            <div class="form-group">
-                <label for="filtro-order">Ordem</label>
-                <select id="filtro-order">
-                    <option value="ASC">Crescente</option>
-                    <option value="DESC">Decrescente</option>
-                </select>
-                                </div>
-                            </div>
-                            
-        <button class="btn btn-outline" onclick="aplicarFiltros()">🔍 Filtrar</button>
-        <button class="btn btn-outline" onclick="limparFiltros()">🗑️ Limpar</button>
-    </div>
-    
-    <!-- Lista de demandas -->
-    <div id="demandas-container">
-        <div class="empty-state">
-            <div class="empty-state-icon">⏳</div>
-            <div>Carregando demandas...</div>
-                            </div>
-                        </div>
-                </div>
-
-<!-- Modal de detalhes -->
-<div id="detailModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2 id="modal-titulo">Detalhes da Demanda</h2>
-            <span class="close" onclick="closeDetailModal()">&times;</span>
-                </div>
-        
-        <div id="modal-conteudo">
-            <!-- Conteúdo carregado via AJAX -->
+<div class="demandas-page">
+    <div class="demandas-header">
+        <div>
+            <h1>Demandas</h1>
+            <p>Solicitações internas por conversa, responsável, prazo e evento vinculado.</p>
         </div>
-        </div>
+        <button class="btn btn-primary" type="button" onclick="openCreateModal()">Nova demanda</button>
     </div>
 
-<!-- Modal de criação -->
-<div id="createModal" class="modal">
-        <div class="modal-content">
-        <div class="modal-header">
-            <h2>Nova Demanda</h2>
-            <span class="close" onclick="closeCreateModal()">&times;</span>
+    <div class="demandas-shell">
+        <section class="demandas-panel">
+            <div class="demandas-tabs" id="tabs">
+                <button class="demandas-tab active" data-tab="todas">Todas</button>
+                <button class="demandas-tab" data-tab="minhas">Abertas para mim</button>
+                <button class="demandas-tab" data-tab="criadas">Criadas por mim</button>
+                <button class="demandas-tab" data-tab="citacoes">Citação</button>
+                <button class="demandas-tab" data-tab="encerradas">Encerradas</button>
+                <button class="demandas-tab hidden" data-tab="demais" id="tab-demais">Demais usuários</button>
+            </div>
+            <div class="demandas-admin-filter" id="admin-filter">
+                <div class="field">
+                    <label for="filter-user">Usuário</label>
+                    <select id="filter-user" onchange="loadDemandas()"></select>
+                </div>
+            </div>
+            <div class="demandas-list" id="demandas-list">
+                <div class="loading">Carregando demandas...</div>
+            </div>
+        </section>
+
+        <section class="demandas-detail" id="detail">
+            <div class="detail-empty">Selecione uma demanda para abrir a conversa.</div>
+        </section>
+    </div>
+</div>
+
+<div class="modal" id="create-modal">
+    <div class="modal-card">
+        <form id="create-form">
+            <div class="modal-head">
+                <strong>Nova demanda</strong>
+                <button class="btn btn-icon" type="button" onclick="closeModal('create-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="field">
+                    <label for="create-titulo">Título da demanda</label>
+                    <input id="create-titulo" name="titulo" required maxlength="180">
+                </div>
+                <div class="field">
+                    <label for="create-descricao">Descrição</label>
+                    <textarea id="create-descricao" name="descricao" rows="4"></textarea>
+                </div>
+                <div class="grid-2">
+                    <div class="field">
+                        <label for="create-responsavel-tipo">Responsável ou setor</label>
+                        <select id="create-responsavel-tipo" name="responsavel_tipo" onchange="toggleResponsavelFields('create')">
+                            <option value="usuario">Usuário</option>
+                            <option value="setor">Setor</option>
+                        </select>
+                    </div>
+                    <div class="field" id="create-responsavel-user-wrap">
+                        <label for="create-responsavel-id">Usuário responsável</label>
+                        <select id="create-responsavel-id" name="responsavel_id"></select>
+                    </div>
+                    <div class="field hidden" id="create-responsavel-setor-wrap">
+                        <label for="create-responsavel-setor">Setor responsável</label>
+                        <select id="create-responsavel-setor" name="responsavel_setor"></select>
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="field">
+                        <label for="create-prazo">Prazo</label>
+                        <input id="create-prazo" name="prazo" type="date" required>
+                    </div>
+                    <div class="field">
+                        <label for="create-prioridade">Prioridade</label>
+                        <select id="create-prioridade" name="prioridade">
+                            <option value="baixa">Baixa</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="alta">Alta</option>
+                            <option value="urgente">Urgente</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="field">
+                        <label for="create-status">Status</label>
+                        <select id="create-status" name="status">
+                            <option value="aberta">Aberta</option>
+                            <option value="em_andamento">Em andamento</option>
+                            <option value="aguardando">Aguardando</option>
+                            <option value="resolvida">Resolvida</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="has-evento">Esta demanda é referente a algum evento?</label>
+                        <select id="has-evento" onchange="toggleEventSearch()">
+                            <option value="nao">Não</option>
+                            <option value="sim">Sim</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="event-search-wrap" class="hidden">
+                    <div class="field">
+                        <label for="event-search">Localizar evento</label>
+                        <input id="event-search" placeholder="Busque por nome, local ou ID" oninput="searchEvents(this.value)">
+                    </div>
+                    <div id="event-results" class="event-search-results"></div>
+                    <input type="hidden" name="evento_tipo" id="evento-tipo">
+                    <input type="hidden" name="evento_id" id="evento-id">
+                    <input type="hidden" name="evento_data" id="evento-data">
+                    <input type="hidden" name="evento_local" id="evento-local">
+                    <input type="hidden" name="evento_nome" id="evento-nome">
+                    <input type="hidden" name="evento_whatsapp" id="evento-whatsapp">
+                </div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn" type="button" onclick="closeModal('create-modal')">Cancelar</button>
+                <button class="btn btn-primary" type="submit">Criar demanda</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal" id="history-modal">
+    <div class="modal-card">
+        <div class="modal-head">
+            <strong>Histórico da demanda</strong>
+            <button class="btn btn-icon" type="button" onclick="closeModal('history-modal')">×</button>
         </div>
-        
-        <form id="createForm" enctype="multipart/form-data">
-            <div class="form-group">
-                <label for="descricao">Descrição *</label>
-                <textarea id="descricao" name="descricao" rows="4" required></textarea>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                    <label for="prazo">Prazo *</label>
-                    <input type="date" id="prazo" name="prazo" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="responsavel_id">Responsável *</label>
-                    <select id="responsavel_id" name="responsavel_id" required>
-                        <option value="">Selecione...</option>
-                        <?php foreach ($usuarios as $usuario): ?>
-                            <option value="<?= $usuario['id'] ?>"><?= htmlspecialchars($usuario['nome']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                    <label for="prioridade">Prioridade</label>
-                    <select id="prioridade" name="prioridade">
-                        <option value="media">Média</option>
-                        <option value="baixa">Baixa</option>
-                        <option value="alta">Alta</option>
-                        <option value="urgente">Urgente</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="categoria">Categoria</label>
-                    <input type="text" id="categoria" name="categoria" placeholder="Ex: Marketing, Vendas...">
-                </div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                    <label for="progresso">Progresso: <span id="progresso-valor">0</span>%</label>
-                    <input type="range" id="progresso" name="progresso" min="0" max="100" value="0" oninput="document.getElementById('progresso-valor').textContent = this.value">
-                </div>
-                
-                <div class="form-group">
-                    <label for="etapa">Etapa</label>
-                    <select id="etapa" name="etapa">
-                        <option value="planejamento">Planejamento</option>
-                        <option value="execucao">Execução</option>
-                        <option value="revisao">Revisão</option>
-                        <option value="concluida">Concluída</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                    <label for="whatsapp">WhatsApp (opcional)</label>
-                    <input type="text" id="whatsapp" name="whatsapp" placeholder="(11) 99999-9999">
-                </div>
-                
-                <div class="form-group">
-                    <label for="tipo_referencia">Módulo de Referência</label>
-                    <select id="tipo_referencia" name="tipo_referencia">
-                        <option value="">Nenhum</option>
-                        <option value="comercial">Comercial</option>
-                        <option value="financeiro">Financeiro</option>
-                        <option value="rh">RH</option>
-                        <option value="outro">Outro</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <label for="referencia_externa">Referência Externa (ID do módulo)</label>
-                <input type="text" id="referencia_externa" name="referencia_externa" placeholder="Ex: ID do pedido, operação...">
-            </div>
-            
-            <div class="form-group">
-                <label for="anexos">Anexos (opcional)</label>
-                <input type="file" id="anexos" name="anexos[]" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
-                <small style="color: #6b7280; font-size: 0.875rem;">Você pode selecionar múltiplos arquivos</small>
-            </div>
-            
-            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                <button type="button" class="btn btn-outline" onclick="closeCreateModal()">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Criar Demanda</button>
-                </div>
-            </form>
+        <div class="modal-body">
+            <div id="history-list" class="history-list"></div>
         </div>
     </div>
+</div>
 
-    <script>
-let demandas = [];
-let filtros = {};
-
-// Carregar demandas ao inicializar
-document.addEventListener('DOMContentLoaded', function() {
-    const container = document.getElementById('demandas-container');
-    if (container) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">⏳</div>
-                <h3>Carregando demandas...</h3>
+<div class="modal" id="gallery-modal">
+    <div class="modal-card">
+        <div class="modal-head">
+            <strong>Galeria Smile</strong>
+            <button class="btn btn-icon" type="button" onclick="closeModal('gallery-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="field">
+                <label for="gallery-search">Buscar imagem</label>
+                <input id="gallery-search" oninput="searchGallery(this.value)" placeholder="Nome, categoria ou tag">
             </div>
-        `;
-    }
-    carregarDemandas();
-});
+            <div id="gallery-results" class="event-search-results"></div>
+        </div>
+    </div>
+</div>
 
-function carregarDemandas() {
-    // Filtrar apenas valores não vazios
-    const filtrosLimpos = {};
-    Object.keys(filtros).forEach(key => {
-        if (filtros[key] && filtros[key] !== '') {
-            filtrosLimpos[key] = filtros[key];
-        }
-    });
-    
-    const params = new URLSearchParams(filtrosLimpos);
-    // Usar caminho absoluto para evitar problemas de roteamento
-    const baseUrl = window.location.pathname.replace(/\/[^/]*$/, '/') || '/';
-    const url = `${baseUrl}demandas_api.php${params.toString() ? '?' + params.toString() : ''}`;
-    console.log('Carregando demandas de:', url);
-    console.log('URL completa:', window.location.origin + url);
-    
-    fetch(url, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json'
-        },
-        credentials: 'same-origin',
-        cache: 'no-cache'
-    })
-    .then(response => {
-        console.log('Response status:', response.status);
-        console.log('Response headers:', response.headers);
-        
-        // Tentar parsear JSON mesmo se status não for ok (pode ser 405 mas com dados válidos)
-        return response.text().then(text => {
-            try {
-                const data = JSON.parse(text);
-                console.log('Dados parseados:', data);
-                
-                // Se tem success:true e data, tratar como sucesso mesmo com status 405
-                if (data.success && data.data !== undefined) {
-                    console.log('✅ Resposta válida encontrada, ignorando status HTTP');
-                    return data;
-                }
-                
-                // Se não for ok e não tiver dados válidos, lançar erro
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                
-                return data;
-            } catch (e) {
-                // Se não conseguir parsear JSON e status não for ok, lançar erro
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                // Se status for ok mas não conseguir parsear, tentar novamente como JSON
-                return response.json();
-            }
-        });
-    })
-    .then(data => {
-        console.log('Dados recebidos da API:', data);
-        if (data.success && data.data) {
-            demandas = Array.isArray(data.data) ? data.data : [];
-            console.log('Demandas carregadas:', demandas.length);
-            renderizarDemandas();
-        } else {
-            console.error('Erro ao carregar demandas:', data.error || 'Resposta inválida');
-            console.error('Resposta completa:', data);
-            demandas = [];
-            renderizarDemandas();
-        }
-    })
-    .catch(error => {
-        console.error('Erro ao carregar demandas:', error);
-        console.error('Stack trace:', error.stack);
-        demandas = [];
-        const container = document.getElementById('demandas-container');
-        if (container) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">⚠️</div>
-                    <h3>Erro ao carregar demandas</h3>
-                    <p>Erro: ${error.message}</p>
-                    <button class="btn btn-primary" onclick="carregarDemandas()">🔄 Tentar Novamente</button>
-                </div>
-            `;
-        }
-    });
+<script>
+const API = 'demandas_internas_api.php';
+const state = {
+    tab: 'todas',
+    selectedId: null,
+    demandas: [],
+    usuarios: [],
+    setores: [],
+    isAdmin: false
+};
+
+const statusLabels = {
+    aberta: 'Aberta',
+    em_andamento: 'Em andamento',
+    aguardando: 'Aguardando',
+    resolvida: 'Resolvida',
+    encerrada: 'Encerrada',
+    cancelada: 'Cancelada'
+};
+const prioridadeLabels = {
+    baixa: 'Baixa',
+    normal: 'Normal',
+    alta: 'Alta',
+    urgente: 'Urgente'
+};
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    }[char]));
 }
 
-function renderizarDemandas() {
-    const container = document.getElementById('demandas-container');
-    
-    if (demandas.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">📋</div>
-                <h3>Nenhuma demanda encontrada</h3>
-                <p>Não há demandas que correspondam aos filtros aplicados.</p>
-            </div>
-        `;
+function formatDate(value) {
+    if (!value) return '-';
+    const [year, month, day] = String(value).slice(0, 10).split('-');
+    return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+function formatDateTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString('pt-BR');
+}
+
+function openModal(id) {
+    document.getElementById(id).classList.add('open');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+}
+
+function fillSelects() {
+    const userOptions = ['<option value="">Selecione...</option>'].concat(
+        state.usuarios.map(u => `<option value="${u.id}">${escapeHtml(u.nome)}</option>`)
+    ).join('');
+    const setorOptions = ['<option value="">Selecione...</option>'].concat(
+        state.setores.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
+    ).join('');
+
+    ['create-responsavel-id'].forEach(id => document.getElementById(id).innerHTML = userOptions);
+    ['create-responsavel-setor'].forEach(id => document.getElementById(id).innerHTML = setorOptions);
+
+    document.getElementById('filter-user').innerHTML = userOptions;
+    document.getElementById('tab-demais').classList.toggle('hidden', !state.isAdmin);
+}
+
+function toggleResponsavelFields(prefix) {
+    const tipo = document.getElementById(`${prefix}-responsavel-tipo`).value;
+    document.getElementById(`${prefix}-responsavel-user-wrap`).classList.toggle('hidden', tipo !== 'usuario');
+    document.getElementById(`${prefix}-responsavel-setor-wrap`).classList.toggle('hidden', tipo !== 'setor');
+}
+
+function toggleEventSearch() {
+    const enabled = document.getElementById('has-evento').value === 'sim';
+    document.getElementById('event-search-wrap').classList.toggle('hidden', !enabled);
+    if (!enabled) {
+        ['tipo', 'id', 'data', 'local', 'nome', 'whatsapp'].forEach(key => {
+            document.getElementById(`evento-${key}`).value = '';
+        });
+        document.getElementById('event-results').innerHTML = '';
+    }
+}
+
+async function fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const json = await response.json();
+    if (!json.success) throw new Error(json.error || 'Erro na requisição.');
+    return json;
+}
+
+async function bootstrap() {
+    const data = await fetchJson(`${API}?action=bootstrap`);
+    state.usuarios = data.usuarios || [];
+    state.setores = data.setores || [];
+    state.isAdmin = !!data.is_admin;
+    fillSelects();
+    await loadDemandas();
+}
+
+async function loadDemandas() {
+    const list = document.getElementById('demandas-list');
+    list.innerHTML = '<div class="loading">Carregando demandas...</div>';
+    const params = new URLSearchParams({ action: 'list', aba: state.tab });
+    if (state.tab === 'demais') {
+        const userId = document.getElementById('filter-user').value;
+        if (userId) params.set('usuario_id', userId);
+    }
+    try {
+        const data = await fetchJson(`${API}?${params.toString()}`);
+        state.demandas = data.data || [];
+        renderList();
+    } catch (error) {
+        list.innerHTML = `<div class="empty-list">${escapeHtml(error.message)}</div>`;
+    }
+}
+
+function renderList() {
+    const list = document.getElementById('demandas-list');
+    if (!state.demandas.length) {
+        list.innerHTML = '<div class="empty-list">Nenhuma demanda nesta aba.</div>';
         return;
     }
-    
-    const getPrioridadeBadge = (prioridade) => {
-        if (!prioridade || prioridade === 'media') return '<span class="badge badge-prioridade badge-media">Média</span>';
-        const cores = {
-            'baixa': '#10b981',
-            'media': '#3b82f6',
-            'alta': '#f59e0b',
-            'urgente': '#ef4444'
-        };
-        const labels = {
-            'baixa': 'Baixa',
-            'media': 'Média',
-            'alta': 'Alta',
-            'urgente': 'Urgente'
-        };
-        return `<span class="badge badge-prioridade" style="background: ${cores[prioridade] || cores.media}">${labels[prioridade] || 'Média'}</span>`;
-    };
-    
-    const getProgressoBar = (progresso) => {
-        const valor = progresso || 0;
+    list.innerHTML = state.demandas.map(d => {
+        const responsavel = d.responsavel_tipo === 'setor' ? d.responsavel_setor : d.responsavel_nome;
         return `
-            <div style="margin: 0.5rem 0;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
-                    <span style="font-size: 0.75rem; color: #6b7280;">Progresso</span>
-                    <span style="font-size: 0.75rem; color: #6b7280; font-weight: 600;">${valor}%</span>
+            <article class="demanda-card prioridade-${escapeHtml(d.prioridade)} ${Number(d.id) === Number(state.selectedId) ? 'active' : ''}" onclick="openDetail(${Number(d.id)})">
+                <div class="demanda-card-title">${escapeHtml(d.titulo)}</div>
+                <div class="demanda-card-desc">${escapeHtml(d.descricao || 'Sem descrição.')}</div>
+                <div class="demanda-meta">
+                    <span class="pill status-${escapeHtml(d.status)}">${statusLabels[d.status] || d.status}</span>
+                    <span class="pill">${prioridadeLabels[d.prioridade] || d.prioridade}</span>
+                    <span class="pill">Prazo ${formatDate(d.prazo)}</span>
+                    <span class="pill">${escapeHtml(responsavel || 'Sem responsável')}</span>
+                    ${Number(d.mensagens_total) ? `<span class="pill">${Number(d.mensagens_total)} msg</span>` : ''}
+                    ${Number(d.anexos_total) ? `<span class="pill">${Number(d.anexos_total)} anexo</span>` : ''}
                 </div>
-                <div style="background: #e5e7eb; border-radius: 4px; height: 8px; overflow: hidden;">
-                    <div style="background: #3b82f6; height: 100%; width: ${valor}%; transition: width 0.3s;"></div>
-                </div>
-            </div>
+            </article>
         `;
-    };
-    
-    container.innerHTML = `
-        <div class="demandas-grid">
-            ${demandas.map(demanda => `
-                <div class="demanda-card ${demanda.status_real}">
-                    <div class="demanda-header">
-                        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                            <span class="badge badge-${demanda.status_real}">${demanda.status_real}</span>
-                            ${getPrioridadeBadge(demanda.prioridade)}
-                            ${demanda.categoria ? `<span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: #f3f4f6; border-radius: 4px; color: #6b7280;">${demanda.categoria}</span>` : ''}
-                        </div>
-                        <span style="font-size: 0.875rem; color: #6b7280;">
-                            ${new Date(demanda.prazo).toLocaleDateString('pt-BR')}
-                        </span>
-                    </div>
-                    
-                    ${demanda.progresso !== undefined && demanda.progresso !== null ? getProgressoBar(demanda.progresso) : ''}
-                    ${demanda.etapa && demanda.etapa !== 'planejamento' ? `<div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">📌 Etapa: ${demanda.etapa}</div>` : ''}
-                    
-                    <div class="demanda-descricao">
-                        ${demanda.descricao.length > 100 ? 
-                            demanda.descricao.substring(0, 100) + '...' : 
-                            demanda.descricao}
-                    </div>
-                    
-                    <div class="demanda-meta">
-                        <span>👤 ${demanda.responsavel_nome || 'Sem responsável'}</span>
-                        <span>📅 Criado em ${new Date(demanda.data_criacao).toLocaleDateString('pt-BR')}</span>
-                        ${demanda.whatsapp ? `<span>📱 ${demanda.whatsapp}</span>` : ''}
-                        ${demanda.referencia_externa && demanda.tipo_referencia ? `<span>🔗 ${demanda.tipo_referencia}: ${demanda.referencia_externa}</span>` : ''}
-                    </div>
-                    
-                    <div class="demanda-actions">
-                        <button class="btn btn-outline" onclick="verDetalhes(${demanda.id})">👁️ Ver</button>
-                        <button class="btn btn-outline" onclick="editarDemanda(${demanda.id})">✏️ Editar</button>
-                        ${demanda.status_real === 'concluida' ? 
-                            `<button class="btn btn-warning" onclick="reabrirDemanda(${demanda.id})">🔄 Reabrir</button>` :
-                            `<button class="btn btn-success" onclick="concluirDemanda(${demanda.id})">✅ Concluir</button>`
-                        }
-                        <button class="btn btn-outline" onclick="arquivarDemanda(${demanda.id})" style="color: #6b7280;">📦 Arquivar</button>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-    `;
+    }).join('');
 }
 
-function aplicarFiltros() {
-    filtros = {
-        status: document.getElementById('filtro-status').value,
-        responsavel: document.getElementById('filtro-responsavel').value,
-        texto: document.getElementById('filtro-texto').value,
-        ate_data: document.getElementById('filtro-data').value,
-        prioridade: document.getElementById('filtro-prioridade').value,
-        categoria: document.getElementById('filtro-categoria').value,
-        sort_by: document.getElementById('filtro-sort').value,
-        order: document.getElementById('filtro-order').value
-    };
-    
-    carregarDemandas();
-}
-
-function limparFiltros() {
-    // Limpar todos os campos do formulário
-    const fields = ['filtro-status', 'filtro-responsavel', 'filtro-texto', 'filtro-data', 
-                    'filtro-prioridade', 'filtro-categoria', 'filtro-sort', 'filtro-order'];
-    
-    fields.forEach(fieldId => {
-        const field = document.getElementById(fieldId);
-        if (field) {
-            if (field.tagName === 'SELECT') {
-                field.selectedIndex = 0;
-            } else {
-                field.value = '';
-            }
-        }
-    });
-    
-    filtros = {};
-    carregarDemandas();
-    
-    console.log('✅ Filtros limpos');
-}
-
-function verDetalhes(id) {
-    console.log('Carregando detalhes da demanda:', id);
-    
-    // NOVA ABORDAGEM: Usar query parameters
-    fetch(`demandas_api.php?action=detalhes&id=${id}`, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json'
-        },
-        credentials: 'same-origin',
-        cache: 'no-cache'
-    })
-    .then(response => {
-        console.log('Response status:', response.status);
-        return response.text().then(text => {
-            try {
-                const data = JSON.parse(text);
-                // Se tem success:true, tratar como sucesso mesmo com status diferente de 200
-                if (data.success) {
-                    return data;
-                }
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                return data;
-            } catch (e) {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                return JSON.parse(text);
-            }
-        });
-    })
-    .then(data => {
-        console.log('Dados recebidos:', data);
-        if (data.success) {
-            const demanda = data.data;
-            
-            const modalTitulo = document.getElementById('modal-titulo');
-            const modalConteudo = document.getElementById('modal-conteudo');
-            const modal = document.getElementById('detailModal');
-            
-            if (!modalTitulo || !modalConteudo || !modal) {
-                console.error('Elementos do modal não encontrados');
-                alert('Erro ao abrir modal de detalhes');
-                return;
-            }
-            
-            const getPrioridadeBadge = (prioridade) => {
-                if (!prioridade || prioridade === 'media') return '<span class="badge badge-prioridade badge-media">Média</span>';
-                const cores = {'baixa': '#10b981', 'media': '#3b82f6', 'alta': '#f59e0b', 'urgente': '#ef4444'};
-                const labels = {'baixa': 'Baixa', 'media': 'Média', 'alta': 'Alta', 'urgente': 'Urgente'};
-                return `<span class="badge badge-prioridade" style="background: ${cores[prioridade] || cores.media}">${labels[prioridade] || 'Média'}</span>`;
-            };
-            
-            const getProgressoBar = (progresso) => {
-                const valor = progresso || 0;
-                return `<div style="background: #e5e7eb; border-radius: 4px; height: 12px; overflow: hidden; margin: 0.5rem 0;"><div style="background: #3b82f6; height: 100%; width: ${valor}%;"></div></div><div style="text-align: center; font-size: 0.875rem; color: #6b7280;">${valor}%</div>`;
-            };
-            
-            modalTitulo.textContent = `Demanda #${demanda.id}`;
-            modalConteudo.innerHTML = `
-                <div style="margin-bottom: 2rem;">
-                    <p><strong>Descrição:</strong></p>
-                    <p style="margin-bottom: 1rem; line-height: 1.5; padding: 1rem; background: #f9fafb; border-radius: 6px;">${demanda.descricao || 'Sem descrição'}</p>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                        <div><strong>Prazo:</strong> ${new Date(demanda.prazo).toLocaleDateString('pt-BR')}</div>
-                        <div><strong>Status:</strong> <span class="badge badge-${demanda.status_real || demanda.status || 'pendente'}">${demanda.status_real || demanda.status || 'pendente'}</span></div>
-                        <div><strong>Responsável:</strong> ${demanda.responsavel_nome || 'Sem responsável'}</div>
-                        <div><strong>Criado por:</strong> ${demanda.criador_nome || 'Sistema'}</div>
-                        ${demanda.prioridade ? `<div><strong>Prioridade:</strong> ${getPrioridadeBadge(demanda.prioridade)}</div>` : ''}
-                        ${demanda.categoria ? `<div><strong>Categoria:</strong> ${demanda.categoria}</div>` : ''}
-                        ${demanda.etapa ? `<div><strong>Etapa:</strong> ${demanda.etapa}</div>` : ''}
-                        ${demanda.referencia_externa && demanda.tipo_referencia ? `<div><strong>Referência:</strong> ${demanda.tipo_referencia} - ${demanda.referencia_externa}</div>` : ''}
-                    </div>
-                    
-                    ${demanda.progresso !== undefined && demanda.progresso !== null ? `<div><strong>Progresso:</strong>${getProgressoBar(demanda.progresso)}</div>` : ''}
-                    ${demanda.whatsapp ? `<p><strong>WhatsApp:</strong> ${demanda.whatsapp}</p>` : ''}
-                </div>
-                
-                <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e5e7eb;">
-                
-                <div class="comentarios-section" style="margin-bottom: 2rem;">
-                    <h3 style="margin-bottom: 1rem;">💬 Comentários</h3>
-                    <div id="comentarios-list">
-                        ${demanda.comentarios && demanda.comentarios.length > 0 ? 
-                            demanda.comentarios.map(comentario => `
-                                <div class="comentario" style="background: #f9fafb; padding: 1rem; border-radius: 6px; margin-bottom: 0.5rem;">
-                                    <div class="comentario-header" style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                        <span class="comentario-autor" style="font-weight: 600;">${comentario.autor_nome || 'Anônimo'}</span>
-                                        <span class="comentario-data" style="font-size: 0.875rem; color: #6b7280;">${new Date(comentario.data_criacao).toLocaleString('pt-BR')}</span>
-                                    </div>
-                                    <div class="comentario-texto">${comentario.mensagem}</div>
-                                </div>
-                            `).join('') : 
-                            '<p style="color: #6b7280;">Nenhum comentário ainda.</p>'
-                        }
-                    </div>
-                    <div style="margin-top: 1rem;">
-                        <textarea id="novo-comentario" placeholder="Digite seu comentário..." rows="3" style="width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"></textarea>
-                        <button class="btn btn-primary" onclick="adicionarComentario(${demanda.id})" style="margin-top: 0.5rem;">Adicionar Comentário</button>
-                    </div>
-                </div>
-                
-                <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e5e7eb;">
-                
-                <div class="anexos-section">
-                    <h3 style="margin-bottom: 1rem;">📎 Anexos</h3>
-                    <div id="anexos-list">
-                        ${demanda.anexos && demanda.anexos.length > 0 ? 
-                            demanda.anexos.map(anexo => `
-                                <div class="anexo-item" style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem; background: #f9fafb; border-radius: 6px; margin-bottom: 0.5rem;">
-                                    <span class="anexo-icon" style="font-size: 1.5rem;">${anexo.mime_type && anexo.mime_type.startsWith('image/') ? '🖼️' : '📄'}</span>
-                                    <span style="flex: 1;">${anexo.nome_original}</span>
-                                    <button class="btn btn-outline" onclick="downloadAnexo(${anexo.id})">Download</button>
-                                    <button class="btn btn-outline" onclick="deletarAnexo(${anexo.id}, ${demanda.id})" style="color: #ef4444;">🗑️</button>
-                                </div>
-                            `).join('') : 
-                            '<p style="color: #6b7280;">Nenhum anexo.</p>'
-                        }
-                    </div>
-                    <div style="margin-top: 1rem;">
-                        <input type="file" id="novo-anexo" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="margin-bottom: 0.5rem;">
-                        <button class="btn btn-primary" onclick="adicionarAnexoModal(${demanda.id})">Adicionar Anexo</button>
-                    </div>
-                </div>
-            `;
-            
-            modal.style.display = 'block';
-        } else {
-            alert('Erro ao carregar detalhes: ' + (data.error || 'Erro desconhecido'));
-        }
-    })
-    .catch(error => {
-        console.error('Erro ao carregar detalhes:', error);
-        alert('Erro ao carregar detalhes da demanda. Verifique o console para mais informações.');
-    });
-}
-
-function concluirDemanda(id) {
-    if (!confirm('Deseja realmente concluir esta demanda?')) {
-        return;
+async function openDetail(id) {
+    state.selectedId = id;
+    renderList();
+    const detail = document.getElementById('detail');
+    detail.innerHTML = '<div class="detail-empty">Carregando conversa...</div>';
+    try {
+        const data = await fetchJson(`${API}?action=detail&id=${id}`);
+        renderDetail(data.demanda, data.mensagens || [], data.anexos || []);
+    } catch (error) {
+        detail.innerHTML = `<div class="detail-empty">${escapeHtml(error.message)}</div>`;
     }
-    
-    console.log('Concluindo demanda:', id);
-    
-    fetch(`demandas_api.php?action=concluir&id=${id}`, {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json'
-        },
-        credentials: 'same-origin',
-        cache: 'no-cache'
-    })
-    .then(response => {
-        console.log('Response status:', response.status);
-        return response.text().then(text => {
-            try {
-                const data = JSON.parse(text);
-                // Se tem success:true, tratar como sucesso mesmo com status diferente de 200
-                if (data.success) {
-                    return data;
-                }
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                return data;
-            } catch (e) {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                return JSON.parse(text);
-            }
-        });
-    })
-    .then(data => {
-        console.log('Response data:', data);
-        if (data.success) {
-            carregarDemandas();
-            alert('✅ Demanda concluída com sucesso!');
-        } else {
-            alert('❌ Erro ao concluir demanda: ' + (data.error || 'Erro desconhecido'));
-        }
-    })
-    .catch(error => {
-        console.error('Erro ao concluir demanda:', error);
-        alert('❌ Erro ao conectar com o servidor. Verifique o console para mais detalhes.');
-    });
 }
 
-function reabrirDemanda(id) {
-    if (!confirm('Deseja realmente reabrir esta demanda?')) {
-        return;
-    }
-    
-    console.log('Reabrindo demanda:', id);
-    
-    fetch(`demandas_api.php?action=reabrir&id=${id}`, {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json'
-        },
-        credentials: 'same-origin',
-        cache: 'no-cache'
-    })
-    .then(response => {
-        console.log('Response status:', response.status);
-        return response.text().then(text => {
-            try {
-                const data = JSON.parse(text);
-                // Se tem success:true, tratar como sucesso mesmo com status diferente de 200
-                if (data.success) {
-                    return data;
-                }
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                return data;
-            } catch (e) {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                return JSON.parse(text);
-            }
-        });
-    })
-    .then(data => {
-        if (data.success) {
-            carregarDemandas();
-            alert('✅ Demanda reaberta com sucesso!');
-        } else {
-            alert('❌ Erro ao reabrir demanda: ' + (data.error || 'Erro desconhecido'));
-        }
-    })
-    .catch(error => {
-        console.error('Erro ao reabrir demanda:', error);
-        alert('❌ Erro ao conectar com o servidor. Verifique o console para mais detalhes.');
-    });
-}
-
-function editarDemanda(id) {
-    const demanda = demandas.find(d => d.id === id);
-    if (!demanda) {
-        alert('Demanda não encontrada');
-        return;
-    }
-    
-    // Criar modal de edição (reutilizar estrutura do modal de criação)
-    const editModal = document.createElement('div');
-    editModal.id = 'editModal';
-    editModal.className = 'modal';
-    editModal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Editar Demanda #${id}</h2>
-                <span class="close" onclick="document.getElementById('editModal').remove()">&times;</span>
+function renderAdminControls(d) {
+    if (!state.isAdmin) return '';
+    const userOptions = state.usuarios.map(u => `<option value="${u.id}" ${Number(d.responsavel_id) === Number(u.id) ? 'selected' : ''}>${escapeHtml(u.nome)}</option>`).join('');
+    const setorOptions = state.setores.map(s => `<option value="${escapeHtml(s)}" ${d.responsavel_setor === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
+    return `
+        <form class="grid-2" onsubmit="saveAdmin(event, ${Number(d.id)})" style="margin-top:.8rem;">
+            <div class="field">
+                <label>Status</label>
+                <select name="status">${Object.entries(statusLabels).map(([k,v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
             </div>
-            <form id="editForm">
-                <div class="form-group">
-                    <label for="edit-descricao">Descrição *</label>
-                    <textarea id="edit-descricao" name="descricao" rows="4" required>${demanda.descricao || ''}</textarea>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div class="form-group">
-                        <label for="edit-prazo">Prazo *</label>
-                        <input type="date" id="edit-prazo" name="prazo" value="${demanda.prazo}" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="edit-responsavel_id">Responsável *</label>
-                        <select id="edit-responsavel_id" name="responsavel_id" required>
-                            <option value="">Selecione...</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div class="form-group">
-                        <label for="edit-prioridade">Prioridade</label>
-                        <select id="edit-prioridade" name="prioridade">
-                            <option value="baixa" ${demanda.prioridade === 'baixa' ? 'selected' : ''}>Baixa</option>
-                            <option value="media" ${(!demanda.prioridade || demanda.prioridade === 'media') ? 'selected' : ''}>Média</option>
-                            <option value="alta" ${demanda.prioridade === 'alta' ? 'selected' : ''}>Alta</option>
-                            <option value="urgente" ${demanda.prioridade === 'urgente' ? 'selected' : ''}>Urgente</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="edit-categoria">Categoria</label>
-                        <input type="text" id="edit-categoria" name="categoria" value="${demanda.categoria || ''}" placeholder="Ex: Marketing, Vendas...">
-                    </div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div class="form-group">
-                        <label for="edit-progresso">Progresso: <span id="edit-progresso-valor">${demanda.progresso || 0}</span>%</label>
-                        <input type="range" id="edit-progresso" name="progresso" min="0" max="100" value="${demanda.progresso || 0}" oninput="document.getElementById('edit-progresso-valor').textContent = this.value">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="edit-etapa">Etapa</label>
-                        <select id="edit-etapa" name="etapa">
-                            <option value="planejamento" ${(!demanda.etapa || demanda.etapa === 'planejamento') ? 'selected' : ''}>Planejamento</option>
-                            <option value="execucao" ${demanda.etapa === 'execucao' ? 'selected' : ''}>Execução</option>
-                            <option value="revisao" ${demanda.etapa === 'revisao' ? 'selected' : ''}>Revisão</option>
-                            <option value="concluida" ${demanda.etapa === 'concluida' ? 'selected' : ''}>Concluída</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div class="form-group">
-                        <label for="edit-whatsapp">WhatsApp</label>
-                        <input type="text" id="edit-whatsapp" name="whatsapp" value="${demanda.whatsapp || ''}" placeholder="(11) 99999-9999">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="edit-tipo_referencia">Módulo de Referência</label>
-                        <select id="edit-tipo_referencia" name="tipo_referencia">
-                            <option value="">Nenhum</option>
-                            <option value="comercial" ${demanda.tipo_referencia === 'comercial' ? 'selected' : ''}>Comercial</option>
-                            <option value="financeiro" ${demanda.tipo_referencia === 'financeiro' ? 'selected' : ''}>Financeiro</option>
-                            <option value="rh" ${demanda.tipo_referencia === 'rh' ? 'selected' : ''}>RH</option>
-                            <option value="outro" ${demanda.tipo_referencia === 'outro' ? 'selected' : ''}>Outro</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="edit-referencia_externa">Referência Externa</label>
-                    <input type="text" id="edit-referencia_externa" name="referencia_externa" value="${demanda.referencia_externa || ''}" placeholder="Ex: ID do pedido...">
-                </div>
-                
-                <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                    <button type="button" class="btn btn-outline" onclick="document.getElementById('editModal').remove()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Salvar Alterações</button>
-                </div>
-            </form>
-        </div>
+            <div class="field">
+                <label>Prioridade</label>
+                <select name="prioridade">${Object.entries(prioridadeLabels).map(([k,v]) => `<option value="${k}" ${d.prioridade === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+            </div>
+            <div class="field">
+                <label>Prazo</label>
+                <input type="date" name="prazo" value="${escapeHtml(String(d.prazo || '').slice(0, 10))}">
+            </div>
+            <div class="field">
+                <label>Tipo de responsável</label>
+                <select name="responsavel_tipo" onchange="toggleInlineResponsavel(this)">
+                    <option value="usuario" ${d.responsavel_tipo === 'usuario' ? 'selected' : ''}>Usuário</option>
+                    <option value="setor" ${d.responsavel_tipo === 'setor' ? 'selected' : ''}>Setor</option>
+                </select>
+            </div>
+            <div class="field inline-user ${d.responsavel_tipo === 'setor' ? 'hidden' : ''}">
+                <label>Responsável</label>
+                <select name="responsavel_id">${userOptions}</select>
+            </div>
+            <div class="field inline-setor ${d.responsavel_tipo !== 'setor' ? 'hidden' : ''}">
+                <label>Setor</label>
+                <select name="responsavel_setor">${setorOptions}</select>
+            </div>
+            <button class="btn btn-primary" type="submit">Salvar alterações</button>
+        </form>
     `;
-    
-    document.body.appendChild(editModal);
-    editModal.style.display = 'block';
-    
-    // Preencher select de responsáveis
-    const responsavelSelect = document.getElementById('edit-responsavel_id');
-    <?php foreach ($usuarios as $usuario): ?>
-        const opt = document.createElement('option');
-        opt.value = <?= $usuario['id'] ?>;
-        opt.textContent = <?= json_encode($usuario['nome']) ?>;
-        if (demanda.responsavel_id == <?= $usuario['id'] ?>) opt.selected = true;
-        responsavelSelect.appendChild(opt);
-    <?php endforeach; ?>
-    
-    // Submeter formulário
-    document.getElementById('editForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const formData = new FormData(this);
-        const data = {
-            descricao: formData.get('descricao'),
-            prazo: formData.get('prazo'),
-            responsavel_id: parseInt(formData.get('responsavel_id')),
-            whatsapp: formData.get('whatsapp') || null,
-            prioridade: formData.get('prioridade') || 'media',
-            categoria: formData.get('categoria') || null,
-            progresso: parseInt(formData.get('progresso')) || 0,
-            etapa: formData.get('etapa') || 'planejamento',
-            referencia_externa: formData.get('referencia_externa') || null,
-            tipo_referencia: formData.get('tipo_referencia') || null
-        };
-        
-        fetch(`demandas_api.php?action=editar&id=${id}`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data)
-        })
-        .then(response => {
-            return response.text().then(text => {
-                try {
-                    const data = JSON.parse(text);
-                    if (data.success) {
-                        return data;
-                    }
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                    }
-                    return data;
-                } catch (e) {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                    }
-                    return JSON.parse(text);
-                }
-            });
-        })
-        .then(data => {
-            if (data.success) {
-                editModal.remove();
-                carregarDemandas();
-                alert('✅ Demanda atualizada com sucesso!');
-            } else {
-                alert('❌ Erro ao atualizar: ' + (data.error || 'Erro desconhecido'));
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao atualizar:', error);
-            alert('❌ Erro ao conectar com o servidor.');
-        });
-    });
-    
-    // Fechar ao clicar fora
-    editModal.onclick = function(event) {
-        if (event.target === editModal) {
-            editModal.remove();
-        }
-    };
 }
 
-function arquivarDemanda(id) {
-    if (!confirm('Deseja realmente arquivar esta demanda?')) {
+function renderDetail(d, mensagens, anexos) {
+    const responsavel = d.responsavel_tipo === 'setor' ? d.responsavel_setor : d.responsavel_nome;
+    document.getElementById('detail').innerHTML = `
+        <div class="detail-head">
+            <div>
+                <h2>${escapeHtml(d.titulo)}</h2>
+                <div class="demanda-meta">
+                    <span class="pill status-${escapeHtml(d.status)}">${statusLabels[d.status] || d.status}</span>
+                    <span class="pill">${prioridadeLabels[d.prioridade] || d.prioridade}</span>
+                    <span class="pill">Prazo ${formatDate(d.prazo)}</span>
+                    <span class="pill">Responsável: ${escapeHtml(responsavel || '-')}</span>
+                    <span class="pill">Criada por ${escapeHtml(d.criador_nome || '-')}</span>
+                </div>
+                ${d.descricao ? `<p style="margin:.8rem 0 0;color:#4b5563;white-space:pre-wrap;">${escapeHtml(d.descricao)}</p>` : ''}
+                ${d.evento_id ? `
+                    <div class="event-box">
+                        <div><strong>Data do evento</strong><span>${formatDate(d.evento_data)}</span></div>
+                        <div><strong>Local/unidade</strong><span>${escapeHtml(d.evento_local || '-')}</span></div>
+                        <div><strong>Cliente ou evento</strong><span>${escapeHtml(d.evento_nome || '-')}</span></div>
+                        <div><strong>WhatsApp</strong><span>${escapeHtml(d.evento_whatsapp || '-')}</span></div>
+                    </div>
+                ` : ''}
+                ${renderAdminControls(d)}
+            </div>
+            <div class="detail-actions">
+                <button class="btn btn-icon" title="Histórico" onclick="openHistory(${Number(d.id)})">⏱</button>
+            </div>
+        </div>
+        <div class="chat-area" id="chat-area">
+            ${mensagens.length ? mensagens.map(m => `
+                <div class="message">
+                    <strong>${escapeHtml(m.autor_nome || 'Usuário')}</strong>
+                    <time>${formatDateTime(m.criado_em)}</time>
+                    <p>${escapeHtml(m.mensagem)}</p>
+                </div>
+            `).join('') : '<div class="empty-list">Ainda não há mensagens nesta demanda.</div>'}
+        </div>
+        <div class="attachments">
+            ${anexos.length ? anexos.map(a => `
+                <a class="attachment-link" href="${escapeHtml(a.url || '#')}" target="_blank" rel="noopener">${escapeHtml(a.nome_original)}</a>
+            `).join('') : '<span class="pill">Sem anexos</span>'}
+        </div>
+        <form class="composer" onsubmit="sendMessage(event, ${Number(d.id)})">
+            <textarea name="mensagem" placeholder="Escreva uma mensagem. Use @nome ou @setor para citar." required></textarea>
+            <div class="composer-row">
+                <label class="btn">
+                    Anexar arquivo
+                    <input class="hidden" type="file" onchange="uploadAttachment(event, ${Number(d.id)})">
+                </label>
+                <div>
+                    <button class="btn" type="button" onclick="openGallery(${Number(d.id)})">Galeria Smile</button>
+                    <button class="btn" type="button" onclick="forwardDemand(${Number(d.id)})">Encaminhar</button>
+                    <button class="btn btn-primary" type="submit">Enviar</button>
+                </div>
+            </div>
+        </form>
+    `;
+    const chat = document.getElementById('chat-area');
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function toggleInlineResponsavel(select) {
+    const form = select.closest('form');
+    form.querySelector('.inline-user').classList.toggle('hidden', select.value !== 'usuario');
+    form.querySelector('.inline-setor').classList.toggle('hidden', select.value !== 'setor');
+}
+
+async function saveAdmin(event, id) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    data.append('action', 'update');
+    data.append('demanda_id', id);
+    await fetchJson(API, { method: 'POST', body: data });
+    await loadDemandas();
+    await openDetail(id);
+}
+
+async function sendMessage(event, id) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    data.append('action', 'message');
+    data.append('demanda_id', id);
+    await fetchJson(API, { method: 'POST', body: data });
+    form.reset();
+    await openDetail(id);
+}
+
+async function uploadAttachment(event, id) {
+    const file = event.currentTarget.files[0];
+    if (!file) return;
+    const data = new FormData();
+    data.append('action', 'attach');
+    data.append('demanda_id', id);
+    data.append('arquivo', file);
+    try {
+        await fetchJson(API, { method: 'POST', body: data });
+        await openDetail(id);
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        event.currentTarget.value = '';
+    }
+}
+
+let galleryDemandId = null;
+let galleryTimer = null;
+function openGallery(id) {
+    galleryDemandId = id;
+    document.getElementById('gallery-search').value = '';
+    document.getElementById('gallery-results').innerHTML = '<div class="empty-list">Busque uma imagem para anexar.</div>';
+    openModal('gallery-modal');
+}
+
+function searchGallery(query) {
+    clearTimeout(galleryTimer);
+    if (query.trim().length < 2) {
+        document.getElementById('gallery-results').innerHTML = '<div class="empty-list">Digite ao menos 2 caracteres.</div>';
         return;
     }
-    
-    fetch(`demandas_api.php?action=arquivar&id=${id}`, {
-        method: 'DELETE',
-        headers: {
-            'Accept': 'application/json'
-        },
-        credentials: 'same-origin'
-    })
-    .then(response => {
-        return response.text().then(text => {
-            try {
-                const data = JSON.parse(text);
-                if (data.success) return data;
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                return data;
-            } catch (e) {
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                return JSON.parse(text);
-            }
-        });
-    })
-    .then(data => {
-        if (data.success) {
-            carregarDemandas();
-            alert('✅ Demanda arquivada com sucesso!');
-        } else {
-            alert('❌ Erro ao arquivar: ' + (data.error || 'Erro desconhecido'));
+    galleryTimer = setTimeout(async () => {
+        try {
+            const data = await fetchJson(`${API}?action=gallery_search&q=${encodeURIComponent(query)}`);
+            document.getElementById('gallery-results').innerHTML = (data.data || []).map(item => `
+                <div class="event-result" onclick="attachGalleryImage(${Number(item.id)})">
+                    <strong>${escapeHtml(item.nome || 'Imagem')}</strong>
+                    <div style="color:#6b7280;font-size:.82rem;">${escapeHtml(item.categoria || 'Sem categoria')}</div>
+                </div>
+            `).join('') || '<div class="empty-list">Nenhuma imagem encontrada.</div>';
+        } catch (error) {
+            document.getElementById('gallery-results').innerHTML = `<div class="empty-list">${escapeHtml(error.message)}</div>`;
         }
-    })
-    .catch(error => {
-        console.error('Erro ao arquivar:', error);
-        alert('❌ Erro ao arquivar demanda.');
-    });
+    }, 250);
 }
 
-function adicionarComentario(demandaId) {
-    const mensagem = document.getElementById('novo-comentario').value.trim();
-    if (!mensagem) {
-        alert('Por favor, digite um comentário');
-        return;
+async function attachGalleryImage(galleryId) {
+    if (!galleryDemandId) return;
+    const data = new FormData();
+    data.append('action', 'attach_gallery');
+    data.append('demanda_id', galleryDemandId);
+    data.append('gallery_id', galleryId);
+    await fetchJson(API, { method: 'POST', body: data });
+    closeModal('gallery-modal');
+    await openDetail(galleryDemandId);
+}
+
+async function forwardDemand(id) {
+    const tipo = prompt('Encaminhar para "usuario" ou "setor"?', 'usuario');
+    if (!tipo || !['usuario', 'setor'].includes(tipo)) return;
+    const data = new FormData();
+    data.append('action', 'forward');
+    data.append('demanda_id', id);
+    data.append('responsavel_tipo', tipo);
+    if (tipo === 'usuario') {
+        const nome = prompt('Digite parte do nome do novo responsável:');
+        const user = state.usuarios.find(u => String(u.nome).toLowerCase().includes(String(nome || '').toLowerCase()));
+        if (!user) return alert('Usuário não encontrado.');
+        data.append('responsavel_id', user.id);
+    } else {
+        const setor = prompt('Digite o setor:');
+        if (!setor) return;
+        data.append('responsavel_setor', setor);
     }
-    
-    fetch(`demandas_api.php?action=comentario&id=${demandaId}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ mensagem })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            document.getElementById('novo-comentario').value = '';
-            verDetalhes(demandaId); // Recarregar modal
-        } else {
-            alert('Erro ao adicionar comentário: ' + (data.error || 'Erro desconhecido'));
-        }
-    })
-    .catch(error => {
-        console.error('Erro ao adicionar comentário:', error);
-        alert('Erro ao adicionar comentário.');
-    });
+    await fetchJson(API, { method: 'POST', body: data });
+    await loadDemandas();
+    await openDetail(id);
 }
 
-function adicionarAnexoModal(demandaId) {
-    const input = document.getElementById('novo-anexo');
-    const files = input.files;
-    
-    if (files.length === 0) {
-        alert('Por favor, selecione pelo menos um arquivo');
-        return;
-    }
-    
-    Array.from(files).forEach(file => {
-        const formData = new FormData();
-        formData.append('arquivo', file);
-        
-        fetch(`demandas_api.php?action=anexo&id=${demandaId}`, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                input.value = '';
-                verDetalhes(demandaId); // Recarregar modal
-            } else {
-                alert('Erro ao adicionar anexo: ' + (data.error || 'Erro desconhecido'));
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao adicionar anexo:', error);
-            alert('Erro ao adicionar anexo.');
-        });
-    });
-}
-
-function deletarAnexo(anexoId, demandaId) {
-    if (!confirm('Deseja realmente excluir este anexo?')) {
-        return;
-    }
-    
-    fetch(`demandas_api.php?action=deletar_anexo&id=${anexoId}`, {
-        method: 'DELETE',
-        headers: {
-            'Accept': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            verDetalhes(demandaId); // Recarregar modal
-        } else {
-            alert('Erro ao excluir anexo: ' + (data.error || 'Erro desconhecido'));
-        }
-    })
-    .catch(error => {
-        console.error('Erro ao excluir anexo:', error);
-        alert('Erro ao excluir anexo.');
-    });
-}
-
-function downloadAnexo(id) {
-    fetch(`demandas_api.php?action=anexo&id=${id}`)
-        .then(response => {
-            return response.text().then(text => {
-                try {
-                    const data = JSON.parse(text);
-                    if (data.success) {
-                        return data;
-                    }
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return data;
-                } catch (e) {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return JSON.parse(text);
-                }
-            });
-        })
-        .then(data => {
-            if (data.success || data.url) {
-                window.open(data.url || data, '_blank');
-            } else {
-                alert('Erro ao baixar arquivo: ' + (data.error || 'Erro desconhecido'));
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao baixar anexo:', error);
-            alert('Erro ao baixar arquivo.');
-        });
+async function openHistory(id) {
+    const data = await fetchJson(`${API}?action=history&id=${id}`);
+    document.getElementById('history-list').innerHTML = (data.data || []).length
+        ? data.data.map(item => `
+            <div class="history-item">
+                <strong>${escapeHtml(item.resumo)}</strong>
+                <div style="color:#6b7280;font-size:.82rem;margin-top:.25rem;">${escapeHtml(item.usuario_nome || 'Sistema')} • ${formatDateTime(item.criado_em)}</div>
+            </div>
+        `).join('')
+        : '<div class="empty-list">Sem histórico registrado.</div>';
+    openModal('history-modal');
 }
 
 function openCreateModal() {
-    document.getElementById('createModal').style.display = 'block';
+    document.getElementById('create-form').reset();
+    toggleResponsavelFields('create');
+    toggleEventSearch();
+    openModal('create-modal');
 }
 
-function closeCreateModal() {
-    document.getElementById('createModal').style.display = 'none';
-    document.getElementById('createForm').reset();
-}
-
-function closeDetailModal() {
-    document.getElementById('detailModal').style.display = 'none';
-}
-
-// Fechar modais ao clicar fora
-        window.onclick = function(event) {
-    const createModal = document.getElementById('createModal');
-    const detailModal = document.getElementById('detailModal');
-    
-    if (event.target === createModal) {
-        closeCreateModal();
-    }
-    if (event.target === detailModal) {
-        closeDetailModal();
-    }
-}
-
-// Formulário de criação
-document.getElementById('createForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    
-    // Validação client-side
-    if (!formData.get('descricao') || !formData.get('prazo') || !formData.get('responsavel_id')) {
-        alert('Por favor, preencha todos os campos obrigatórios (Descrição, Prazo e Responsável)');
-        return;
-    }
-    
-    // Criar objeto JSON com dados (anexos serão enviados separadamente se houver)
-    const anexosFiles = formData.getAll('anexos[]');
-    const hasAnexos = anexosFiles.length > 0 && anexosFiles[0].size > 0;
-    
-    let requestPromise;
-    
-    if (hasAnexos) {
-        // Enviar FormData completo (com arquivos)
-        requestPromise = fetch('demandas_api.php', {
-            method: 'POST',
-            body: formData
-        });
-    } else {
-        // Enviar JSON (mais rápido)
-        const data = {
-            descricao: formData.get('descricao'),
-            prazo: formData.get('prazo'),
-            responsavel_id: parseInt(formData.get('responsavel_id')),
-            whatsapp: formData.get('whatsapp') || '',
-            prioridade: formData.get('prioridade') || 'media',
-            categoria: formData.get('categoria') || null,
-            progresso: parseInt(formData.get('progresso')) || 0,
-            etapa: formData.get('etapa') || 'planejamento',
-            referencia_externa: formData.get('referencia_externa') || null,
-            tipo_referencia: formData.get('tipo_referencia') || null
-        };
-        
-        requestPromise = fetch('demandas_api.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data)
-        });
-    }
-    
-    requestPromise
-    .then(response => {
-        console.log('Response status:', response.status);
-        return response.text().then(text => {
-            try {
-                const data = JSON.parse(text);
-                if (data.success) {
-                    return data;
-                }
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                return data;
-            } catch (e) {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-                }
-                return JSON.parse(text);
-            }
-        });
-    })
-    .then(data => {
-        console.log('Response data:', data);
-        if (data.success) {
-            closeCreateModal();
-            carregarDemandas();
-            alert('✅ Demanda criada com sucesso!');
-            
-            // Se houver anexos e demanda foi criada, enviar anexos
-            if (hasAnexos && data.data && data.data.id) {
-                enviarAnexos(data.data.id, anexosFiles);
-            }
-        } else {
-            const errorMsg = data.error || 'Erro desconhecido';
-            alert('❌ Erro ao criar demanda: ' + errorMsg);
-        }
-    })
-    .catch(error => {
-        console.error('Erro na requisição:', error);
-        alert('❌ Erro ao conectar com o servidor. Verifique o console para mais detalhes.');
-    });
+document.getElementById('tabs').addEventListener('click', event => {
+    const button = event.target.closest('.demandas-tab');
+    if (!button) return;
+    state.tab = button.dataset.tab;
+    document.querySelectorAll('.demandas-tab').forEach(tab => tab.classList.toggle('active', tab === button));
+    document.getElementById('admin-filter').style.display = state.tab === 'demais' ? 'block' : 'none';
+    loadDemandas();
 });
 
-function enviarAnexos(demandaId, arquivos) {
-    Array.from(arquivos).forEach(arquivo => {
-        if (arquivo.size === 0) return;
-        
-        const formDataAnexo = new FormData();
-        formDataAnexo.append('arquivo', arquivo);
-        
-        fetch(`demandas_api.php?action=anexo&id=${demandaId}`, {
-            method: 'POST',
-            body: formDataAnexo
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                console.error('Erro ao enviar anexo:', data.error);
-            }
-        })
-        .catch(error => console.error('Erro ao enviar anexo:', error));
-    });
-        }
-    </script>
+document.getElementById('create-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    data.append('action', 'create');
+    try {
+        const result = await fetchJson(API, { method: 'POST', body: data });
+        closeModal('create-modal');
+        await loadDemandas();
+        await openDetail(result.id);
+    } catch (error) {
+        alert(error.message);
+    }
+});
+
+let eventSearchTimer = null;
+function searchEvents(query) {
+    clearTimeout(eventSearchTimer);
+    if (query.trim().length < 2) {
+        document.getElementById('event-results').innerHTML = '';
+        return;
+    }
+    eventSearchTimer = setTimeout(async () => {
+        const data = await fetchJson(`${API}?action=event_search&q=${encodeURIComponent(query)}`);
+        document.getElementById('event-results').innerHTML = (data.data || []).map(item => `
+            <div class="event-result" onclick='selectEvent(${JSON.stringify(item).replace(/'/g, '&#039;')})'>
+                <strong>${escapeHtml(item.nome || 'Evento')}</strong>
+                <div style="color:#6b7280;font-size:.82rem;">${formatDate(item.data_evento)} • ${escapeHtml(item.local || 'Local não informado')} • ${escapeHtml(item.whatsapp || 'Sem WhatsApp')}</div>
+            </div>
+        `).join('') || '<div class="empty-list">Nenhum evento encontrado.</div>';
+    }, 250);
+}
+
+function selectEvent(item) {
+    document.getElementById('evento-tipo').value = item.tipo || '';
+    document.getElementById('evento-id').value = item.id || '';
+    document.getElementById('evento-data').value = item.data_evento ? String(item.data_evento).slice(0, 10) : '';
+    document.getElementById('evento-local').value = item.local || '';
+    document.getElementById('evento-nome').value = item.nome || '';
+    document.getElementById('evento-whatsapp').value = item.whatsapp || '';
+    document.getElementById('event-results').innerHTML = `
+        <div class="event-result">
+            <strong>Selecionado: ${escapeHtml(item.nome || 'Evento')}</strong>
+            <div style="color:#6b7280;font-size:.82rem;">${formatDate(item.data_evento)} • ${escapeHtml(item.local || 'Local não informado')}</div>
+        </div>
+    `;
+}
+
+bootstrap().catch(error => {
+    document.getElementById('demandas-list').innerHTML = `<div class="empty-list">${escapeHtml(error.message)}</div>`;
+});
+</script>
 
 <?php endSidebar(); ?>

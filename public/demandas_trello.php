@@ -1,7 +1,7 @@
 <?php
 /**
  * demandas_trello.php
- * Interface estilo Trello para sistema de Demandas
+ * Interface estilo Trello
  * REFATORADO: UI completa com sidebar interna, drawer de fixas, notificações aprimoradas
  */
 if (session_status() === PHP_SESSION_NONE) {
@@ -28,12 +28,12 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 // Buscar quadros disponíveis para sidebar
 $board_id = isset($_GET['board_id']) ? (int)$_GET['board_id'] : null;
 
-includeSidebar('Demandas');
+includeSidebar('Trello');
 ?>
 
 <style>
 /* ============================================
-   SCOPO: Página Demandas (.page-demandas)
+   SCOPO: Página Trello (.page-demandas)
    ============================================ */
 .page-demandas {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -1146,7 +1146,7 @@ includeSidebar('Demandas');
 <div class="page-demandas">
     <!-- Header Limpo -->
     <div class="page-demandas-header">
-        <h1>📋 Demandas</h1>
+        <h1>📌 Trello</h1>
         <div class="page-demandas-header-actions">
             <button class="btn btn-primary" onclick="abrirModalNovoCard()">➕ Novo Card</button>
             <div class="page-demandas-quadros-menu">
@@ -1161,7 +1161,7 @@ includeSidebar('Demandas');
                 </div>
             </div>
             <button class="btn btn-outline" onclick="abrirModalNovaLista()">📋 Nova Lista</button>
-            <button class="btn btn-outline" onclick="toggleDrawerFixas()">📅 Demandas Fixas</button>
+            <button class="btn btn-outline" onclick="toggleDrawerFixas()">📅 Cards Fixos</button>
             <button class="btn btn-outline" id="btn-density-toggle" type="button">↔ Modo compacto</button>
             <button class="btn-icon" onclick="toggleMenuActions()" aria-label="Mais ações">⋯</button>
         </div>
@@ -1216,11 +1216,11 @@ includeSidebar('Demandas');
     </button>
 </div>
 
-<!-- Drawer de Demandas Fixas -->
+<!-- Drawer de Cards Fixos -->
 <div id="drawer-fixas-overlay" class="page-demandas-drawer-overlay" onclick="toggleDrawerFixas()"></div>
 <div id="drawer-fixas" class="page-demandas-drawer">
     <div class="page-demandas-drawer-header">
-        <h2 style="margin: 0; font-size: 1.25rem;">📅 Demandas Fixas</h2>
+        <h2 style="margin: 0; font-size: 1.25rem;">📅 Cards Fixos</h2>
         <button class="page-demandas-drawer-close" onclick="toggleDrawerFixas()">&times;</button>
     </div>
     <div class="page-demandas-drawer-content" id="drawer-fixas-content">
@@ -1884,7 +1884,7 @@ function selecionarQuadro(boardId) {
             renderizarSidebarQuadros();
             atualizarHeaderQuadro();
             carregarListas(fallbackId);
-            window.history.replaceState({}, '', `?page=demandas&board_id=${fallbackId}`);
+            window.history.replaceState({}, '', `?page=trello&board_id=${fallbackId}`);
         } else {
             currentBoardId = null;
             currentBoard = null;
@@ -1907,7 +1907,7 @@ function selecionarQuadro(boardId) {
     renderizarSidebarQuadros();
     atualizarHeaderQuadro();
     carregarListas(boardId);
-    window.history.replaceState({}, '', `?page=demandas&board_id=${boardId}`);
+    window.history.replaceState({}, '', `?page=trello&board_id=${boardId}`);
 }
 
 function atualizarHeaderQuadro() {

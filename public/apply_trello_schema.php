@@ -55,7 +55,7 @@ header('Content-Type: text/html; charset=utf-8');
     </style>
 </head>
 <body>
-    <h1>📦 Aplicar Schema Trello - Sistema de Demandas</h1>
+    <h1>📦 Aplicar Schema Trello</h1>
     
     <?php
     $sqlFile = __DIR__ . '/../sql/018_demandas_trello_create.sql';
@@ -183,7 +183,6 @@ header('Content-Type: text/html; charset=utf-8');
     ?>
     
     <hr>
-    <p><a href="index.php?page=demandas">← Voltar para Demandas</a></p>
+    <p><a href="index.php?page=trello">← Voltar para Trello</a></p>
 </body>
 </html>
-
