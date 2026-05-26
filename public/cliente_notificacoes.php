@@ -7,6 +7,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+if (empty($_GET['page'])) {
+    $_GET['page'] = 'cliente_notificacoes';
+}
+
 if (empty($_SESSION['logado']) || (empty($_SESSION['perm_configuracoes']) && empty($_SESSION['perm_administrativo']) && empty($_SESSION['perm_superadmin']))) {
     header('Location: index.php?page=login');
     exit;
