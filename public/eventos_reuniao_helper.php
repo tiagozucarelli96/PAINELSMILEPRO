@@ -1660,10 +1660,6 @@ function eventos_form_template_arquivar(PDO $pdo, int $template_id): array {
     return ['ok' => true];
 }
 
-if (isset($pdo) && $pdo instanceof PDO) {
-    eventos_reuniao_ensure_schema($pdo);
-}
-
 /**
  * Buscar ou criar reunião para um evento ME
  */

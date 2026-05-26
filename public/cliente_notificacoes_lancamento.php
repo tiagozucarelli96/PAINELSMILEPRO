@@ -4,7 +4,7 @@
  */
 if (isset($_GET['codex_probe']) && $_GET['codex_probe'] === '1') {
     header('Content-Type: text/plain; charset=utf-8');
-    echo 'cliente-notificacoes-lancamento-v1';
+    echo 'cliente-notificacoes-lancamento-v2';
     exit;
 }
 
