@@ -2,6 +2,8 @@
 /**
  * Rota dedicada para o modelo de lançamento do Portal do Cliente.
  */
+define('CLIENTE_NOTIFICACOES_PORTAL_ROUTE', true);
+
 $_GET['page'] = 'cliente_notificacoes';
 $_GET['modelo'] = '26';
 $_GET['modelo_chave'] = 'portal_cliente_lancamento';

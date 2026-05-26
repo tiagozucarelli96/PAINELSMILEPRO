@@ -206,6 +206,15 @@ if (empty($erro)) {
             }
         }
     }
+
+    if (defined('CLIENTE_NOTIFICACOES_PORTAL_ROUTE') && CLIENTE_NOTIFICACOES_PORTAL_ROUTE) {
+        $modeloPortal = cliente_notificacoes_get_modelo($pdo, 'portal_cliente_lancamento');
+        if ($modeloPortal) {
+            $modeloAtual = $modeloPortal;
+            $enviosRecentes = [];
+            $publicoCampanhaConsultado = isset($_GET['consultar_publico']) || ($_POST['acao'] ?? '') === 'enviar_campanha_portal';
+        }
+    }
 }
 
 $codigos = cliente_notificacoes_codigos();
