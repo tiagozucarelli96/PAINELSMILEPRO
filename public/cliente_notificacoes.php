@@ -142,39 +142,35 @@ if (empty($erro)) {
     $modeloChave = trim((string)($_GET['modelo_chave'] ?? $_GET['chave'] ?? ''));
     $modeloChaveNormalizada = strtolower($modeloChave);
 
-    $stmtModelos = $pdo->prepare("
+    $modelos = $pdo->query("
         SELECT id, chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto
         FROM cliente_notificacao_modelos
-        ORDER BY
-            CASE
-                WHEN :modelo_chave_filtro <> '' AND chave = :modelo_chave_match THEN 0
-                WHEN :modelo_id_filtro > 0 AND id = :modelo_id_match THEN 0
-                ELSE 1
-            END,
-            id ASC
-    ");
-    $stmtModelos->bindValue(':modelo_chave_filtro', $modeloChave);
-    $stmtModelos->bindValue(':modelo_chave_match', $modeloChave);
-    $stmtModelos->bindValue(':modelo_id_filtro', $modeloId, PDO::PARAM_INT);
-    $stmtModelos->bindValue(':modelo_id_match', $modeloId, PDO::PARAM_INT);
-    $stmtModelos->execute();
-    $modelos = $stmtModelos->fetchAll(PDO::FETCH_ASSOC);
+        ORDER BY id ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
     $modeloAtual = null;
-    foreach ($modelos as $modelo) {
-        $chaveModelo = strtolower(trim((string)($modelo['chave'] ?? '')));
-        if ($modeloChaveNormalizada !== '' && $chaveModelo === $modeloChaveNormalizada) {
-            $modeloAtual = $modelo;
-            break;
-        }
+    if ($modeloChaveNormalizada !== '') {
+        $stmtModeloChave = $pdo->prepare("
+            SELECT id, chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto
+            FROM cliente_notificacao_modelos
+            WHERE LOWER(TRIM(chave)) = :chave
+            LIMIT 1
+        ");
+        $stmtModeloChave->execute([':chave' => $modeloChaveNormalizada]);
+        $modeloAtual = $stmtModeloChave->fetch(PDO::FETCH_ASSOC) ?: null;
     }
+
     if ($modeloAtual === null && $modeloId > 0) {
-        foreach ($modelos as $modelo) {
-            if ((int)$modelo['id'] === $modeloId) {
-                $modeloAtual = $modelo;
-                break;
-            }
-        }
+        $stmtModeloId = $pdo->prepare("
+            SELECT id, chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto
+            FROM cliente_notificacao_modelos
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stmtModeloId->execute([':id' => $modeloId]);
+        $modeloAtual = $stmtModeloId->fetch(PDO::FETCH_ASSOC) ?: null;
     }
+
     if ($modeloAtual === null) {
         $modeloAtual = $modelos[0] ?? null;
     }
