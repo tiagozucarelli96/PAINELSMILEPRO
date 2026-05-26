@@ -150,14 +150,7 @@ if (empty($erro)) {
 
     $modeloAtual = null;
     if ($modeloChaveNormalizada !== '') {
-        $stmtModeloChave = $pdo->prepare("
-            SELECT id, chave, nome, descricao, gatilho, ativo, envio_automatico, canal_email, assunto, mensagem_texto, botao_texto
-            FROM cliente_notificacao_modelos
-            WHERE LOWER(TRIM(chave)) = :chave
-            LIMIT 1
-        ");
-        $stmtModeloChave->execute([':chave' => $modeloChaveNormalizada]);
-        $modeloAtual = $stmtModeloChave->fetch(PDO::FETCH_ASSOC) ?: null;
+        $modeloAtual = cliente_notificacoes_get_modelo($pdo, $modeloChave);
     }
 
     if ($modeloAtual === null && $modeloId > 0) {
