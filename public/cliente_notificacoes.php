@@ -21,7 +21,7 @@ if (
     && basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) !== 'cliente_notificacoes_portal_v2.php'
 ) {
     unset($rawQueryParams['modelo_chave'], $rawQueryParams['chave'], $rawQueryParams['page']);
-    $redirectUrl = 'cliente_notificacoes_portal_v2.php';
+    $redirectUrl = 'cliente_notificacoes_lancamento.php';
     if (!empty($rawQueryParams)) {
         $redirectUrl .= '?' . http_build_query($rawQueryParams);
     }
@@ -308,7 +308,7 @@ ob_start();
             </div>
             <div class="notif-list">
                 <?php foreach ($modelos as $modelo): ?>
-                    <?php $modeloHref = ((string)$modelo['chave'] === 'portal_cliente_lancamento') ? 'cliente_notificacoes_portal_v2.php' : ('cliente_notificacoes.php?modelo_chave=' . urlencode((string)$modelo['chave'])); ?>
+                    <?php $modeloHref = ((string)$modelo['chave'] === 'portal_cliente_lancamento') ? 'cliente_notificacoes_lancamento.php' : ('cliente_notificacoes.php?modelo_chave=' . urlencode((string)$modelo['chave'])); ?>
                     <a class="notif-list-item <?= (int)$modelo['id'] === (int)$modeloAtual['id'] ? 'active' : '' ?>" href="<?= h($modeloHref) ?>">
                         <strong><?= h($modelo['nome']) ?></strong>
                         <small><?= h($modelo['gatilho'] ?: $modelo['descricao']) ?></small>
