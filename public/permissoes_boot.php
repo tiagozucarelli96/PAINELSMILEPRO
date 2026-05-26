@@ -24,7 +24,7 @@ try {
   // chaves que seu dashboard2 espera - APENAS PERMISSÕES ATIVAS
   $permKeys = [
     // Permissões existentes (ainda em uso)
-    'perm_tarefas','perm_lista','perm_demandas','perm_pagamentos','perm_usuarios',
+    'perm_tarefas','perm_lista','perm_demandas','perm_trello','perm_pagamentos','perm_usuarios',
     'perm_portao','perm_notas_fiscais',
     'perm_dados_contrato','perm_uso_fiorino',
     // Logística (novo módulo)

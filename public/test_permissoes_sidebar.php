@@ -169,6 +169,7 @@ require_once __DIR__ . '/permissoes_boot.php';
             'perm_pessoal' => 'Pessoal',
             'perm_agenda' => 'Agenda',
             'perm_demandas' => 'Demandas',
+            'perm_trello' => 'Trello',
             'perm_comercial' => 'Comercial',
             'perm_eventos' => 'Eventos',
             'perm_eventos_realizar' => 'Realizar evento',
@@ -355,6 +356,7 @@ require_once __DIR__ . '/permissoes_boot.php';
                 $icone = [
                     'perm_agenda' => '📅',
                     'perm_demandas' => '📝',
+                    'perm_trello' => '📌',
                     'perm_comercial' => '📋',
                     'perm_eventos' => '🎉',
                     'perm_eventos_realizar' => '✅',

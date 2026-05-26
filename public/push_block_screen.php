@@ -18,6 +18,7 @@ $is_internal = $is_superadmin
     || !empty($_SESSION['perm_administrativo'])
     || !empty($_SESSION['perm_agenda'])
     || !empty($_SESSION['perm_demandas'])
+    || !empty($_SESSION['perm_trello'])
     || !empty($_SESSION['perm_comercial'])
     || !empty($_SESSION['perm_logistico'])
     || !empty($_SESSION['perm_configuracoes'])

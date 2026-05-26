@@ -90,6 +90,7 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
         'perm_eventos_realizar',
         'perm_notificacoes_eventos',
         'perm_agenda_eventos',
+        'perm_trello',
         'perm_vendas_administracao',
         'perm_marketing',
         'perm_smile_chat',
@@ -128,6 +129,7 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
             'perm_eventos_realizar' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE",
             'perm_notificacoes_eventos' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_notificacoes_eventos BOOLEAN DEFAULT FALSE",
             'perm_agenda_eventos' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE",
+            'perm_trello' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_trello BOOLEAN DEFAULT FALSE",
             'perm_vendas_administracao' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_vendas_administracao BOOLEAN DEFAULT FALSE",
             'perm_marketing' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE",
             'perm_smile_chat' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_smile_chat BOOLEAN DEFAULT FALSE",
@@ -1437,7 +1439,7 @@ ob_start();
         <?php 
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
-            'perm_superadmin', 'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_marketing', 'perm_eventos', 'perm_eventos_realizar', 'perm_notificacoes_eventos', 'perm_logistico',
+            'perm_superadmin', 'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_trello', 'perm_comercial', 'perm_marketing', 'perm_eventos', 'perm_eventos_realizar', 'perm_notificacoes_eventos', 'perm_logistico',
             'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao',
             'perm_portao'
         ];
@@ -1612,6 +1614,7 @@ ob_start();
                     'perm_agenda' => '📅 Agenda',
                     'perm_agenda_eventos' => '🗓️ Agenda de eventos',
                     'perm_demandas' => '📝 Demandas',
+                    'perm_trello' => '📌 Trello',
                     'perm_comercial' => '📋 Comercial',
                     'perm_marketing' => '📣 Marketing',
                     'perm_eventos' => '🎉 Eventos',
@@ -1633,6 +1636,7 @@ ob_start();
                     'perm_agenda',
                     'perm_agenda_eventos',
                     'perm_demandas',
+                    'perm_trello',
                     'perm_comercial',
                     'perm_marketing',
                     'perm_eventos',

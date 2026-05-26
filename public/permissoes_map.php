@@ -18,7 +18,7 @@ return [
     // Módulos principais da sidebar
     'agenda' => 'perm_agenda',
     'demandas' => 'perm_demandas',
-    'trello' => 'perm_demandas',
+    'trello' => 'perm_trello',
     'comercial' => 'perm_comercial',
     'marketing' => 'perm_marketing',
     // 'logistico' => 'perm_logistico', // REMOVIDO: Módulo desativado

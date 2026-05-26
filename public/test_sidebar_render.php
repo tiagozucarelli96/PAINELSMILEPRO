@@ -25,6 +25,7 @@ function testarSidebar($permissoes_sessao) {
         'Pessoal' => 'perm_pessoal',
         'Agenda' => 'perm_agenda',
         'Demandas' => 'perm_demandas',
+        'Trello' => 'perm_trello',
         'Comercial' => 'perm_comercial',
         'Eventos' => 'perm_eventos',
         'Realizar evento' => 'perm_eventos_realizar',
@@ -66,7 +67,7 @@ function testarSidebar($permissoes_sessao) {
 // Testar com as permissões atuais
 $permissoes_atual = [];
 $permissoes_sidebar = [
-    'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_eventos_realizar',
+    'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_trello', 'perm_comercial', 'perm_eventos', 'perm_eventos_realizar',
     // 'perm_logistico', // REMOVIDO: Módulo desativado
     'perm_configuracoes', 'perm_cadastros', 'perm_financeiro',
     'perm_administrativo', 'perm_portao'

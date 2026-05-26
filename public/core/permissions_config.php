@@ -9,6 +9,7 @@
  * - Agenda: perm_agenda
  * - Agenda de eventos: perm_agenda_eventos
  * - Demandas: perm_demandas
+ * - Trello: perm_trello
  * - Comercial: perm_comercial
  * - Marketing: perm_marketing
  * - Eventos: perm_eventos
@@ -41,7 +42,12 @@ define('SYSTEM_PERMISSIONS', [
     'perm_demandas' => [
         'label' => 'Demandas',
         'icon' => '📝',
-        'description' => 'Acesso ao quadro de demandas e tarefas'
+        'description' => 'Acesso ao módulo de solicitações internas'
+    ],
+    'perm_trello' => [
+        'label' => 'Trello',
+        'icon' => '📌',
+        'description' => 'Acesso ao quadro Trello de cards e listas'
     ],
     'perm_comercial' => [
         'label' => 'Comercial',
@@ -150,6 +156,7 @@ function user_can_access(string $module): bool {
         'agenda' => 'perm_agenda',
         'agenda_eventos' => 'perm_agenda_eventos',
         'demandas' => 'perm_demandas',
+        'trello' => 'perm_trello',
         'comercial' => 'perm_comercial',
         'marketing' => 'perm_marketing',
         'eventos' => 'perm_eventos',

@@ -1285,12 +1285,15 @@ if ($current_page === 'dashboard') {
                     Agenda Geral
                 </a>
                 <?php endif; ?>
-                
+
                 <?php if (!empty($_SESSION['perm_demandas'])): ?>
                 <a href="index.php?page=demandas" class="nav-item <?= isActiveUnified('demandas') ?>">
                     <span class="nav-item-icon">📝</span>
                     Demandas
                 </a>
+                <?php endif; ?>
+
+                <?php if (!empty($_SESSION['perm_trello'])): ?>
                 <a href="index.php?page=trello" class="nav-item <?= isActiveUnified('trello') ?>">
                     <span class="nav-item-icon">📌</span>
                     Trello
