@@ -138,8 +138,10 @@ $enviosRecentes = [];
 $publicoCampanha = [];
 $publicoCampanhaConsultado = false;
 if (empty($erro)) {
-    $modeloId = (int)($_GET['modelo'] ?? 0);
-    $modeloChave = trim((string)($_GET['modelo_chave'] ?? $_GET['chave'] ?? ''));
+    $queryParams = [];
+    parse_str((string)($_SERVER['QUERY_STRING'] ?? ''), $queryParams);
+    $modeloId = (int)($queryParams['modelo'] ?? $_GET['modelo'] ?? 0);
+    $modeloChave = trim((string)($queryParams['modelo_chave'] ?? $queryParams['chave'] ?? $_GET['modelo_chave'] ?? $_GET['chave'] ?? ''));
     $modeloChaveNormalizada = strtolower($modeloChave);
 
     $modelos = $pdo->query("
