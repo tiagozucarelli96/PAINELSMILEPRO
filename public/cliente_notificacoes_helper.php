@@ -499,7 +499,91 @@ function cliente_notificacoes_me_cliente_email_por_id(PDO $pdo, int $clientId): 
     return cliente_notificacoes_extrair_email_payload(is_array($client) ? $client : []);
 }
 
-function cliente_notificacoes_me_evento_email_cliente_completo(PDO $pdo, array $event, string $emailAtual = ''): string
+function cliente_notificacoes_me_clientes_emails_por_ids(PDO $pdo, array $clientIds): array
+{
+    cliente_notificacoes_require_eventos_helpers();
+
+    $clientIds = array_values(array_unique(array_filter(array_map('intval', $clientIds), static fn($id) => $id > 0)));
+    if (empty($clientIds)) {
+        return [];
+    }
+
+    $emails = [];
+    $pendentes = [];
+    foreach ($clientIds as $clientId) {
+        $cacheKey = 'cliente_notif_me_client_' . $clientId;
+        $cached = eventos_me_cache_get($pdo, $cacheKey);
+        if ($cached !== null) {
+            $email = cliente_notificacoes_extrair_email_payload(is_array($cached) ? $cached : []);
+            if ($email !== '') {
+                $emails[$clientId] = $email;
+            }
+            continue;
+        }
+        $pendentes[] = $clientId;
+    }
+
+    if (empty($pendentes)) {
+        return $emails;
+    }
+
+    $cfg = eventos_me_get_config();
+    if (($cfg['base'] ?? '') === '' || ($cfg['token'] ?? '') === '') {
+        return $emails;
+    }
+
+    foreach (array_chunk($pendentes, 12) as $chunk) {
+        $multi = curl_multi_init();
+        $handles = [];
+        foreach ($chunk as $clientId) {
+            $ch = curl_init($cfg['base'] . '/api/v1/clients/' . $clientId);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT => 8,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: ' . $cfg['token'],
+                    'Accept: application/json',
+                    'Content-Type: application/json',
+                ],
+            ]);
+            curl_multi_add_handle($multi, $ch);
+            $handles[spl_object_id($ch)] = ['handle' => $ch, 'client_id' => $clientId];
+        }
+
+        $running = null;
+        do {
+            $status = curl_multi_exec($multi, $running);
+            if ($running) {
+                curl_multi_select($multi, 1.0);
+            }
+        } while ($running && $status === CURLM_OK);
+
+        foreach ($handles as $info) {
+            $ch = $info['handle'];
+            $clientId = (int)$info['client_id'];
+            $raw = curl_multi_getcontent($ch);
+            $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $payload = [];
+            if ($code >= 200 && $code < 300 && is_string($raw) && $raw !== '') {
+                $decoded = json_decode($raw, true);
+                $payload = is_array($decoded) ? $decoded : [];
+                $email = cliente_notificacoes_extrair_email_payload($payload);
+                if ($email !== '') {
+                    $emails[$clientId] = $email;
+                }
+            }
+            eventos_me_cache_set($pdo, 'cliente_notif_me_client_' . $clientId, $payload, 10);
+            curl_multi_remove_handle($multi, $ch);
+            curl_close($ch);
+        }
+        curl_multi_close($multi);
+    }
+
+    return $emails;
+}
+
+function cliente_notificacoes_me_evento_email_cliente_completo(PDO $pdo, array $event, string $emailAtual = '', array $clientEmailMap = [], bool $buscarDetalheEvento = true): string
 {
     cliente_notificacoes_require_eventos_helpers();
 
@@ -509,9 +593,17 @@ function cliente_notificacoes_me_evento_email_cliente_completo(PDO $pdo, array $
     }
 
     $clientId = cliente_notificacoes_me_evento_cliente_id($event);
+    if ($clientId > 0 && !empty($clientEmailMap[$clientId]) && filter_var($clientEmailMap[$clientId], FILTER_VALIDATE_EMAIL)) {
+        return (string)$clientEmailMap[$clientId];
+    }
+
     $emailCliente = cliente_notificacoes_me_cliente_email_por_id($pdo, $clientId);
     if ($emailCliente !== '') {
         return $emailCliente;
+    }
+
+    if (!$buscarDetalheEvento) {
+        return $emailAtual;
     }
 
     $meEventId = cliente_notificacoes_me_evento_id($event);
@@ -779,6 +871,10 @@ function cliente_notificacoes_buscar_publico_portal_lancamento(PDO $pdo, int $li
             $eventIds[] = $id;
         }
     }
+    $clientEmailMap = cliente_notificacoes_me_clientes_emails_por_ids(
+        $pdo,
+        array_map(static fn($event) => cliente_notificacoes_me_evento_cliente_id($event), $events)
+    );
 
     $locais = cliente_notificacoes_locais_por_me_evento($pdo, $eventIds);
     $enviados = cliente_notificacoes_envios_enviados_por_me($pdo);
@@ -805,7 +901,7 @@ function cliente_notificacoes_buscar_publico_portal_lancamento(PDO $pdo, int $li
         if ($email === '') {
             $email = cliente_notificacoes_me_evento_email_cliente($event);
         }
-        $email = cliente_notificacoes_me_evento_email_cliente_completo($pdo, $event, $email);
+        $email = cliente_notificacoes_me_evento_email_cliente_completo($pdo, $event, $email, $clientEmailMap, false);
 
         $nomeCliente = trim((string)($local['nome_completo'] ?? ''));
         if ($nomeCliente === '') {
