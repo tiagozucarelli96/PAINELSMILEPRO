@@ -365,6 +365,140 @@ function cliente_notificacoes_me_evento_email_cliente(array $event): string
     ]);
 }
 
+function cliente_notificacoes_me_normalizar_payload_cliente($payload): array
+{
+    if (!is_array($payload)) {
+        return [];
+    }
+
+    $isList = static function (array $value): bool {
+        return $value === [] || array_keys($value) === range(0, count($value) - 1);
+    };
+
+    $current = $payload;
+    for ($i = 0; $i < 3; $i++) {
+        if (!isset($current['data']) || !is_array($current['data'])) {
+            break;
+        }
+        $data = $current['data'];
+        if ($data === []) {
+            return [];
+        }
+        $current = $isList($data) ? ($data[0] ?? []) : $data;
+        if (!is_array($current)) {
+            return [];
+        }
+    }
+
+    if (isset($current['client']) && is_array($current['client'])) {
+        $current = $current['client'];
+    }
+
+    if ($isList($current)) {
+        $first = $current[0] ?? [];
+        return is_array($first) ? $first : [];
+    }
+
+    return $current;
+}
+
+function cliente_notificacoes_extrair_email_payload($payload): string
+{
+    if (!is_array($payload)) {
+        return '';
+    }
+
+    $camposEmail = [
+        'email',
+        'emailcliente',
+        'emailCliente',
+        'cliente_email',
+        'clienteEmail',
+        'contato_email',
+        'contatoEmail',
+        'email_contato',
+        'emailContato',
+        'e_mail',
+        'e-mail',
+        'mail',
+        'correio',
+        'correio_eletronico',
+    ];
+
+    $fila = [$payload];
+    $normalizado = cliente_notificacoes_me_normalizar_payload_cliente($payload);
+    if (!empty($normalizado)) {
+        $fila[] = $normalizado;
+    }
+
+    while (!empty($fila)) {
+        $atual = array_shift($fila);
+        if (!is_array($atual)) {
+            continue;
+        }
+
+        foreach ($camposEmail as $campo) {
+            if (!isset($atual[$campo]) || !is_string($atual[$campo])) {
+                continue;
+            }
+            $email = trim($atual[$campo]);
+            if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return $email;
+            }
+        }
+
+        foreach ($atual as $valor) {
+            if (is_string($valor)) {
+                $email = trim($valor);
+                if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    return $email;
+                }
+            } elseif (is_array($valor)) {
+                $fila[] = $valor;
+            }
+        }
+    }
+
+    return '';
+}
+
+function cliente_notificacoes_me_evento_cliente_id(array $event): int
+{
+    return eventos_me_pick_int($event, [
+        'idcliente',
+        'idCliente',
+        'cliente_id',
+        'id_cliente',
+        'clienteId',
+        'client_id',
+        'cliente.id',
+        'client.id',
+    ]);
+}
+
+function cliente_notificacoes_me_cliente_email_por_id(PDO $pdo, int $clientId): string
+{
+    cliente_notificacoes_require_eventos_helpers();
+
+    if ($clientId <= 0) {
+        return '';
+    }
+
+    $cacheKey = 'cliente_notif_me_client_' . $clientId;
+    $client = eventos_me_cache_get($pdo, $cacheKey);
+
+    if ($client === null) {
+        $resp = eventos_me_request('GET', '/api/v1/clients/' . $clientId);
+        if (empty($resp['ok'])) {
+            return '';
+        }
+        $client = $resp['data'] ?? [];
+        eventos_me_cache_set($pdo, $cacheKey, $client, 10);
+    }
+
+    return cliente_notificacoes_extrair_email_payload(is_array($client) ? $client : []);
+}
+
 function cliente_notificacoes_me_evento_email_cliente_completo(PDO $pdo, array $event, string $emailAtual = ''): string
 {
     cliente_notificacoes_require_eventos_helpers();
@@ -372,6 +506,12 @@ function cliente_notificacoes_me_evento_email_cliente_completo(PDO $pdo, array $
     $emailAtual = trim($emailAtual);
     if ($emailAtual !== '' && filter_var($emailAtual, FILTER_VALIDATE_EMAIL)) {
         return $emailAtual;
+    }
+
+    $clientId = cliente_notificacoes_me_evento_cliente_id($event);
+    $emailCliente = cliente_notificacoes_me_cliente_email_por_id($pdo, $clientId);
+    if ($emailCliente !== '') {
+        return $emailCliente;
     }
 
     $meEventId = cliente_notificacoes_me_evento_id($event);
@@ -388,17 +528,18 @@ function cliente_notificacoes_me_evento_email_cliente_completo(PDO $pdo, array $
 
         foreach ([
             cliente_notificacoes_me_evento_email_cliente($eventoDetalhado),
-            eventos_me_pick_text($eventoDetalhado, [
-                'contratante.email',
-                'responsavel.email',
-                'contatos.0.email',
-                'emails.0',
-            ]),
+            cliente_notificacoes_extrair_email_payload($eventoDetalhado),
         ] as $emailDetalhado) {
             $emailDetalhado = trim((string)$emailDetalhado);
             if ($emailDetalhado !== '' && filter_var($emailDetalhado, FILTER_VALIDATE_EMAIL)) {
                 return $emailDetalhado;
             }
+        }
+
+        $clientIdDetalhado = cliente_notificacoes_me_evento_cliente_id($eventoDetalhado);
+        $emailCliente = cliente_notificacoes_me_cliente_email_por_id($pdo, $clientIdDetalhado);
+        if ($emailCliente !== '') {
+            return $emailCliente;
         }
     } catch (Throwable $e) {
         error_log('[CLIENTE_NOTIFICACOES] detalhe ME e-mail: ' . $e->getMessage());
@@ -625,7 +766,7 @@ function cliente_notificacoes_buscar_publico_portal_lancamento(PDO $pdo, int $li
     cliente_notificacoes_ensure_schema($pdo);
     $limit = max(1, min(1000, $limit));
 
-    $result = cliente_notificacoes_me_buscar_eventos_periodo($pdo, '2026-05-30', '2031-12-31');
+    $result = cliente_notificacoes_me_buscar_eventos_periodo($pdo, '2026-05-31', '2031-12-31');
     if (empty($result['ok'])) {
         throw new RuntimeException((string)($result['error'] ?? 'Erro ao consultar eventos na ME.'));
     }
@@ -650,7 +791,7 @@ function cliente_notificacoes_buscar_publico_portal_lancamento(PDO $pdo, int $li
         }
 
         $dataEvento = cliente_notificacoes_me_evento_data($event);
-        if ($dataEvento === '' || $dataEvento < '2026-05-30') {
+        if ($dataEvento === '' || $dataEvento <= '2026-05-30') {
             continue;
         }
 

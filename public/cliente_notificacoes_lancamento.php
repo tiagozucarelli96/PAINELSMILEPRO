@@ -116,7 +116,7 @@ window.sidebarUnifiedConfig = Object.assign({}, window.sidebarUnifiedConfig || {
     <div class="launch-head">
         <div>
             <h1>Lançamento do Portal do Cliente</h1>
-            <p>Disparo em massa para eventos futuros de casamento e 15 anos, com criação automática de portal quando necessário.</p>
+            <p>Disparo em massa para eventos futuros de casamento e 15 anos, a partir de 31/05/2026, com criação automática de portal quando necessário.</p>
         </div>
         <a class="launch-link" href="cliente_notificacoes.php">Voltar aos modelos</a>
     </div>
@@ -158,7 +158,7 @@ window.sidebarUnifiedConfig = Object.assign({}, window.sidebarUnifiedConfig || {
         <section class="launch-panel">
             <div class="launch-panel-head">
                 <h2>Disparo em massa</h2>
-                <span>Consulta direta na ME Eventos: eventos futuros a partir de 30/05/2026, apenas casamento e 15 anos, sem envio anterior desta campanha.</span>
+                <span>Consulta direta na ME Eventos: eventos futuros a partir de 31/05/2026, apenas casamento e 15 anos, sem envio anterior desta campanha.</span>
             </div>
             <div class="launch-stats">
                 <div class="launch-stat"><strong><?= (int)$totalPublico ?></strong><span>clientes elegíveis</span></div>
