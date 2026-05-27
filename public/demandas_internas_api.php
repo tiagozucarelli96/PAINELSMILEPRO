@@ -453,9 +453,6 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
     $status = (string)($_POST['status'] ?? 'aberta');
     $prioridade = (string)($_POST['prioridade'] ?? 'normal');
     $prazo = trim((string)($_POST['prazo'] ?? ''));
-    $responsavelTipo = (string)($_POST['responsavel_tipo'] ?? 'usuario');
-    $responsavelId = (int)($_POST['responsavel_id'] ?? 0);
-    $responsavelSetor = trim((string)($_POST['responsavel_setor'] ?? ''));
     $encerradaEm = in_array($status, ['encerrada', 'cancelada'], true) ? 'NOW()' : 'NULL';
 
     $stmt = $pdo->prepare("
@@ -463,9 +460,6 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
         SET status = :status,
             prioridade = :prioridade,
             prazo = :prazo,
-            responsavel_tipo = :responsavel_tipo,
-            responsavel_id = :responsavel_id,
-            responsavel_setor = :responsavel_setor,
             encerrada_em = {$encerradaEm},
             atualizado_em = NOW()
         WHERE id = :id
@@ -475,12 +469,9 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
         ':status' => $status,
         ':prioridade' => $prioridade,
         ':prazo' => $prazo,
-        ':responsavel_tipo' => $responsavelTipo,
-        ':responsavel_id' => $responsavelTipo === 'usuario' ? $responsavelId : null,
-        ':responsavel_setor' => $responsavelTipo === 'setor' ? $responsavelSetor : null,
     ]);
 
-    demandasInternasLog($pdo, $id, $userId, 'demanda_alterada', 'Status, prazo, prioridade ou responsável alterado.');
+    demandasInternasLog($pdo, $id, $userId, 'demanda_alterada', 'Status, prazo ou prioridade alterado.');
     demandasInternasJson(['success' => true]);
 }
 
@@ -689,7 +680,9 @@ function demandasInternasEventSearch(PDO $pdo): void
             $nomeExpr = isset($cols['nome_evento']) ? 'nome_evento' : "'Evento ME #' || {$idExpr}::TEXT";
             $dataExpr = isset($cols['data_evento']) ? 'data_evento' : 'NULL::date';
             $localExpr = isset($cols['localevento']) ? 'localevento' : (isset($cols['local_evento']) ? 'local_evento' : "''");
-            $whatsExpr = isset($cols['whatsapp_cliente']) ? 'whatsapp_cliente' : (isset($cols['telefone_cliente']) ? 'telefone_cliente' : "''");
+            $whatsExpr = isset($cols['whatsapp_cliente']) && isset($cols['telefone_cliente'])
+                ? "COALESCE(NULLIF(whatsapp_cliente, ''), telefone_cliente, '')"
+                : (isset($cols['whatsapp_cliente']) ? 'whatsapp_cliente' : (isset($cols['telefone_cliente']) ? 'telefone_cliente' : "''"));
             $whereParts = [
                 "CAST({$idExpr} AS TEXT) ILIKE :q",
                 "CAST({$nomeExpr} AS TEXT) ILIKE :q",

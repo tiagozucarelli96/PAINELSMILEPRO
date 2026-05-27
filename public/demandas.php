@@ -254,6 +254,21 @@ includeSidebar('Demandas');
     justify-content: space-between;
     align-items: center;
 }
+.admin-controls {
+    margin-top: 0.8rem;
+    border: 1px solid #dce6f2;
+    border-radius: 8px;
+    background: #ffffff;
+}
+.admin-controls summary {
+    cursor: pointer;
+    padding: 0.75rem 0.85rem;
+    font-weight: 750;
+    color: #334155;
+}
+.admin-controls form {
+    padding: 0 0.85rem 0.85rem;
+}
 .btn {
     border: 1px solid #cbd5e1;
     background: #ffffff;
@@ -693,39 +708,25 @@ async function openDetail(id) {
 
 function renderAdminControls(d) {
     if (!state.isAdmin) return '';
-    const userOptions = state.usuarios.map(u => `<option value="${u.id}" ${Number(d.responsavel_id) === Number(u.id) ? 'selected' : ''}>${escapeHtml(userLabel(u))}</option>`).join('');
-    const setorOptions = state.setores.map(s => `<option value="${escapeHtml(s)}" ${d.responsavel_setor === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
     return `
-        <form class="grid-2" onsubmit="saveAdmin(event, ${Number(d.id)})" style="margin-top:.8rem;">
-            <div class="field">
-                <label>Status</label>
-                <select name="status">${Object.entries(statusLabels).map(([k,v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-            </div>
-            <div class="field">
-                <label>Prioridade</label>
-                <select name="prioridade">${Object.entries(prioridadeLabels).map(([k,v]) => `<option value="${k}" ${d.prioridade === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-            </div>
-            <div class="field">
-                <label>Prazo</label>
-                <input type="date" name="prazo" value="${escapeHtml(String(d.prazo || '').slice(0, 10))}">
-            </div>
-            <div class="field">
-                <label>Tipo de responsável</label>
-                <select name="responsavel_tipo" onchange="toggleInlineResponsavel(this)">
-                    <option value="usuario" ${d.responsavel_tipo === 'usuario' ? 'selected' : ''}>Usuário</option>
-                    <option value="setor" ${d.responsavel_tipo === 'setor' ? 'selected' : ''}>Setor</option>
-                </select>
-            </div>
-            <div class="field inline-user ${d.responsavel_tipo === 'setor' ? 'hidden' : ''}">
-                <label>Responsável</label>
-                <select name="responsavel_id">${userOptions}</select>
-            </div>
-            <div class="field inline-setor ${d.responsavel_tipo !== 'setor' ? 'hidden' : ''}">
-                <label>Setor</label>
-                <select name="responsavel_setor">${setorOptions}</select>
-            </div>
-            <button class="btn btn-primary" type="submit">Salvar alterações</button>
-        </form>
+        <details class="admin-controls">
+            <summary>Alterar status, prazo e prioridade</summary>
+            <form class="grid-2" onsubmit="saveAdmin(event, ${Number(d.id)})">
+                <div class="field">
+                    <label>Status</label>
+                    <select name="status">${Object.entries(statusLabels).map(([k,v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+                </div>
+                <div class="field">
+                    <label>Prioridade</label>
+                    <select name="prioridade">${Object.entries(prioridadeLabels).map(([k,v]) => `<option value="${k}" ${d.prioridade === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+                </div>
+                <div class="field">
+                    <label>Prazo</label>
+                    <input type="date" name="prazo" value="${escapeHtml(String(d.prazo || '').slice(0, 10))}">
+                </div>
+                <button class="btn btn-primary" type="submit">Salvar alterações</button>
+            </form>
+        </details>
     `;
 }
 
@@ -772,11 +773,11 @@ function renderDetail(d, mensagens, anexos) {
             `).join('') : '<span class="pill">Sem anexos</span>'}
         </div>
         <form class="composer" onsubmit="sendMessage(event, ${Number(d.id)})">
-            <textarea name="mensagem" placeholder="Escreva uma mensagem. Use @nome ou @setor para citar." required></textarea>
+            <textarea name="mensagem" placeholder="Escreva uma mensagem. Use @nome ou @setor para citar."></textarea>
             <div class="composer-row">
                 <label class="btn">
                     Anexar arquivo
-                    <input class="hidden" type="file" onchange="uploadAttachment(event, ${Number(d.id)})">
+                    <input class="hidden" type="file" name="arquivo">
                 </label>
                 <div>
                     <button class="btn" type="button" onclick="openGallery(${Number(d.id)})">Galeria Smile</button>
@@ -788,12 +789,6 @@ function renderDetail(d, mensagens, anexos) {
     `;
     const chat = document.getElementById('chat-area');
     chat.scrollTop = chat.scrollHeight;
-}
-
-function toggleInlineResponsavel(select) {
-    const form = select.closest('form');
-    form.querySelector('.inline-user').classList.toggle('hidden', select.value !== 'usuario');
-    form.querySelector('.inline-setor').classList.toggle('hidden', select.value !== 'setor');
 }
 
 async function saveAdmin(event, id) {
@@ -810,28 +805,32 @@ async function saveAdmin(event, id) {
 async function sendMessage(event, id) {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
-    data.append('action', 'message');
-    data.append('demanda_id', id);
-    await fetchJson(API, { method: 'POST', body: data });
-    form.reset();
-    await openDetail(id);
-}
-
-async function uploadAttachment(event, id) {
-    const file = event.currentTarget.files[0];
-    if (!file) return;
-    const data = new FormData();
-    data.append('action', 'attach');
-    data.append('demanda_id', id);
-    data.append('arquivo', file);
+    const message = String(new FormData(form).get('mensagem') || '').trim();
+    const fileInput = form.querySelector('input[name="arquivo"]');
+    const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+    if (!message && !file) {
+        alert('Escreva uma mensagem ou anexe um arquivo.');
+        return;
+    }
     try {
-        await fetchJson(API, { method: 'POST', body: data });
+        if (message) {
+            const messageData = new FormData();
+            messageData.append('action', 'message');
+            messageData.append('demanda_id', id);
+            messageData.append('mensagem', message);
+            await fetchJson(API, { method: 'POST', body: messageData });
+        }
+        if (file) {
+            const attachmentData = new FormData();
+            attachmentData.append('action', 'attach');
+            attachmentData.append('demanda_id', id);
+            attachmentData.append('arquivo', file);
+            await fetchJson(API, { method: 'POST', body: attachmentData });
+        }
+        form.reset();
         await openDetail(id);
     } catch (error) {
         alert(error.message);
-    } finally {
-        event.currentTarget.value = '';
     }
 }
 

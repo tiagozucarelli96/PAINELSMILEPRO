@@ -128,6 +128,12 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
         if (!agenda_eventos_sync_table_exists($pdo, 'logistica_eventos_espelho')) {
             return ['ok' => false, 'error' => 'Tabela logistica_eventos_espelho ausente.'];
         }
+        try {
+            $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS whatsapp_cliente VARCHAR(40)");
+            $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS telefone_cliente VARCHAR(40)");
+        } catch (Throwable $e) {
+            error_log('[AGENDA SYNC] Falha ao garantir telefone do cliente: ' . $e->getMessage());
+        }
 
         $meEventId = (int)agenda_eventos_sync_pick($eventoData, ['id', 'id_evento', 'idevento'], 0);
         if ($meEventId <= 0) {
@@ -168,6 +174,24 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
         if ($nomeEvento === '') {
             $nomeEvento = 'Evento';
         }
+
+        $telefoneCliente = trim((string)agenda_eventos_sync_pick($eventoData, [
+            'celular',
+            'telefone',
+            'telefone2',
+            'whatsapp',
+            'client_phone',
+            'client_whatsapp',
+            'phone',
+            'mobile',
+        ], ''));
+        $ddiCliente = trim((string)agenda_eventos_sync_pick($eventoData, [
+            'ddicelular',
+            'dditelefone',
+            'ddi',
+            'client_phone_ddi',
+        ], ''));
+        $whatsappCliente = trim($ddiCliente . ($ddiCliente !== '' && $telefoneCliente !== '' ? ' ' : '') . $telefoneCliente);
 
         $params = [
             ':me_event_id' => $meEventId,
@@ -229,6 +253,21 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
+
+        if ($whatsappCliente !== '' && agenda_eventos_sync_column_exists($pdo, 'logistica_eventos_espelho', 'whatsapp_cliente')) {
+            $stmtPhone = $pdo->prepare("
+                UPDATE logistica_eventos_espelho
+                SET whatsapp_cliente = :whatsapp_cliente,
+                    telefone_cliente = :telefone_cliente,
+                    updated_at = NOW()
+                WHERE me_event_id = :me_event_id
+            ");
+            $stmtPhone->execute([
+                ':whatsapp_cliente' => $whatsappCliente,
+                ':telefone_cliente' => $telefoneCliente !== '' ? $telefoneCliente : $whatsappCliente,
+                ':me_event_id' => $meEventId,
+            ]);
+        }
 
         return [
             'ok' => true,
