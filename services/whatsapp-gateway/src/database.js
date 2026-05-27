@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { URL } from "node:url";
 import { Pool } from "pg";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
@@ -10,10 +11,72 @@ const searchPath = config.dbSchema
   .filter(Boolean)
   .join(", ");
 
-export const pool = new Pool({
-  connectionString: config.databaseUrl,
-  ssl: false,
-});
+function parseBooleanFlag(value, fallback) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return fallback;
+  }
+
+  return !["0", "false", "no", "off"].includes(value.trim().toLowerCase());
+}
+
+function buildPoolConfig() {
+  let connectionString = config.databaseUrl;
+  let sslMode = process.env.DATABASE_SSL_MODE?.trim() || "";
+
+  try {
+    const parsedUrl = new URL(config.databaseUrl);
+    const urlSslMode = parsedUrl.searchParams.get("sslmode");
+    if (!sslMode && urlSslMode) {
+      sslMode = urlSslMode.trim();
+    }
+
+    // Evita que a query string force semântica libpq inesperada dentro do driver.
+    parsedUrl.searchParams.delete("sslmode");
+    parsedUrl.searchParams.delete("sslcert");
+    parsedUrl.searchParams.delete("sslkey");
+    parsedUrl.searchParams.delete("sslrootcert");
+    parsedUrl.searchParams.delete("requiressl");
+    parsedUrl.searchParams.delete("uselibpqcompat");
+    connectionString = parsedUrl.toString();
+  } catch {
+    // Se a URL vier em formato não parseável, mantemos como está.
+  }
+
+  const normalizedSslMode = sslMode.toLowerCase();
+  const sslRequested =
+    normalizedSslMode !== "" &&
+    normalizedSslMode !== "disable" &&
+    normalizedSslMode !== "false" &&
+    normalizedSslMode !== "off";
+
+  const rejectUnauthorizedDefault = !["require", "prefer", "allow", "verify-ca"].includes(normalizedSslMode);
+  const rejectUnauthorized = parseBooleanFlag(
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED,
+    rejectUnauthorizedDefault
+  );
+
+  const poolConfig = {
+    connectionString,
+    ssl: sslRequested
+      ? {
+          rejectUnauthorized,
+        }
+      : false,
+  };
+
+  logger.info(
+    {
+      databaseSslMode: normalizedSslMode || "disable",
+      databaseSslEnabled: sslRequested,
+      databaseSslRejectUnauthorized: sslRequested ? rejectUnauthorized : null,
+    },
+    "Configuracao de conexao PostgreSQL carregada"
+  );
+
+  return poolConfig;
+}
+
+export const pool = new Pool(buildPoolConfig());
 
 pool.on("connect", async (client) => {
   if (searchPath) {
