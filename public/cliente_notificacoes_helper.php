@@ -365,6 +365,48 @@ function cliente_notificacoes_me_evento_email_cliente(array $event): string
     ]);
 }
 
+function cliente_notificacoes_me_evento_email_cliente_completo(PDO $pdo, array $event, string $emailAtual = ''): string
+{
+    cliente_notificacoes_require_eventos_helpers();
+
+    $emailAtual = trim($emailAtual);
+    if ($emailAtual !== '' && filter_var($emailAtual, FILTER_VALIDATE_EMAIL)) {
+        return $emailAtual;
+    }
+
+    $meEventId = cliente_notificacoes_me_evento_id($event);
+    if ($meEventId <= 0) {
+        return $emailAtual;
+    }
+
+    try {
+        $detalhe = eventos_me_buscar_por_id($pdo, $meEventId);
+        $eventoDetalhado = $detalhe['event'] ?? null;
+        if (empty($detalhe['ok']) || !is_array($eventoDetalhado)) {
+            return $emailAtual;
+        }
+
+        foreach ([
+            cliente_notificacoes_me_evento_email_cliente($eventoDetalhado),
+            eventos_me_pick_text($eventoDetalhado, [
+                'contratante.email',
+                'responsavel.email',
+                'contatos.0.email',
+                'emails.0',
+            ]),
+        ] as $emailDetalhado) {
+            $emailDetalhado = trim((string)$emailDetalhado);
+            if ($emailDetalhado !== '' && filter_var($emailDetalhado, FILTER_VALIDATE_EMAIL)) {
+                return $emailDetalhado;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[CLIENTE_NOTIFICACOES] detalhe ME e-mail: ' . $e->getMessage());
+    }
+
+    return $emailAtual;
+}
+
 function cliente_notificacoes_texto_normalizado(string $texto): string
 {
     $texto = trim($texto);
@@ -622,6 +664,7 @@ function cliente_notificacoes_buscar_publico_portal_lancamento(PDO $pdo, int $li
         if ($email === '') {
             $email = cliente_notificacoes_me_evento_email_cliente($event);
         }
+        $email = cliente_notificacoes_me_evento_email_cliente_completo($pdo, $event, $email);
 
         $nomeCliente = trim((string)($local['nome_completo'] ?? ''));
         if ($nomeCliente === '') {
