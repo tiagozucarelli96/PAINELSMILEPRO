@@ -66,6 +66,33 @@ app.get("/api/sessions/:sessionKey", async (request, response) => {
   }
 });
 
+app.get("/api/diagnostics/whatsapp/:sessionKey", async (request, response) => {
+  try {
+    const sessionDiagnostics = await sessionManager.getDiagnostics(request.params.sessionKey);
+    if (!sessionDiagnostics) {
+      response.status(404).json({ error: "Sessao nao encontrada." });
+      return;
+    }
+
+    const databaseNow = await pingDatabase();
+    response.json({
+      ok: true,
+      service: "smile-whatsapp-gateway",
+      env: config.env,
+      databaseNow,
+      socketCorsOrigin: config.socketCorsOrigin,
+      gatewayBaseUrl: null,
+      ...sessionDiagnostics,
+    });
+  } catch (error) {
+    logger.error(
+      { err: error, sessionKey: request.params.sessionKey },
+      "Falha ao gerar diagnostico interno do WhatsApp"
+    );
+    response.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/sessions/:sessionKey/connect", async (request, response) => {
   try {
     const session = await sessionManager.connect(request.params.sessionKey, {

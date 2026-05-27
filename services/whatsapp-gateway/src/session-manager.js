@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import {
+  fetchSessionDiagnostics,
   fetchOverview,
   getInboxBySessionKey,
   getSessionRuntime,
@@ -124,6 +125,16 @@ export class SessionManager {
     };
 
     this.io.emit("message.outbound", eventPayload);
+    this.logger.info(
+      {
+        sessionKey,
+        phoneE164: payload.phoneE164,
+        conversationId: persisted.conversationId,
+        messageId: persisted.messageId,
+        externalMessageId: providerResponse.externalMessageId || null,
+      },
+      "Mensagem outbound salva no banco"
+    );
     return {
       persisted,
       providerResponse,
@@ -131,19 +142,74 @@ export class SessionManager {
   }
 
   async ingestInbound(payload) {
-    const result = await ingestInboundMessage(payload);
-    this.io.emit("message.inbound", {
-      sessionKey: payload.sessionKey,
-      conversationId: result.conversationId,
-      messageId: result.messageId,
-      phoneE164: payload.phoneE164,
-      body: payload.body,
-    });
-    return result;
+    try {
+      const result = await ingestInboundMessage(payload);
+      this.io.emit("message.inbound", {
+        sessionKey: payload.sessionKey,
+        conversationId: result.conversationId,
+        messageId: result.messageId,
+        phoneE164: payload.phoneE164,
+        body: payload.body,
+      });
+      this.logger.info(
+        {
+          sessionKey: payload.sessionKey,
+          phoneE164: payload.phoneE164,
+          contactName: payload.contactName || null,
+          messageType: payload.messageType || "text",
+          externalMessageId: payload.externalMessageId || null,
+          conversationId: result.conversationId,
+          messageId: result.messageId,
+        },
+        "Mensagem inbound salva no banco"
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        {
+          err: error,
+          sessionKey: payload.sessionKey,
+          phoneE164: payload.phoneE164,
+          contactName: payload.contactName || null,
+          messageType: payload.messageType || "text",
+          externalMessageId: payload.externalMessageId || null,
+          rawPayload: payload.rawPayload || null,
+        },
+        "Erro ao salvar mensagem inbound no banco"
+      );
+      throw error;
+    }
   }
 
   async overview() {
     return fetchOverview();
+  }
+
+  async getDiagnostics(sessionKey) {
+    const session = await this.getSession(sessionKey);
+    if (!session) {
+      return null;
+    }
+
+    const diagnostics = await fetchSessionDiagnostics(sessionKey);
+    const runtime = this.sessions.get(sessionKey);
+    const providerDiagnostics =
+      typeof runtime?.provider?.getDiagnostics === "function"
+        ? runtime.provider.getDiagnostics()
+        : null;
+
+    return {
+      ok: true,
+      sessionKey,
+      providerActive: session.provider,
+      databaseConnected: true,
+      socket: {
+        enabled: true,
+      },
+      session,
+      providerRuntime: providerDiagnostics,
+      diagnostics,
+    };
   }
 
   async restoreConnectedSessions() {
@@ -153,7 +219,7 @@ export class SessionManager {
         return false;
       }
 
-      return inbox.status === "connected" || inbox.status === "connecting";
+      return inbox.status === "connected";
     });
 
     for (const inbox of candidates) {

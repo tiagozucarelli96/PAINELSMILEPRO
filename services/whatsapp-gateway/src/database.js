@@ -51,6 +51,7 @@ export async function ensureSchema() {
   const migrationFiles = await Promise.all([
     resolveMigrationPath("060_atendimento_whatsapp_base.sql"),
     resolveMigrationPath("061_atendimento_whatsapp_gateway_runtime.sql"),
+    resolveMigrationPath("062_atendimento_whatsapp_gateway_dedupe.sql"),
   ]);
 
   for (const filePath of migrationFiles) {

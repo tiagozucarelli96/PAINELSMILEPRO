@@ -172,6 +172,7 @@ export async function storeGatewayDelivery(sessionKey, direction, externalMessag
     `
       INSERT INTO wa_gateway_deliveries (session_key, direction, external_message_id, payload)
       VALUES ($1, $2, $3, $4)
+      ON CONFLICT DO NOTHING
     `,
     [sessionKey, direction, externalMessageId, payload]
   );
@@ -345,7 +346,7 @@ export async function ingestInboundMessage({
       preview
     );
 
-    const messageResult = await client.query(
+    let messageResult = await client.query(
       `
         INSERT INTO wa_messages (
           conversation_id,
@@ -356,10 +357,24 @@ export async function ingestInboundMessage({
           created_at
         )
         VALUES ($1, 'inbound', $2, $3, $4, NOW())
+        ON CONFLICT DO NOTHING
         RETURNING id
       `,
       [conversationId, messageType, body || null, externalMessageId]
     );
+
+    if (!messageResult.rows[0]?.id && externalMessageId) {
+      messageResult = await client.query(
+        `
+          SELECT id
+          FROM wa_messages
+          WHERE conversation_id = $1
+            AND external_message_id = $2
+          LIMIT 1
+        `,
+        [conversationId, externalMessageId]
+      );
+    }
 
     await client.query(
       `
@@ -375,13 +390,14 @@ export async function ingestInboundMessage({
       `
         INSERT INTO wa_gateway_deliveries (session_key, direction, external_message_id, payload, created_at)
         VALUES ($1, 'inbound', $2, $3, NOW())
+        ON CONFLICT DO NOTHING
       `,
       [sessionKey, externalMessageId, rawPayload]
     );
 
     return {
       conversationId,
-      messageId: messageResult.rows[0].id,
+      messageId: messageResult.rows[0]?.id ?? null,
       contactId,
     };
   });
@@ -516,6 +532,7 @@ export async function syncChatSnapshot({
               created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT DO NOTHING
           `,
           [
             conversationId,
@@ -557,6 +574,7 @@ export async function syncChatSnapshot({
           `
             INSERT INTO wa_gateway_deliveries (session_key, direction, external_message_id, payload, created_at)
             VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT DO NOTHING
           `,
           [sessionKey, direction, externalMessageId, rawPayload]
         );
@@ -691,7 +709,7 @@ export async function ingestOutboundMessage({
       authorUserId
     );
 
-    const messageResult = await client.query(
+    let messageResult = await client.query(
       `
         INSERT INTO wa_messages (
           conversation_id,
@@ -703,10 +721,24 @@ export async function ingestOutboundMessage({
           created_at
         )
         VALUES ($1, 'outbound', $2, $3, $4, $5, NOW())
+        ON CONFLICT DO NOTHING
         RETURNING id
       `,
       [conversationId, messageType, body || null, authorUserId, externalMessageId]
     );
+
+    if (!messageResult.rows[0]?.id && externalMessageId) {
+      messageResult = await client.query(
+        `
+          SELECT id
+          FROM wa_messages
+          WHERE conversation_id = $1
+            AND external_message_id = $2
+          LIMIT 1
+        `,
+        [conversationId, externalMessageId]
+      );
+    }
 
     await client.query(
       `
@@ -723,13 +755,14 @@ export async function ingestOutboundMessage({
       `
         INSERT INTO wa_gateway_deliveries (session_key, direction, external_message_id, payload, created_at)
         VALUES ($1, 'outbound', $2, $3, NOW())
+        ON CONFLICT DO NOTHING
       `,
       [sessionKey, externalMessageId, rawPayload]
     );
 
     return {
       conversationId,
-      messageId: messageResult.rows[0].id,
+      messageId: messageResult.rows[0]?.id ?? null,
       contactId,
     };
   });
@@ -747,4 +780,95 @@ export async function fetchOverview() {
   );
 
   return result.rows[0];
+}
+
+export async function fetchSessionDiagnostics(sessionKey) {
+  const result = await query(
+    `
+      WITH inbox AS (
+        SELECT
+          i.id,
+          i.name,
+          i.session_key,
+          i.provider,
+          i.connection_mode,
+          i.status,
+          i.phone_number,
+          i.department_id,
+          d.name AS department_name,
+          i.connected_at,
+          i.last_qr_at,
+          sc.runtime_meta,
+          sc.updated_at AS runtime_updated_at
+        FROM wa_inboxes i
+        LEFT JOIN wa_departments d ON d.id = i.department_id
+        LEFT JOIN wa_session_credentials sc ON sc.session_key = i.session_key
+        WHERE i.session_key = $1
+        LIMIT 1
+      ),
+      counts AS (
+        SELECT
+          COUNT(DISTINCT c.id)::INT AS conversation_count,
+          COUNT(m.id)::INT AS message_count,
+          COUNT(DISTINCT CASE WHEN m.direction = 'inbound' THEN m.id END)::INT AS inbound_message_count,
+          COUNT(DISTINCT CASE WHEN m.direction = 'outbound' THEN m.id END)::INT AS outbound_message_count,
+          COUNT(DISTINCT gd.id)::INT AS delivery_count
+        FROM inbox i
+        LEFT JOIN wa_conversations c ON c.inbox_id = i.id
+        LEFT JOIN wa_messages m ON m.conversation_id = c.id
+        LEFT JOIN wa_gateway_deliveries gd ON gd.session_key = i.session_key
+      ),
+      last_message AS (
+        SELECT
+          m.id,
+          m.direction,
+          m.message_type,
+          m.body,
+          m.external_message_id,
+          m.created_at,
+          c.id AS conversation_id,
+          ct.full_name AS contact_name,
+          ct.phone_e164
+        FROM inbox i
+        JOIN wa_conversations c ON c.inbox_id = i.id
+        JOIN wa_messages m ON m.conversation_id = c.id
+        JOIN wa_contacts ct ON ct.id = c.contact_id
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ),
+      last_delivery AS (
+        SELECT
+          gd.id,
+          gd.direction,
+          gd.external_message_id,
+          gd.payload,
+          gd.created_at
+        FROM wa_gateway_deliveries gd
+        WHERE gd.session_key = $1
+        ORDER BY gd.created_at DESC
+        LIMIT 1
+      ),
+      last_event AS (
+        SELECT
+          e.id,
+          e.event_type,
+          e.payload,
+          e.created_at
+        FROM inbox i
+        JOIN wa_connection_events e ON e.inbox_id = i.id
+        ORDER BY e.created_at DESC
+        LIMIT 1
+      )
+      SELECT json_build_object(
+        'inbox', (SELECT row_to_json(inbox) FROM inbox),
+        'counts', (SELECT row_to_json(counts) FROM counts),
+        'last_message', (SELECT row_to_json(last_message) FROM last_message),
+        'last_delivery', (SELECT row_to_json(last_delivery) FROM last_delivery),
+        'last_event', (SELECT row_to_json(last_event) FROM last_event)
+      ) AS diagnostics
+    `,
+    [sessionKey]
+  );
+
+  return result.rows[0]?.diagnostics ?? null;
 }

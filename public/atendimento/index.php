@@ -867,5 +867,48 @@ $gatewayHealth = wa_gateway_health();
         <?php endif; ?>
     </main>
 </div>
+<?php if ($page === 'conversations' && wa_gateway_is_enabled()): ?>
+    <?php $gatewaySocketUrl = rtrim(wa_gateway_base_url(), '/'); ?>
+    <script src="<?= wa_e($gatewaySocketUrl) ?>/socket.io/socket.io.js"></script>
+    <script>
+        (() => {
+            if (typeof window.io !== "function") {
+                return;
+            }
+
+            const gatewayUrl = <?= json_encode($gatewaySocketUrl, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+            const currentPath = window.location.pathname + window.location.search;
+            let reloadTimer = null;
+
+            const scheduleRefresh = () => {
+                if (reloadTimer !== null) {
+                    window.clearTimeout(reloadTimer);
+                }
+
+                reloadTimer = window.setTimeout(() => {
+                    window.location.href = currentPath;
+                }, 600);
+            };
+
+            try {
+                const socket = window.io(gatewayUrl, {
+                    transports: ["websocket", "polling"],
+                    withCredentials: false,
+                });
+
+                socket.on("message.inbound", scheduleRefresh);
+                socket.on("message.outbound", scheduleRefresh);
+                socket.on("session.connected", scheduleRefresh);
+                socket.on("session.status", (payload) => {
+                    if (payload && (payload.status === "connected" || payload.status === "disconnected")) {
+                        scheduleRefresh();
+                    }
+                });
+            } catch (_error) {
+                // Fallback silencioso: a tela continua carregando do banco ao atualizar manualmente.
+            }
+        })();
+    </script>
+<?php endif; ?>
 </body>
 </html>

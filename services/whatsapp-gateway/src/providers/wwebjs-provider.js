@@ -19,8 +19,31 @@ function buildChatId(phoneE164) {
   return `${digits}@c.us`;
 }
 
+function isBroadcastLikeChatId(chatId) {
+  return (
+    typeof chatId === "string" &&
+    (chatId.endsWith("@g.us") || chatId.endsWith("@broadcast") || chatId.endsWith("@newsletter"))
+  );
+}
+
+function isLidChatId(chatId) {
+  return typeof chatId === "string" && chatId.endsWith("@lid");
+}
+
 function isSupportedDirectChatId(chatId) {
-  if (typeof chatId !== "string" || !chatId.endsWith("@c.us")) {
+  if (typeof chatId !== "string" || chatId === "") {
+    return false;
+  }
+
+  if (chatId === "0@c.us" || isBroadcastLikeChatId(chatId)) {
+    return false;
+  }
+
+  if (isLidChatId(chatId)) {
+    return true;
+  }
+
+  if (!chatId.endsWith("@c.us")) {
     return false;
   }
 
@@ -72,27 +95,57 @@ function extractMessagePreview(message) {
   }
 }
 
-function shouldIgnoreMessage(message) {
+function ignoreReasonForMessage(message) {
   const from = String(message?.from || "");
   const type = String(message?.type || "");
 
-  if (!from || !isSupportedDirectChatId(from)) {
-    return true;
+  if (!from) {
+    return "missing_from";
   }
 
-  if (from.endsWith("@g.us") || from.endsWith("@broadcast") || from.endsWith("@newsletter")) {
-    return true;
+  if (from === "0@c.us") {
+    return "system_zero_chat";
+  }
+
+  if (!isSupportedDirectChatId(from)) {
+    return "unsupported_chat_id";
+  }
+
+  if (isBroadcastLikeChatId(from)) {
+    return "group_or_broadcast";
   }
 
   if (type === "notification_template" || type === "e2e_notification" || type === "gp2") {
-    return true;
+    return `ignored_type_${type}`;
   }
 
   if (message?.isStatus) {
-    return true;
+    return "status_message";
   }
 
-  return extractMessagePreview(message) === "";
+  if (extractMessagePreview(message) === "") {
+    return "empty_preview";
+  }
+
+  return null;
+}
+
+function shouldIgnoreMessage(message) {
+  return ignoreReasonForMessage(message) !== null;
+}
+
+function summarizeMessage(message) {
+  return {
+    messageId: message?.id?._serialized || null,
+    from: message?.from || null,
+    to: message?.to || null,
+    chatId: message?._getChatId?.() || null,
+    type: message?.type || null,
+    fromMe: Boolean(message?.fromMe),
+    hasMedia: Boolean(message?.hasMedia),
+    timestamp: message?.timestamp || null,
+    preview: extractMessagePreview(message),
+  };
 }
 
 function isProtocolTimeoutError(error) {
@@ -115,6 +168,12 @@ export class WhatsAppWebJsProvider {
     this.processedInboundIds = new Map();
     this.historySyncAttempts = 0;
     this.historySyncCompleted = false;
+    this.identityCache = new Map();
+    this.lastInboundEvent = null;
+    this.lastIgnoredEvent = null;
+    this.lastSavedInbound = null;
+    this.lastSaveError = null;
+    this.lastHistorySyncError = null;
   }
 
   async connect({ phoneNumber } = {}) {
@@ -199,6 +258,74 @@ export class WhatsAppWebJsProvider {
     await client.initialize();
   }
 
+  async resolveChatIdentity(client, chatId, contact = null, fallbackName = null) {
+    const cached = this.identityCache.get(chatId);
+    if (cached) {
+      return cached;
+    }
+
+    let resolvedChatId = String(chatId || "");
+    let digits = resolvedChatId.endsWith("@c.us") ? extractDigitsFromChatId(resolvedChatId) : "";
+    let lidResolution = null;
+
+    if ((!digits || /^0+$/.test(digits)) && isLidChatId(resolvedChatId)) {
+      try {
+        const [resolution] = await client.getContactLidAndPhone([resolvedChatId]);
+        lidResolution = resolution || null;
+        if (typeof lidResolution?.pn === "string" && lidResolution.pn.endsWith("@c.us")) {
+          resolvedChatId = lidResolution.pn;
+          digits = extractDigitsFromChatId(lidResolution.pn);
+        }
+      } catch (error) {
+        this.logger.info(
+          { err: error, sessionKey: this.sessionKey, chatId: resolvedChatId },
+          "Falha ao resolver numero de chat @lid"
+        );
+      }
+    }
+
+    if ((!digits || /^0+$/.test(digits)) && contact?.number) {
+      digits = normalizePhoneNumber(contact.number);
+    }
+
+    if (!digits || /^0+$/.test(digits) || digits.length < 8 || digits.length > 15) {
+      return null;
+    }
+
+    const identity = {
+      chatId: resolvedChatId,
+      originalChatId: String(chatId || ""),
+      phoneDigits: digits,
+      phoneE164: `+${digits}`,
+      contactName:
+        contact?.name ||
+        contact?.pushname ||
+        contact?.verifiedName ||
+        fallbackName ||
+        `+${digits}`,
+      lidResolution,
+    };
+
+    this.identityCache.set(chatId, identity);
+    if (resolvedChatId !== chatId) {
+      this.identityCache.set(resolvedChatId, identity);
+    }
+
+    return identity;
+  }
+
+  logInboundEvent(stage, payload, level = "info") {
+    const logMethod = typeof this.logger[level] === "function" ? this.logger[level].bind(this.logger) : this.logger.info.bind(this.logger);
+    logMethod(
+      {
+        sessionKey: this.sessionKey,
+        stage,
+        ...payload,
+      },
+      "Fluxo inbound WhatsApp"
+    );
+  }
+
   bindEvents(client, phoneNumber) {
     client.on("qr", async (qrText) => {
       if (client !== this.client) {
@@ -214,6 +341,18 @@ export class WhatsAppWebJsProvider {
       }
 
       this.logger.info({ sessionKey: this.sessionKey }, "Sessao whatsapp-web.js autenticada");
+      try {
+        const enabled = await client.setBackgroundSync(true);
+        this.logger.info(
+          { sessionKey: this.sessionKey, enabled },
+          "Configuracao de background sync aplicada ao WhatsApp Web"
+        );
+      } catch (error) {
+        this.logger.info(
+          { err: error, sessionKey: this.sessionKey },
+          "Falha ao aplicar configuracao de background sync"
+        );
+      }
     });
 
     client.on("ready", async () => {
@@ -247,17 +386,42 @@ export class WhatsAppWebJsProvider {
     });
 
     client.on("message", async (message) => {
+      this.lastInboundEvent = {
+        event: "message",
+        receivedAt: new Date().toISOString(),
+        message: summarizeMessage(message),
+      };
       await this.handleInboundMessage(client, message);
     });
 
     client.on("message_create", async (message) => {
+      this.lastInboundEvent = {
+        event: "message_create",
+        receivedAt: new Date().toISOString(),
+        message: summarizeMessage(message),
+      };
       await this.handleInboundMessage(client, message);
     });
 
     client.on("message_ciphertext", async (message) => {
       const chatId = String(message?._getChatId?.() || message?.from || "");
       const messageId = message?.id?._serialized || null;
+      this.lastInboundEvent = {
+        event: "message_ciphertext",
+        receivedAt: new Date().toISOString(),
+        message: summarizeMessage(message),
+      };
+      this.logInboundEvent("provider_event_message_ciphertext", {
+        event: "message_ciphertext",
+        message: summarizeMessage(message),
+      });
       if (!isSupportedDirectChatId(chatId) || !messageId) {
+        this.lastIgnoredEvent = {
+          event: "message_ciphertext",
+          ignoredAt: new Date().toISOString(),
+          reason: !messageId ? "missing_message_id" : "unsupported_chat_id",
+          message: summarizeMessage(message),
+        };
         return;
       }
 
@@ -268,7 +432,22 @@ export class WhatsAppWebJsProvider {
     client.on("message_ciphertext_failed", async (message) => {
       const chatId = String(message?._getChatId?.() || message?.from || "");
       const messageId = message?.id?._serialized || null;
+      this.lastInboundEvent = {
+        event: "message_ciphertext_failed",
+        receivedAt: new Date().toISOString(),
+        message: summarizeMessage(message),
+      };
+      this.logInboundEvent("provider_event_message_ciphertext_failed", {
+        event: "message_ciphertext_failed",
+        message: summarizeMessage(message),
+      });
       if (!isSupportedDirectChatId(chatId) || !messageId) {
+        this.lastIgnoredEvent = {
+          event: "message_ciphertext_failed",
+          ignoredAt: new Date().toISOString(),
+          reason: !messageId ? "missing_message_id" : "unsupported_chat_id",
+          message: summarizeMessage(message),
+        };
         return;
       }
 
@@ -278,7 +457,18 @@ export class WhatsAppWebJsProvider {
 
     client.on("unread_count", async (chat) => {
       const chatId = String(chat?.id?._serialized || "");
+      this.logInboundEvent("provider_event_unread_count", {
+        event: "unread_count",
+        chatId,
+        unreadCount: Number(chat?.unreadCount || 0),
+      });
       if (!isSupportedDirectChatId(chatId)) {
+        this.lastIgnoredEvent = {
+          event: "unread_count",
+          ignoredAt: new Date().toISOString(),
+          reason: "unsupported_chat_id",
+          chatId,
+        };
         return;
       }
 
@@ -353,27 +543,44 @@ export class WhatsAppWebJsProvider {
         lastMessage = fetched.at(-1);
       }
 
-      if (!lastMessage || shouldIgnoreMessage(lastMessage)) {
+      if (!lastMessage) {
         continue;
       }
 
       const contact = await chat.getContact().catch(() => null);
       const serialized = String(chat.id?._serialized || "");
-      const digits = extractDigitsFromChatId(serialized);
-      if (!digits) {
+      const ignoreReason = ignoreReasonForMessage(lastMessage);
+      if (ignoreReason) {
+        this.lastIgnoredEvent = {
+          event: "chat_snapshot",
+          ignoredAt: new Date().toISOString(),
+          reason: ignoreReason,
+          message: summarizeMessage(lastMessage),
+        };
         continue;
       }
 
-      const displayName =
-        contact?.name ||
-        contact?.pushname ||
-        chat.name ||
-        `+${digits}`;
+      const identity = await this.resolveChatIdentity(
+        client,
+        serialized,
+        contact,
+        contact?.name || contact?.pushname || chat.name || null
+      );
+      if (!identity) {
+        this.lastIgnoredEvent = {
+          event: "chat_snapshot",
+          ignoredAt: new Date().toISOString(),
+          reason: "unresolved_phone_identity",
+          message: summarizeMessage(lastMessage),
+          chatId: serialized,
+        };
+        continue;
+      }
 
       await syncChatSnapshot({
         sessionKey: this.sessionKey,
-        contactName: displayName,
-        phoneE164: `+${digits}`,
+        contactName: identity.contactName,
+        phoneE164: identity.phoneE164,
         body: extractMessagePreview(lastMessage),
         messageType: detectMessageType(lastMessage),
         externalMessageId: lastMessage.id?._serialized || null,
@@ -383,6 +590,7 @@ export class WhatsAppWebJsProvider {
           type: lastMessage.type,
           source: "chat_snapshot",
           chatId: serialized,
+          resolvedChatId: identity.chatId,
         },
         lastMessageAt: lastMessage.timestamp ? new Date(lastMessage.timestamp * 1000).toISOString() : null,
         unreadCount: Number(chat.unreadCount || 0),
@@ -392,6 +600,17 @@ export class WhatsAppWebJsProvider {
   }
 
   async syncSingleChat(client, chatId) {
+    try {
+      await client.syncHistory(chatId);
+    } catch (error) {
+      if (!isProtocolTimeoutError(error)) {
+        this.logger.info(
+          { err: error, sessionKey: this.sessionKey, chatId },
+          "Falha ao solicitar syncHistory de chat especifico"
+        );
+      }
+    }
+
     const chat = await client.getChatById(chatId);
     if (!chat || chat.isGroup) {
       return;
@@ -402,17 +621,29 @@ export class WhatsAppWebJsProvider {
       return;
     }
 
-    const digits = extractDigitsFromChatId(serialized);
-    if (!digits) {
+    const contact = await chat.getContact().catch(() => null);
+    const identity = await this.resolveChatIdentity(
+      client,
+      serialized,
+      contact,
+      contact?.name || contact?.pushname || chat.name || null
+    );
+    if (!identity) {
       return;
     }
 
-    const contact = await chat.getContact().catch(() => null);
     const fetched = await chat.fetchMessages({ limit: 5 });
     const messages = [...fetched].sort((left, right) => (left.timestamp || 0) - (right.timestamp || 0));
 
     for (const message of messages) {
-      if (message.fromMe || shouldIgnoreMessage(message)) {
+      const ignoreReason = message.fromMe ? "from_me" : ignoreReasonForMessage(message);
+      if (ignoreReason) {
+        this.lastIgnoredEvent = {
+          event: "chat_resync",
+          ignoredAt: new Date().toISOString(),
+          reason: ignoreReason,
+          message: summarizeMessage(message),
+        };
         continue;
       }
 
@@ -425,28 +656,57 @@ export class WhatsAppWebJsProvider {
         this.markInboundProcessed(externalMessageId);
       }
 
-      await this.callbacks.onInboundMessage({
-        sessionKey: this.sessionKey,
-        phoneE164: `+${digits}`,
-        contactName: contact?.name || contact?.pushname || `+${digits}`,
-        body: extractMessagePreview(message),
-        messageType: detectMessageType(message),
-        externalMessageId,
-        rawPayload: {
-          from: message.from,
-          to: message.to,
-          type: message.type,
-          timestamp: message.timestamp,
-          source: "chat_resync",
-          chatId: serialized,
-        },
-      });
+      try {
+        await this.callbacks.onInboundMessage({
+          sessionKey: this.sessionKey,
+          phoneE164: identity.phoneE164,
+          contactName: identity.contactName,
+          body: extractMessagePreview(message),
+          messageType: detectMessageType(message),
+          externalMessageId,
+          rawPayload: {
+            from: message.from,
+            to: message.to,
+            type: message.type,
+            timestamp: message.timestamp,
+            source: "chat_resync",
+            chatId: serialized,
+            resolvedChatId: identity.chatId,
+          },
+        });
+        this.lastSavedInbound = {
+          event: "chat_resync",
+          savedAt: new Date().toISOString(),
+          externalMessageId,
+          phoneE164: identity.phoneE164,
+          preview: extractMessagePreview(message),
+        };
+        this.lastSaveError = null;
+      } catch (error) {
+        this.lastSaveError = {
+          event: "chat_resync",
+          failedAt: new Date().toISOString(),
+          externalMessageId,
+          phoneE164: identity.phoneE164,
+          message: error.message,
+        };
+        throw error;
+      }
     }
   }
 
   async syncSingleMessage(client, messageId) {
     const message = await client.getMessageById(messageId);
-    if (!message || message.fromMe || shouldIgnoreMessage(message)) {
+    const ignoreReason = !message ? "message_not_found" : message.fromMe ? "from_me" : ignoreReasonForMessage(message);
+    if (!message || ignoreReason) {
+      if (ignoreReason) {
+        this.lastIgnoredEvent = {
+          event: "message_resync",
+          ignoredAt: new Date().toISOString(),
+          reason: ignoreReason,
+          message: message ? summarizeMessage(message) : { messageId },
+        };
+      }
       return false;
     }
 
@@ -455,8 +715,14 @@ export class WhatsAppWebJsProvider {
       return false;
     }
 
-    const digits = extractDigitsFromChatId(chatId);
-    if (!digits || /^0+$/.test(digits)) {
+    const contact = typeof message.getContact === "function" ? await message.getContact().catch(() => null) : null;
+    const identity = await this.resolveChatIdentity(
+      client,
+      chatId,
+      contact,
+      message._data?.notifyName || message._data?.pushname || null
+    );
+    if (!identity) {
       return false;
     }
 
@@ -469,22 +735,43 @@ export class WhatsAppWebJsProvider {
       this.markInboundProcessed(externalMessageId);
     }
 
-    await this.callbacks.onInboundMessage({
-      sessionKey: this.sessionKey,
-      phoneE164: `+${digits}`,
-      contactName: message._data?.notifyName || message._data?.pushname || `+${digits}`,
-      body: extractMessagePreview(message),
-      messageType: detectMessageType(message),
-      externalMessageId,
-      rawPayload: {
-        from: message.from,
-        to: message.to,
-        type: message.type,
-        timestamp: message.timestamp,
-        source: "message_resync",
-        chatId,
-      },
-    });
+    try {
+      await this.callbacks.onInboundMessage({
+        sessionKey: this.sessionKey,
+        phoneE164: identity.phoneE164,
+        contactName: identity.contactName,
+        body: extractMessagePreview(message),
+        messageType: detectMessageType(message),
+        externalMessageId,
+        rawPayload: {
+          from: message.from,
+          to: message.to,
+          type: message.type,
+          timestamp: message.timestamp,
+          source: "message_resync",
+          chatId,
+          resolvedChatId: identity.chatId,
+        },
+      });
+
+      this.lastSavedInbound = {
+        event: "message_resync",
+        savedAt: new Date().toISOString(),
+        externalMessageId,
+        phoneE164: identity.phoneE164,
+        preview: extractMessagePreview(message),
+      };
+      this.lastSaveError = null;
+    } catch (error) {
+      this.lastSaveError = {
+        event: "message_resync",
+        failedAt: new Date().toISOString(),
+        externalMessageId,
+        phoneE164: identity.phoneE164,
+        message: error.message,
+      };
+      throw error;
+    }
 
     return true;
   }
@@ -511,10 +798,17 @@ export class WhatsAppWebJsProvider {
       this.syncRecentChats(client)
         .then(() => {
           this.historySyncCompleted = true;
+          this.lastHistorySyncError = null;
           this.logger.info({ sessionKey: this.sessionKey }, "Sincronizacao inicial de chats concluida");
         })
         .catch((error) => {
           if (isProtocolTimeoutError(error)) {
+            this.lastHistorySyncError = {
+              failedAt: new Date().toISOString(),
+              attempt: this.historySyncAttempts,
+              message: error.message,
+              name: error.name,
+            };
             this.logger.info(
               { err: error, sessionKey: this.sessionKey, attempt: this.historySyncAttempts },
               "Sincronizacao inicial ainda nao terminou no WhatsApp Web; nova tentativa sera feita em background"
@@ -523,6 +817,12 @@ export class WhatsAppWebJsProvider {
             return;
           }
 
+          this.lastHistorySyncError = {
+            failedAt: new Date().toISOString(),
+            attempt: this.historySyncAttempts,
+            message: error.message,
+            name: error.name,
+          };
           this.logger.warn(
             { err: error, sessionKey: this.sessionKey, attempt: this.historySyncAttempts },
             "Falha na sincronizacao inicial de chats"
@@ -593,11 +893,41 @@ export class WhatsAppWebJsProvider {
   }
 
   async handleInboundMessage(client, message) {
-    if (client !== this.client || message.fromMe) {
+    if (client !== this.client) {
       return;
     }
 
-    if (shouldIgnoreMessage(message)) {
+    if (message.fromMe) {
+      this.lastIgnoredEvent = {
+        event: "message",
+        ignoredAt: new Date().toISOString(),
+        reason: "from_me",
+        message: summarizeMessage(message),
+      };
+      this.logInboundEvent("message_ignored", {
+        reason: "from_me",
+        message: summarizeMessage(message),
+      });
+      return;
+    }
+
+    this.logInboundEvent("provider_event_message", {
+      event: "message",
+      message: summarizeMessage(message),
+    });
+
+    const ignoreReason = ignoreReasonForMessage(message);
+    if (ignoreReason) {
+      this.lastIgnoredEvent = {
+        event: "message",
+        ignoredAt: new Date().toISOString(),
+        reason: ignoreReason,
+        message: summarizeMessage(message),
+      };
+      this.logInboundEvent("message_ignored", {
+        reason: ignoreReason,
+        message: summarizeMessage(message),
+      });
       return;
     }
 
@@ -606,8 +936,25 @@ export class WhatsAppWebJsProvider {
       return;
     }
 
-    const digits = extractDigitsFromChatId(message.from);
-    if (!digits || /^0+$/.test(digits)) {
+    const contact = typeof message.getContact === "function" ? await message.getContact().catch(() => null) : null;
+    const chatId = String(message?._getChatId?.() || message.from || "");
+    const identity = await this.resolveChatIdentity(
+      client,
+      chatId,
+      contact,
+      message._data?.notifyName || message._data?.pushname || null
+    );
+    if (!identity) {
+      this.lastIgnoredEvent = {
+        event: "message",
+        ignoredAt: new Date().toISOString(),
+        reason: "unresolved_phone_identity",
+        message: summarizeMessage(message),
+      };
+      this.logInboundEvent("message_ignored", {
+        reason: "unresolved_phone_identity",
+        message: summarizeMessage(message),
+      });
       return;
     }
 
@@ -615,19 +962,49 @@ export class WhatsAppWebJsProvider {
       this.markInboundProcessed(externalMessageId);
     }
 
-    await this.callbacks.onInboundMessage({
-      sessionKey: this.sessionKey,
-      phoneE164: `+${digits}`,
-      contactName: message._data?.notifyName || message._data?.pushname || `+${digits}`,
-      body: extractMessagePreview(message),
-      messageType: detectMessageType(message),
+    this.logInboundEvent("message_forwarded_to_persistence", {
+      phoneE164: identity.phoneE164,
+      contactName: identity.contactName,
       externalMessageId,
-      rawPayload: {
-        from: message.from,
-        type: message.type,
-        timestamp: message.timestamp,
-      },
+      message: summarizeMessage(message),
     });
+
+    try {
+      await this.callbacks.onInboundMessage({
+        sessionKey: this.sessionKey,
+        phoneE164: identity.phoneE164,
+        contactName: identity.contactName,
+        body: extractMessagePreview(message),
+        messageType: detectMessageType(message),
+        externalMessageId,
+        rawPayload: {
+          from: message.from,
+          type: message.type,
+          timestamp: message.timestamp,
+          source: "message_event",
+          chatId,
+          resolvedChatId: identity.chatId,
+        },
+      });
+
+      this.lastSavedInbound = {
+        event: "message",
+        savedAt: new Date().toISOString(),
+        externalMessageId,
+        phoneE164: identity.phoneE164,
+        preview: extractMessagePreview(message),
+      };
+      this.lastSaveError = null;
+    } catch (error) {
+      this.lastSaveError = {
+        event: "message",
+        failedAt: new Date().toISOString(),
+        externalMessageId,
+        phoneE164: identity.phoneE164,
+        message: error.message,
+      };
+      throw error;
+    }
   }
 
   wasInboundProcessed(externalMessageId) {
@@ -647,6 +1024,25 @@ export class WhatsAppWebJsProvider {
         this.processedInboundIds.delete(messageId);
       }
     }
+  }
+
+  getDiagnostics() {
+    return {
+      provider: "whatsapp-web.js",
+      connected: this.connected,
+      stopRequested: this.stopRequested,
+      initializing: Boolean(this.initializing),
+      historySyncAttempts: this.historySyncAttempts,
+      historySyncCompleted: this.historySyncCompleted,
+      queuedChatSyncs: this.chatSyncTimers.size,
+      queuedMessageSyncs: this.messageSyncTimers.size,
+      processedInboundCacheSize: this.processedInboundIds.size,
+      lastInboundEvent: this.lastInboundEvent,
+      lastIgnoredEvent: this.lastIgnoredEvent,
+      lastSavedInbound: this.lastSavedInbound,
+      lastSaveError: this.lastSaveError,
+      lastHistorySyncError: this.lastHistorySyncError,
+    };
   }
 
   async teardownClient(emitStatus = true) {
@@ -669,6 +1065,7 @@ export class WhatsAppWebJsProvider {
     this.messageSyncTimers.clear();
 
     this.processedInboundIds.clear();
+    this.identityCache.clear();
     this.historySyncAttempts = 0;
     this.historySyncCompleted = false;
 
