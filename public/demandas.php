@@ -473,23 +473,12 @@ includeSidebar('Demandas');
                         </select>
                     </div>
                 </div>
-                <div class="grid-2">
-                    <div class="field">
-                        <label for="create-status">Status</label>
-                        <select id="create-status" name="status">
-                            <option value="aberta">Aberta</option>
-                            <option value="em_andamento">Em andamento</option>
-                            <option value="aguardando">Aguardando</option>
-                            <option value="resolvida">Resolvida</option>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label for="has-evento">Esta demanda é referente a algum evento?</label>
-                        <select id="has-evento" onchange="toggleEventSearch()">
-                            <option value="nao">Não</option>
-                            <option value="sim">Sim</option>
-                        </select>
-                    </div>
+                <div class="field">
+                    <label for="has-evento">Esta demanda é referente a algum evento?</label>
+                    <select id="has-evento" onchange="toggleEventSearch()">
+                        <option value="nao">Não</option>
+                        <option value="sim">Sim</option>
+                    </select>
                 </div>
                 <div id="event-search-wrap" class="hidden">
                     <div class="field">
@@ -595,7 +584,7 @@ function closeModal(id) {
 
 function fillSelects() {
     const userOptions = ['<option value="">Selecione...</option>'].concat(
-        state.usuarios.map(u => `<option value="${u.id}">${escapeHtml(u.nome)}</option>`)
+        state.usuarios.map(u => `<option value="${u.id}">${escapeHtml(userLabel(u))}</option>`)
     ).join('');
     const setorOptions = ['<option value="">Selecione...</option>'].concat(
         state.setores.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
@@ -606,6 +595,10 @@ function fillSelects() {
 
     document.getElementById('filter-user').innerHTML = userOptions;
     document.getElementById('tab-demais').classList.toggle('hidden', !state.isAdmin);
+}
+
+function userLabel(user) {
+    return user?.label_usuario || user?.login || user?.nome || '';
 }
 
 function toggleResponsavelFields(prefix) {
@@ -622,6 +615,8 @@ function toggleEventSearch() {
             document.getElementById(`evento-${key}`).value = '';
         });
         document.getElementById('event-results').innerHTML = '';
+    } else {
+        searchEvents('', true);
     }
 }
 
@@ -665,7 +660,7 @@ function renderList() {
         return;
     }
     list.innerHTML = state.demandas.map(d => {
-        const responsavel = d.responsavel_tipo === 'setor' ? d.responsavel_setor : d.responsavel_nome;
+        const responsavel = d.responsavel_tipo === 'setor' ? d.responsavel_setor : (d.responsavel_login || d.responsavel_nome);
         return `
             <article class="demanda-card prioridade-${escapeHtml(d.prioridade)} ${Number(d.id) === Number(state.selectedId) ? 'active' : ''}" onclick="openDetail(${Number(d.id)})">
                 <div class="demanda-card-title">${escapeHtml(d.titulo)}</div>
@@ -698,7 +693,7 @@ async function openDetail(id) {
 
 function renderAdminControls(d) {
     if (!state.isAdmin) return '';
-    const userOptions = state.usuarios.map(u => `<option value="${u.id}" ${Number(d.responsavel_id) === Number(u.id) ? 'selected' : ''}>${escapeHtml(u.nome)}</option>`).join('');
+    const userOptions = state.usuarios.map(u => `<option value="${u.id}" ${Number(d.responsavel_id) === Number(u.id) ? 'selected' : ''}>${escapeHtml(userLabel(u))}</option>`).join('');
     const setorOptions = state.setores.map(s => `<option value="${escapeHtml(s)}" ${d.responsavel_setor === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
     return `
         <form class="grid-2" onsubmit="saveAdmin(event, ${Number(d.id)})" style="margin-top:.8rem;">
@@ -735,7 +730,7 @@ function renderAdminControls(d) {
 }
 
 function renderDetail(d, mensagens, anexos) {
-    const responsavel = d.responsavel_tipo === 'setor' ? d.responsavel_setor : d.responsavel_nome;
+    const responsavel = d.responsavel_tipo === 'setor' ? d.responsavel_setor : (d.responsavel_login || d.responsavel_nome);
     document.getElementById('detail').innerHTML = `
         <div class="detail-head">
             <div>
@@ -745,7 +740,7 @@ function renderDetail(d, mensagens, anexos) {
                     <span class="pill">${prioridadeLabels[d.prioridade] || d.prioridade}</span>
                     <span class="pill">Prazo ${formatDate(d.prazo)}</span>
                     <span class="pill">Responsável: ${escapeHtml(responsavel || '-')}</span>
-                    <span class="pill">Criada por ${escapeHtml(d.criador_nome || '-')}</span>
+                    <span class="pill">Criada por ${escapeHtml(d.criador_login || d.criador_nome || '-')}</span>
                 </div>
                 ${d.descricao ? `<p style="margin:.8rem 0 0;color:#4b5563;white-space:pre-wrap;">${escapeHtml(d.descricao)}</p>` : ''}
                 ${d.evento_id ? `
@@ -889,8 +884,8 @@ async function forwardDemand(id) {
     data.append('demanda_id', id);
     data.append('responsavel_tipo', tipo);
     if (tipo === 'usuario') {
-        const nome = prompt('Digite parte do nome do novo responsável:');
-        const user = state.usuarios.find(u => String(u.nome).toLowerCase().includes(String(nome || '').toLowerCase()));
+        const nome = prompt('Digite parte do login do novo responsável:');
+        const user = state.usuarios.find(u => String(userLabel(u)).toLowerCase().includes(String(nome || '').toLowerCase()));
         if (!user) return alert('Usuário não encontrado.');
         data.append('responsavel_id', user.id);
     } else {
@@ -947,20 +942,25 @@ document.getElementById('create-form').addEventListener('submit', async event =>
 });
 
 let eventSearchTimer = null;
-function searchEvents(query) {
+function searchEvents(query, force = false) {
     clearTimeout(eventSearchTimer);
-    if (query.trim().length < 2) {
-        document.getElementById('event-results').innerHTML = '';
+    if (!force && query.trim().length < 2) {
+        document.getElementById('event-results').innerHTML = '<div class="empty-list">Digite ao menos 2 caracteres ou selecione um evento recente.</div>';
         return;
     }
+    document.getElementById('event-results').innerHTML = '<div class="loading">Buscando eventos...</div>';
     eventSearchTimer = setTimeout(async () => {
-        const data = await fetchJson(`${API}?action=event_search&q=${encodeURIComponent(query)}`);
-        document.getElementById('event-results').innerHTML = (data.data || []).map(item => `
-            <div class="event-result" onclick='selectEvent(${JSON.stringify(item).replace(/'/g, '&#039;')})'>
-                <strong>${escapeHtml(item.nome || 'Evento')}</strong>
-                <div style="color:#6b7280;font-size:.82rem;">${formatDate(item.data_evento)} • ${escapeHtml(item.local || 'Local não informado')} • ${escapeHtml(item.whatsapp || 'Sem WhatsApp')}</div>
-            </div>
-        `).join('') || '<div class="empty-list">Nenhum evento encontrado.</div>';
+        try {
+            const data = await fetchJson(`${API}?action=event_search&q=${encodeURIComponent(query)}`);
+            document.getElementById('event-results').innerHTML = (data.data || []).map(item => `
+                <div class="event-result" onclick='selectEvent(${JSON.stringify(item).replace(/'/g, '&#039;')})'>
+                    <strong>${escapeHtml(item.nome || 'Evento')}</strong>
+                    <div style="color:#6b7280;font-size:.82rem;">${formatDate(item.data_evento)} • ${escapeHtml(item.local || 'Local não informado')} • ${escapeHtml(item.whatsapp || 'Sem WhatsApp')}</div>
+                </div>
+            `).join('') || '<div class="empty-list">Nenhum evento encontrado.</div>';
+        } catch (error) {
+            document.getElementById('event-results').innerHTML = `<div class="empty-list">${escapeHtml(error.message)}</div>`;
+        }
     }, 250);
 }
 

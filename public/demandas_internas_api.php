@@ -291,7 +291,9 @@ function demandasInternasList(PDO $pdo, int $userId, bool $isAdmin): void
         SELECT
             d.*,
             criador.nome AS criador_nome,
+            criador.login AS criador_login,
             responsavel.nome AS responsavel_nome,
+            responsavel.login AS responsavel_login,
             COALESCE(msgs.total, 0) AS mensagens_total,
             COALESCE(anexos.total, 0) AS anexos_total
         FROM demandas_internas d
@@ -319,7 +321,11 @@ function demandasInternasDetail(PDO $pdo, int $userId, bool $isAdmin): void
     }
 
     $stmt = $pdo->prepare("
-        SELECT d.*, criador.nome AS criador_nome, responsavel.nome AS responsavel_nome
+        SELECT d.*,
+               criador.nome AS criador_nome,
+               criador.login AS criador_login,
+               responsavel.nome AS responsavel_nome,
+               responsavel.login AS responsavel_login
         FROM demandas_internas d
         LEFT JOIN usuarios criador ON criador.id = d.criador_id
         LEFT JOIN usuarios responsavel ON responsavel.id = d.responsavel_id
@@ -359,7 +365,7 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
     $responsavelId = (int)($_POST['responsavel_id'] ?? 0);
     $responsavelSetor = trim((string)($_POST['responsavel_setor'] ?? ''));
     $prazo = trim((string)($_POST['prazo'] ?? ''));
-    $status = (string)($_POST['status'] ?? 'aberta');
+    $status = 'aberta';
     $prioridade = (string)($_POST['prioridade'] ?? 'normal');
 
     if ($titulo === '' || $prazo === '') {
@@ -654,28 +660,48 @@ function demandasInternasHistory(PDO $pdo, int $userId, bool $isAdmin): void
 
 function demandasInternasBootstrap(PDO $pdo, bool $isAdmin): void
 {
-    $usuarios = $pdo->query("SELECT id, nome, email, cargo FROM usuarios WHERE COALESCE(status, 'ativo') = 'ativo' ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
+    $usuarios = $pdo->query("
+        SELECT
+            id,
+            nome,
+            login,
+            COALESCE(NULLIF(TRIM(login), ''), nome) AS label_usuario,
+            email,
+            cargo
+        FROM usuarios
+        WHERE COALESCE(NULLIF(LOWER(status::TEXT), ''), 'ativo') IN ('ativo', '1', 'true', 't')
+        ORDER BY COALESCE(NULLIF(TRIM(login), ''), nome)
+    ")->fetchAll(PDO::FETCH_ASSOC);
     $setores = $pdo->query("SELECT DISTINCT cargo FROM usuarios WHERE cargo IS NOT NULL AND TRIM(cargo) <> '' ORDER BY cargo")->fetchAll(PDO::FETCH_COLUMN);
     demandasInternasJson(['success' => true, 'usuarios' => $usuarios, 'setores' => $setores, 'is_admin' => $isAdmin]);
 }
 
 function demandasInternasEventSearch(PDO $pdo): void
 {
-    $q = '%' . trim((string)($_GET['q'] ?? '')) . '%';
+    $termo = trim((string)($_GET['q'] ?? ''));
+    $q = '%' . $termo . '%';
     $items = [];
 
     try {
         $cols = demandasInternasColumns($pdo, 'logistica_eventos_espelho');
         if ($cols) {
-            $nomeExpr = isset($cols['nome_evento']) ? 'nome_evento' : "'Evento ME'";
-            $dataExpr = isset($cols['data_evento']) ? 'data_evento' : 'NULL';
-            $localExpr = isset($cols['localevento']) ? 'localevento' : 'NULL';
-            $whatsExpr = isset($cols['whatsapp_cliente']) ? 'whatsapp_cliente' : (isset($cols['telefone_cliente']) ? 'telefone_cliente' : 'NULL');
+            $idExpr = isset($cols['me_event_id']) ? 'me_event_id' : 'id';
+            $nomeExpr = isset($cols['nome_evento']) ? 'nome_evento' : "'Evento ME #' || {$idExpr}::TEXT";
+            $dataExpr = isset($cols['data_evento']) ? 'data_evento' : 'NULL::date';
+            $localExpr = isset($cols['localevento']) ? 'localevento' : (isset($cols['local_evento']) ? 'local_evento' : "''");
+            $whatsExpr = isset($cols['whatsapp_cliente']) ? 'whatsapp_cliente' : (isset($cols['telefone_cliente']) ? 'telefone_cliente' : "''");
+            $whereParts = [
+                "CAST({$idExpr} AS TEXT) ILIKE :q",
+                "CAST({$nomeExpr} AS TEXT) ILIKE :q",
+                "CAST({$localExpr} AS TEXT) ILIKE :q",
+            ];
+            $arquivadoSql = isset($cols['arquivado']) ? "AND COALESCE(arquivado, FALSE) = FALSE" : "";
             $stmt = $pdo->prepare("
-                SELECT 'me' AS tipo, me_event_id AS id, {$nomeExpr} AS nome, {$dataExpr} AS data_evento,
+                SELECT 'me' AS tipo, {$idExpr} AS id, {$nomeExpr} AS nome, {$dataExpr} AS data_evento,
                        {$localExpr} AS local, {$whatsExpr} AS whatsapp
                 FROM logistica_eventos_espelho
-                WHERE CAST(me_event_id AS TEXT) ILIKE :q OR CAST({$nomeExpr} AS TEXT) ILIKE :q OR CAST({$localExpr} AS TEXT) ILIKE :q
+                WHERE (" . implode(' OR ', $whereParts) . ")
+                  {$arquivadoSql}
                 ORDER BY {$dataExpr} DESC NULLS LAST
                 LIMIT 20
             ");
@@ -689,13 +715,20 @@ function demandasInternasEventSearch(PDO $pdo): void
     try {
         $cols = demandasInternasColumns($pdo, 'agenda_eventos');
         if ($cols) {
-            $localExpr = isset($cols['local']) ? 'local' : 'NULL';
+            $tituloExpr = isset($cols['titulo']) ? 'titulo' : "'Evento interno #' || id::TEXT";
+            $inicioExpr = isset($cols['inicio']) ? 'inicio' : (isset($cols['data_inicio']) ? 'data_inicio' : 'criado_em');
+            $localExpr = isset($cols['local']) ? 'local' : (isset($cols['observacoes']) ? 'observacoes' : "''");
+            $whereParts = [
+                "CAST(id AS TEXT) ILIKE :q",
+                "CAST({$tituloExpr} AS TEXT) ILIKE :q",
+                "CAST({$localExpr} AS TEXT) ILIKE :q",
+            ];
             $stmt = $pdo->prepare("
-                SELECT 'agenda' AS tipo, id, titulo AS nome, DATE(inicio) AS data_evento,
-                       {$localExpr} AS local, NULL AS whatsapp
+                SELECT 'agenda' AS tipo, id, {$tituloExpr} AS nome, DATE({$inicioExpr}) AS data_evento,
+                       {$localExpr} AS local, '' AS whatsapp
                 FROM agenda_eventos
-                WHERE titulo ILIKE :q OR CAST(id AS TEXT) ILIKE :q
-                ORDER BY inicio DESC
+                WHERE " . implode(' OR ', $whereParts) . "
+                ORDER BY {$inicioExpr} DESC
                 LIMIT 20
             ");
             $stmt->execute([':q' => $q]);
