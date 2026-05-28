@@ -185,6 +185,8 @@ if (!$tablesReady) {
 }
 
 if (!wa_is_logged_in()) {
+    $loginUsers = wa_login_user_options();
+    $selectedLogin = trim((string)($_POST['login'] ?? ''));
     ?>
     <!doctype html>
     <html lang="pt-BR">
@@ -200,10 +202,10 @@ if (!wa_is_logged_in()) {
     <body class="auth-shell">
         <main class="auth-card">
             <section class="auth-panel">
-                <span class="kicker">Acesso separado</span>
+                <span class="kicker">Acesso Smile Chat</span>
                 <h1 class="auth-title">Entrar no Smile Chat</h1>
                 <p class="auth-copy">
-                    Acesse o ambiente de atendimento com o mesmo login do Painel Smile.
+                    Selecione seu usuário e informe a senha para acessar o atendimento.
                 </p>
                 <?php if ($flash): ?>
                     <div class="flash flash-<?= wa_e($flash['type']) ?>"><?= wa_e($flash['message']) ?></div>
@@ -211,36 +213,53 @@ if (!wa_is_logged_in()) {
                 <form method="post" class="field-grid">
                     <input type="hidden" name="action" value="login">
                     <div>
-                        <label class="label" for="login">Login ou email</label>
-                        <input class="field" id="login" name="login" required placeholder="seu email ou login do painel">
+                        <label class="label" for="login">Usuário</label>
+                        <select class="select" id="login" name="login" required>
+                            <option value="">Selecione seu usuário</option>
+                            <?php foreach ($loginUsers as $loginUser): ?>
+                                <option value="<?= wa_e($loginUser['value']) ?>" <?= $selectedLogin === (string)$loginUser['value'] ? 'selected' : '' ?>>
+                                    <?= wa_e($loginUser['label']) ?><?= $loginUser['hint'] !== '' ? ' • ' . wa_e($loginUser['hint']) : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <div>
                         <label class="label" for="password">Senha</label>
-                        <input class="field" id="password" name="password" type="password" required placeholder="Sua senha">
+                        <input class="field" id="password" name="password" type="password" required placeholder="Digite sua senha">
                     </div>
                     <button class="button" type="submit">Entrar</button>
                 </form>
                 <p class="muted-note">
-                    Caminho atual do app: <code><?= wa_e(wa_base_path()) ?></code><br>
-                    Liberação via permissões: <code>perm_smile_chat</code> e <code>perm_smile_chat_admin</code>.
+                    O acesso usa a mesma senha do Painel Smile.
                 </p>
             </section>
-            <aside class="auth-hero">
-                <div>
+            <aside class="auth-hero auth-hero-login">
+                <div class="auth-hero-brand">
                     <span class="kicker">Smile Chat</span>
-                    <h2 class="auth-title">Comunicação organizada para a operação</h2>
+                    <div class="auth-logo-lockup" aria-hidden="true">
+                        <div class="auth-logo-mark">
+                            <span class="brand-dot dot-left"></span>
+                            <span class="brand-dot dot-center"></span>
+                            <span class="brand-dot dot-right"></span>
+                            <span class="brand-smile"></span>
+                        </div>
+                        <div class="auth-logo-copy">
+                            <h2 class="auth-logo-title">Smile Chat</h2>
+                            <p class="auth-logo-tagline">Conectar • Engajar • Entregar</p>
+                        </div>
+                    </div>
                     <p class="auth-copy">
-                        O Smile Chat concentra equipe, inboxes e conversas em um ambiente limpo e direto.
+                        Atendimento mais organizado, rápido e elegante para a operação da Smile.
                     </p>
                 </div>
-                <div class="stack">
-                    <div class="topbar-card">
-                        <strong>Modelo</strong>
-                        <p class="small">Departamentos, atendentes, inboxes e atalhos rápidos.</p>
+                <div class="auth-hero-points">
+                    <div class="auth-hero-point">
+                        <strong>Selecione seu usuário</strong>
+                        <p class="small">Somente usuários liberados no painel aparecem nesta lista.</p>
                     </div>
-                    <div class="topbar-card">
-                        <strong>Objetivo</strong>
-                        <p class="small">Centralizar atendimento com mais agilidade no dia a dia.</p>
+                    <div class="auth-hero-point">
+                        <strong>Use a mesma senha</strong>
+                        <p class="small">A autenticação segue o cadastro principal do Painel Smile.</p>
                     </div>
                 </div>
             </aside>
