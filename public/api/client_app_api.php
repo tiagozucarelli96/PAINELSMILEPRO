@@ -1010,6 +1010,70 @@ function client_app_api_fetch_portal(PDO $pdo, int $meetingId): ?array
     return $portal;
 }
 
+function client_app_api_public_links(PDO $pdo, int $meetingId, string $linkType): array
+{
+    if ($meetingId <= 0) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT
+            id,
+            link_type,
+            portal_visible,
+            portal_editable,
+            is_active,
+            form_schema_json,
+            submitted_at
+        FROM eventos_links_publicos
+        WHERE meeting_id = :meeting_id
+          AND link_type = :link_type
+          AND is_active = TRUE
+        ORDER BY COALESCE(slot_index, 1) ASC, id DESC
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meetingId,
+        ':link_type' => $linkType,
+    ]);
+
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($rows as &$row) {
+        $schema = json_decode((string)($row['form_schema_json'] ?? '[]'), true);
+        $row['form_schema'] = is_array($schema) ? $schema : [];
+        $row['portal_visible'] = !empty($row['portal_visible']);
+        $row['portal_editable'] = !empty($row['portal_editable']);
+        $row['is_active'] = !empty($row['is_active']);
+    }
+    unset($row);
+
+    return $rows;
+}
+
+function client_app_api_form_schema_has_fields($schema): bool
+{
+    if (!is_array($schema)) {
+        return false;
+    }
+
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+
+        $fieldId = trim((string)($field['id'] ?? ''));
+        if (strpos($fieldId, 'legacy_portal_text_') === 0) {
+            continue;
+        }
+
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        if (in_array($type, ['text', 'textarea', 'yesno', 'select', 'file'], true)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function client_app_api_portal_sections(?array $portal): array
 {
     $map = [
@@ -1284,6 +1348,12 @@ function client_app_api_event_payload(PDO $pdo, int $meetingId): array
         $summary['arquivos'] = client_app_api_file_summary($pdo, $meetingId);
     }
 
+    $hideEmbeddedMeetingCards = is_array($portal) && !empty($portal['visivel_reuniao']);
+    $formLinks = client_app_api_public_links($pdo, $meetingId, 'cliente_formulario');
+    $visibleFormLinks = array_values(array_filter($formLinks, static function (array $item): bool {
+        return !empty($item['portal_visible']) && client_app_api_form_schema_has_fields($item['form_schema'] ?? null);
+    }));
+
     return [
         'meeting_id' => $meetingId,
         'me_event_id' => (int)($meeting['me_event_id'] ?? 0),
@@ -1297,8 +1367,8 @@ function client_app_api_event_payload(PDO $pdo, int $meetingId): array
             'reuniao_final' => is_array($portal) && !empty($portal['visivel_reuniao']),
             'convidados' => is_array($portal) && !empty($portal['visivel_convidados']),
             'arquivos' => is_array($portal) && !empty($portal['visivel_arquivos']),
-            'dj' => !empty($sections['dj_protocolo']['visivel']),
-            'formulario' => !empty($sections['formulario']['visivel']),
+            'dj' => !empty($sections['dj_protocolo']['visivel']) && !$hideEmbeddedMeetingCards,
+            'formulario' => !empty($sections['formulario']['visivel']) && !$hideEmbeddedMeetingCards && !empty($visibleFormLinks),
         ],
         'permissions' => [
             'reuniao_editavel' => is_array($portal) && !empty($portal['editavel_reuniao']),
