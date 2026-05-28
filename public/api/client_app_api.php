@@ -215,6 +215,20 @@ function client_app_api_user_agent(): string
     return trim((string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
 }
 
+function client_app_api_limit_text(?string $value, int $maxLength): string
+{
+    $text = trim((string)$value);
+    if ($text === '' || $maxLength <= 0) {
+        return '';
+    }
+
+    if (function_exists('mb_substr')) {
+        return mb_substr($text, 0, $maxLength);
+    }
+
+    return substr($text, 0, $maxLength);
+}
+
 function client_app_api_is_login_blocked(PDO $pdo, string $cpf, string $ip): bool
 {
     $stmt = $pdo->prepare("
@@ -893,10 +907,10 @@ function client_app_api_create_session(PDO $pdo, int $meetingId, string $cpf, ar
         ':meeting_id' => $meetingId,
         ':cpf_hash' => hash('sha256', $cpf),
         ':access_token_hash' => $tokenHash,
-        ':device_name' => trim((string)($meta['device_name'] ?? '')),
-        ':platform' => trim((string)($meta['platform'] ?? '')),
-        ':app_version' => trim((string)($meta['app_version'] ?? '')),
-        ':ip' => client_app_api_client_ip(),
+        ':device_name' => client_app_api_limit_text((string)($meta['device_name'] ?? ''), 120),
+        ':platform' => client_app_api_limit_text((string)($meta['platform'] ?? ''), 40),
+        ':app_version' => client_app_api_limit_text((string)($meta['app_version'] ?? ''), 40),
+        ':ip' => client_app_api_limit_text(client_app_api_client_ip(), 64),
         ':user_agent' => client_app_api_user_agent(),
         ':expires_at' => $expiresAt,
     ]);

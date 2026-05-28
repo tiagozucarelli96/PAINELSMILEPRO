@@ -344,7 +344,7 @@ async function onLoginSubmit(event) {
     event_location_id: Number(form.get("event_location_id") || 0),
     platform: detectPlatform(),
     app_version: "0.1.0",
-    device_name: navigator.userAgent,
+    device_name: detectDeviceName(),
   };
 
   try {
@@ -485,6 +485,17 @@ function detectPlatform() {
     return "android";
   }
   return "web";
+}
+
+function detectDeviceName() {
+  const platform = detectPlatform();
+  if (platform === "android") {
+    return "Android App";
+  }
+  if (platform === "ios") {
+    return "iPhone App";
+  }
+  return "Web App";
 }
 
 function escapeHtml(value) {

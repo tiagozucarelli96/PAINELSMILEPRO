@@ -444,7 +444,7 @@ code {
 .topbar-actions,
 .account-panel {
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
     gap: 12px;
 }
 
@@ -475,14 +475,17 @@ code {
 }
 
 .account-card {
-    min-width: 260px;
-    display: grid;
-    gap: 12px;
+    min-width: 0;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
 }
 
 .account-copy {
     display: grid;
-    gap: 4px;
+    gap: 2px;
+    min-width: 220px;
 }
 
 .status-pill {
@@ -496,6 +499,16 @@ code {
     font-weight: 800;
     background: #e6f8ee;
     color: #0f8c56;
+    flex-shrink: 0;
+}
+
+.account-card form {
+    margin-left: auto;
+}
+
+.account-card .button-secondary {
+    padding: 11px 18px;
+    border-radius: 14px;
 }
 
 .grid-3,
