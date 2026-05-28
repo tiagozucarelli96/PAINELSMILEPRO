@@ -1010,6 +1010,44 @@ function client_app_api_fetch_portal(PDO $pdo, int $meetingId): ?array
     return $portal;
 }
 
+function client_app_api_portal_base_url(): string
+{
+    $candidates = [
+        (string)(getenv('EVENTOS_CLIENTE_PORTAL_BASE_URL') ?: ''),
+        (string)(getenv('APP_CLIENT_PORTAL_URL') ?: ''),
+        (string)(getenv('APP_URL') ?: ''),
+        (string)(getenv('BASE_URL') ?: ''),
+    ];
+
+    foreach ($candidates as $candidate) {
+        $value = trim($candidate);
+        if ($value !== '') {
+            return rtrim($value, '/');
+        }
+    }
+
+    return 'https://painelpro.smileeventos.com.br';
+}
+
+function client_app_api_portal_module_urls(?array $portal): array
+{
+    $token = trim((string)($portal['token'] ?? ''));
+    if ($token === '') {
+        return [];
+    }
+
+    $base = client_app_api_portal_base_url();
+    $queryToken = urlencode($token);
+
+    return [
+        'reuniao_final' => $base . '/index.php?page=eventos_cliente_reuniao&token=' . $queryToken,
+        'convidados' => $base . '/index.php?page=eventos_cliente_convidados&token=' . $queryToken,
+        'arquivos' => $base . '/index.php?page=eventos_cliente_arquivos&token=' . $queryToken,
+        'dj' => $base . '/index.php?page=eventos_cliente_dj_portal&token=' . $queryToken,
+        'formulario' => $base . '/index.php?page=eventos_cliente_formulario_portal&token=' . $queryToken,
+    ];
+}
+
 function client_app_api_public_links(PDO $pdo, int $meetingId, string $linkType): array
 {
     if ($meetingId <= 0) {
@@ -1353,6 +1391,15 @@ function client_app_api_event_payload(PDO $pdo, int $meetingId): array
     $visibleFormLinks = array_values(array_filter($formLinks, static function (array $item): bool {
         return !empty($item['portal_visible']) && client_app_api_form_schema_has_fields($item['form_schema'] ?? null);
     }));
+    $moduleUrls = client_app_api_portal_module_urls($portal);
+
+    $cards = [
+        'reuniao_final' => is_array($portal) && !empty($portal['visivel_reuniao']),
+        'convidados' => is_array($portal) && !empty($portal['visivel_convidados']),
+        'arquivos' => is_array($portal) && !empty($portal['visivel_arquivos']),
+        'dj' => !empty($sections['dj_protocolo']['visivel']) && !$hideEmbeddedMeetingCards,
+        'formulario' => !empty($sections['formulario']['visivel']) && !$hideEmbeddedMeetingCards && !empty($visibleFormLinks),
+    ];
 
     return [
         'meeting_id' => $meetingId,
@@ -1363,13 +1410,14 @@ function client_app_api_event_payload(PDO $pdo, int $meetingId): array
         'time_start' => $eventStart,
         'time_end' => $eventEnd,
         'location' => $eventLocation,
-        'cards' => [
-            'reuniao_final' => is_array($portal) && !empty($portal['visivel_reuniao']),
-            'convidados' => is_array($portal) && !empty($portal['visivel_convidados']),
-            'arquivos' => is_array($portal) && !empty($portal['visivel_arquivos']),
-            'dj' => !empty($sections['dj_protocolo']['visivel']) && !$hideEmbeddedMeetingCards,
-            'formulario' => !empty($sections['formulario']['visivel']) && !$hideEmbeddedMeetingCards && !empty($visibleFormLinks),
-        ],
+        'cards' => $cards,
+        'module_urls' => array_filter([
+            'reuniao_final' => !empty($cards['reuniao_final']) ? ($moduleUrls['reuniao_final'] ?? null) : null,
+            'convidados' => !empty($cards['convidados']) ? ($moduleUrls['convidados'] ?? null) : null,
+            'arquivos' => !empty($cards['arquivos']) ? ($moduleUrls['arquivos'] ?? null) : null,
+            'dj' => !empty($cards['dj']) ? ($moduleUrls['dj'] ?? null) : null,
+            'formulario' => !empty($cards['formulario']) ? ($moduleUrls['formulario'] ?? null) : null,
+        ]),
         'permissions' => [
             'reuniao_editavel' => is_array($portal) && !empty($portal['editavel_reuniao']),
             'convidados_editavel' => is_array($portal) && !empty($portal['editavel_convidados']),

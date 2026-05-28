@@ -384,6 +384,33 @@ body::before {
   box-shadow: var(--shadow-md);
 }
 
+.portal-tile-action {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.portal-tile-action:active {
+  transform: scale(0.99);
+}
+
+.portal-tile-action:hover,
+.portal-tile-action:focus-visible {
+  border-color: rgba(45, 99, 212, 0.28);
+  box-shadow: 0 18px 36px rgba(16, 35, 71, 0.12);
+  outline: none;
+}
+
+.tile-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 14px;
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: var(--brand-royal);
+}
+
 .portal-empty {
   padding: 16px 18px;
   border-radius: var(--radius-lg);
@@ -428,8 +455,66 @@ body::before {
   gap: 10px;
 }
 
-.debug-card {
-  border-style: dashed;
+.module-shell {
+  padding-bottom: 16px;
+}
+
+.module-shell-header {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.module-shell-copy .section-copy {
+  margin-bottom: 0;
+}
+
+.ghost-button,
+.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 35, 71, 0.12);
+  background: rgba(16, 35, 71, 0.04);
+  color: var(--brand);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.module-frame-wrap {
+  position: relative;
+  min-height: 72vh;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(16, 35, 71, 0.1);
+  background: #fff;
+}
+
+.module-frame {
+  width: 100%;
+  min-height: 72vh;
+  border: 0;
+  background: #fff;
+}
+
+.module-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text-soft);
+  font-size: 0.94rem;
+  font-weight: 700;
+  z-index: 2;
+}
+
+.module-actions {
+  margin-top: 14px;
 }
 
 @media (max-width: 480px) {
@@ -454,6 +539,11 @@ body::before {
 
   .badge {
     align-self: flex-start;
+  }
+
+  .module-frame-wrap,
+  .module-frame {
+    min-height: 68vh;
   }
 
 }

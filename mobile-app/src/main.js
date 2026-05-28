@@ -9,6 +9,11 @@ const state = {
   bootingSession: true,
   session: loadSession(),
   event: null,
+  route: {
+    name: "dashboard",
+    moduleKey: "",
+  },
+  iframeLoading: false,
   error: "",
   success: "",
 };
@@ -79,7 +84,11 @@ function render() {
   shell.className = "shell";
 
   if (state.session?.token && state.event) {
-    shell.append(renderDashboard());
+    if (state.route.name === "module") {
+      shell.append(renderModuleScreen());
+    } else {
+      shell.append(renderDashboard());
+    }
   } else {
     shell.append(renderLogin());
   }
@@ -146,33 +155,10 @@ function renderLogin() {
 
 function renderDashboard() {
   const event = state.event.event || state.event;
-  const cards = event.cards || {};
-  const permissions = event.permissions || {};
+  const modules = getVisibleModules(event);
 
   const wrap = document.createElement("div");
   wrap.className = "stack";
-
-  const availableAreas = [
-    portalAreaRow(
-      "Reunião Final",
-      cards.reuniao_final,
-      permissions.reuniao_editavel ? "Liberado para acompanhamento e edição do cliente." : "Liberado para consulta quando a equipe publicar."
-    ),
-    portalAreaRow(
-      "Convidados",
-      cards.convidados,
-      permissions.convidados_editavel ? "Lista liberada para edição do cliente." : "Lista disponível apenas para consulta."
-    ),
-    portalAreaRow(
-      "Arquivos",
-      cards.arquivos,
-      permissions.arquivos_editavel ? "Envio e acompanhamento de arquivos liberados." : "Área de arquivos ainda não liberada."
-    ),
-    portalAreaRow("DJ", cards.dj, cards.dj ? "Informações de protocolo e alinhamento do DJ." : "Ainda não liberado."),
-    portalAreaRow("Formulários", cards.formulario, cards.formulario ? "Formulários adicionais já disponíveis para o evento." : "Ainda não liberado.")
-  ];
-
-  const releasedAreas = availableAreas.filter((item) => item.enabled);
 
   wrap.innerHTML = `
     <section class="hero">
@@ -187,7 +173,7 @@ function renderDashboard() {
       <div class="section-kicker">Portal</div>
       <h2 class="section-title">Áreas liberadas</h2>
       <div class="portal-grid">
-        ${releasedAreas.length > 0 ? releasedAreas.map((item) => item.html).join("") : emptyPortalState("Nenhuma área está liberada para este portal no momento.")}
+        ${modules.length > 0 ? modules.map(renderModuleTile).join("") : emptyPortalState("Nenhuma área está liberada para este portal no momento.")}
       </div>
     </section>
 
@@ -196,24 +182,159 @@ function renderDashboard() {
     </section>
   `;
 
+  wrap.querySelectorAll("[data-module-key]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openModule(String(button.dataset.moduleKey || ""));
+    });
+  });
   wrap.querySelector("#logout-event").addEventListener("click", logout);
   return wrap;
 }
 
-function portalAreaRow(title, enabled, description) {
-  return {
-    enabled,
-    html: `
-      <div class="portal-tile">
-        <strong>${escapeHtml(title)}</strong>
-        <div class="muted">${escapeHtml(description)}</div>
+function renderModuleScreen() {
+  const event = state.event.event || state.event;
+  const module = getModuleMap(event)[state.route.moduleKey] || null;
+  if (!module) {
+    state.route = { name: "dashboard", moduleKey: "" };
+    return renderDashboard();
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "stack";
+  wrap.innerHTML = `
+    <section class="surface module-shell">
+      <div class="module-shell-header">
+        <button class="ghost-button" type="button" id="module-back">Voltar</button>
+        <div class="module-shell-copy">
+          <div class="section-kicker">Portal do cliente</div>
+          <h2 class="section-title">${escapeHtml(module.title)}</h2>
+          <p class="section-copy">${escapeHtml(event.name || "Seu evento")}</p>
+        </div>
       </div>
-    `,
-  };
+      <div class="module-frame-wrap">
+        ${state.iframeLoading ? '<div class="module-loading">Carregando conteúdo...</div>' : ""}
+        <iframe
+          class="module-frame"
+          id="module-frame"
+          title="${escapeHtml(module.title)}"
+          src="${escapeHtml(module.url)}"
+          loading="eager"
+          referrerpolicy="no-referrer-when-downgrade"
+        ></iframe>
+      </div>
+      <div class="module-actions">
+        <a class="ghost-link" href="${escapeHtml(module.url)}" target="_blank" rel="noreferrer">Abrir em tela completa</a>
+      </div>
+    </section>
+  `;
+
+  wrap.querySelector("#module-back").addEventListener("click", () => {
+    state.route = { name: "dashboard", moduleKey: "" };
+    state.iframeLoading = false;
+    render();
+  });
+  const frame = wrap.querySelector("#module-frame");
+  if (frame) {
+    frame.addEventListener("load", () => {
+      if (state.iframeLoading) {
+        state.iframeLoading = false;
+        render();
+      }
+    });
+  }
+
+  return wrap;
 }
 
 function emptyPortalState(message) {
   return `<div class="portal-empty">${escapeHtml(message)}</div>`;
+}
+
+function getModuleMap(event) {
+  const cards = event.cards || {};
+  const urls = event.module_urls || {};
+  const permissions = event.permissions || {};
+
+  return {
+    reuniao_final: {
+      key: "reuniao_final",
+      title: "Reunião Final",
+      description: permissions.reuniao_editavel
+        ? "Acompanhamento e preenchimento da reunião final."
+        : "Acompanhamento da reunião final liberada pela equipe.",
+      url: urls.reuniao_final || "",
+      enabled: Boolean(cards.reuniao_final && urls.reuniao_final),
+    },
+    convidados: {
+      key: "convidados",
+      title: "Convidados",
+      description: permissions.convidados_editavel
+        ? "Lista de convidados liberada para edição."
+        : "Lista de convidados disponível para consulta.",
+      url: urls.convidados || "",
+      enabled: Boolean(cards.convidados && urls.convidados),
+    },
+    arquivos: {
+      key: "arquivos",
+      title: "Arquivos",
+      description: permissions.arquivos_editavel
+        ? "Envio e acompanhamento de arquivos do evento."
+        : "Consulta de arquivos liberados para o evento.",
+      url: urls.arquivos || "",
+      enabled: Boolean(cards.arquivos && urls.arquivos),
+    },
+    dj: {
+      key: "dj",
+      title: "DJ",
+      description: "Formulários e alinhamentos de DJ e protocolo.",
+      url: urls.dj || "",
+      enabled: Boolean(cards.dj && urls.dj),
+    },
+    formulario: {
+      key: "formulario",
+      title: "Formulários",
+      description: "Formulários adicionais liberados para este evento.",
+      url: urls.formulario || "",
+      enabled: Boolean(cards.formulario && urls.formulario),
+    },
+  };
+}
+
+function getVisibleModules(event) {
+  return Object.values(getModuleMap(event)).filter((item) => item.enabled);
+}
+
+function renderModuleTile(module) {
+  return `
+    <button class="portal-tile portal-tile-action" type="button" data-module-key="${escapeHtml(module.key)}">
+      <strong>${escapeHtml(module.title)}</strong>
+      <div class="muted">${escapeHtml(module.description)}</div>
+      <span class="tile-link">Abrir</span>
+    </button>
+  `;
+}
+
+function openModule(moduleKey) {
+  const event = state.event?.event || state.event;
+  if (!event) {
+    return;
+  }
+
+  const module = getModuleMap(event)[moduleKey] || null;
+  if (!module || !module.enabled || !module.url) {
+    state.error = "Esta área não está disponível no momento.";
+    render();
+    return;
+  }
+
+  state.error = "";
+  state.success = "";
+  state.route = {
+    name: "module",
+    moduleKey,
+  };
+  state.iframeLoading = true;
+  render();
 }
 
 function renderAlerts() {
@@ -264,7 +385,7 @@ async function onLoginSubmit(event) {
       expires_at: data.expires_at,
     };
     persistSession();
-    state.success = "Acesso liberado.";
+    state.success = "";
     await refreshEventSummary();
   } catch (error) {
     console.error(error);
@@ -288,7 +409,7 @@ async function refreshEventSummary() {
       headers: withAuthHeaders(),
     });
     state.event = data.event;
-    state.success = "Informações atualizadas.";
+    state.success = "";
   } catch (error) {
     console.error(error);
     state.error = error.message || "Não foi possível carregar o evento.";
@@ -312,21 +433,10 @@ async function logout() {
     console.error(error);
   } finally {
     clearSession();
-    state.success = "Acesso encerrado.";
+    state.route = { name: "dashboard", moduleKey: "" };
+    state.success = "";
     render();
   }
-}
-
-function onApiBaseChange(event) {
-  const value = String(event.target.value || "").trim().replace(/\/$/, "");
-  if (!value) {
-    return;
-  }
-  state.apiBase = value;
-  window.localStorage.setItem("smile-client-api-base", state.apiBase);
-  state.success = "API atualizada.";
-  state.error = "";
-  fetchLocations();
 }
 
 function withAuthHeaders() {
@@ -361,6 +471,8 @@ function persistSession() {
 function clearSession() {
   state.session = null;
   state.event = null;
+  state.route = { name: "dashboard", moduleKey: "" };
+  state.iframeLoading = false;
   window.localStorage.removeItem(APP_KEY);
 }
 
