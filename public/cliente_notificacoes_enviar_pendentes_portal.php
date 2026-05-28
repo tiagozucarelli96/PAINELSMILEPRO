@@ -21,6 +21,7 @@ if (!$sessaoPermitida && !$tokenOperacional) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/cliente_notificacoes_helper.php';
+cliente_notificacoes_require_eventos_helpers();
 
 function cliente_notif_pendente_ja_enviado(PDO $pdo, int $meEventId): bool
 {
