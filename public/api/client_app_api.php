@@ -312,6 +312,19 @@ function client_app_api_me_helpers(): void
     require_once dirname(__DIR__) . '/eventos_me_helper.php';
 }
 
+function client_app_api_log(string $message, array $context = []): void
+{
+    $suffix = '';
+    if ($context !== []) {
+        $json = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (is_string($json) && $json !== '') {
+            $suffix = ' ' . $json;
+        }
+    }
+
+    error_log('client_app_api_auth: ' . $message . $suffix);
+}
+
 function client_app_api_me_fallback_enabled(): bool
 {
     return painel_env_bool('CLIENT_APP_ENABLE_ME_FALLBACK', false);
@@ -350,6 +363,20 @@ function client_app_api_me_pick_text(array $source, array $keys): string
 function client_app_api_me_client_cpf(PDO $pdo, array $event): string
 {
     try {
+        $snapshotCpf = '';
+        if (isset($event['cliente']) && is_array($event['cliente'])) {
+            $snapshotCpf = client_app_api_normalize_cpf(client_app_api_me_pick_text($event['cliente'], [
+                'cpf',
+                'documento',
+                'cpf_cnpj',
+                'cpfCnpj',
+                'cpfcnpj',
+            ]));
+        }
+        if ($snapshotCpf !== '') {
+            return $snapshotCpf;
+        }
+
         client_app_api_me_helpers();
 
         $eventCpf = client_app_api_normalize_cpf(client_app_api_me_pick_text($event, [
@@ -447,10 +474,17 @@ function client_app_api_sync_meeting_from_me(PDO $pdo, int $meEventId): ?array
 
         $eventResult = eventos_me_buscar_por_id($pdo, $meEventId);
         if (empty($eventResult['ok']) || !is_array($eventResult['event'] ?? null)) {
+            client_app_api_log('sync_meeting_event_not_found', [
+                'me_event_id' => $meEventId,
+            ]);
             return null;
         }
 
         $snapshot = eventos_me_criar_snapshot($eventResult['event']);
+        $snapshotCpf = client_app_api_me_client_cpf($pdo, $eventResult['event']);
+        if ($snapshotCpf !== '') {
+            $snapshot['cliente']['cpf'] = $snapshotCpf;
+        }
         $insert = $pdo->prepare("
             INSERT INTO eventos_reunioes (me_event_id, me_event_snapshot, status, created_by, created_at, updated_at)
             VALUES (:me_event_id, :snapshot, 'rascunho', 0, NOW(), NOW())
@@ -492,11 +526,15 @@ function client_app_api_find_meeting_via_me(PDO $pdo, string $cpf, string $event
 {
     try {
         if (!client_app_api_me_available()) {
+            client_app_api_log('direct_me_fallback_disabled');
             return null;
         }
 
         $location = client_app_api_location_row($pdo, $locationId);
         if (!$location) {
+            client_app_api_log('direct_me_location_not_mapped', [
+                'location_id' => $locationId,
+            ]);
             return null;
         }
 
@@ -507,6 +545,10 @@ function client_app_api_find_meeting_via_me(PDO $pdo, string $cpf, string $event
             'limit' => 500,
         ]);
         if (empty($resp['ok']) || !is_array($resp['data'] ?? null)) {
+            client_app_api_log('direct_me_request_failed', [
+                'event_date' => $eventDate,
+                'location_id' => $locationId,
+            ]);
             return null;
         }
 
@@ -540,10 +582,18 @@ function client_app_api_find_meeting_via_me(PDO $pdo, string $cpf, string $event
 
             $meeting = client_app_api_sync_meeting_from_me($pdo, $meEventId);
             if ($meeting) {
+                client_app_api_log('direct_me_match_synced', [
+                    'me_event_id' => $meEventId,
+                    'meeting_id' => $meeting['meeting_id'] ?? null,
+                ]);
                 return $meeting;
             }
         }
 
+        client_app_api_log('direct_me_no_match', [
+            'event_date' => $eventDate,
+            'location_id' => $locationId,
+        ]);
         return null;
     } catch (Throwable $e) {
         error_log('client_app_api_find_meeting_via_me: ' . $e->getMessage());
@@ -551,7 +601,76 @@ function client_app_api_find_meeting_via_me(PDO $pdo, string $cpf, string $event
     }
 }
 
-function client_app_api_find_meeting_via_local_event_and_me_cpf(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array
+function client_app_api_find_meeting_via_local_mirror_and_me_cpf(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array
+{
+    try {
+        $stmt = $pdo->prepare("
+            SELECT
+                le.idlocalevento,
+                le.localevento,
+                le.me_event_id,
+                le.data_evento
+            FROM logistica_eventos_espelho le
+            WHERE le.data_evento = :event_date
+              AND le.idlocalevento = :location_id
+              AND le.me_event_id IS NOT NULL
+              AND le.me_event_id > 0
+            ORDER BY le.me_event_id DESC
+            LIMIT 10
+        ");
+        $stmt->execute([
+            ':event_date' => $eventDate,
+            ':location_id' => $locationId,
+        ]);
+        $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!$candidates) {
+            client_app_api_log('local_mirror_no_candidates', [
+                'event_date' => $eventDate,
+                'location_id' => $locationId,
+            ]);
+            return null;
+        }
+
+        foreach ($candidates as $candidate) {
+            $meEventId = (int)($candidate['me_event_id'] ?? 0);
+            if ($meEventId <= 0) {
+                continue;
+            }
+
+            $eventResult = eventos_me_buscar_por_id($pdo, $meEventId);
+            if (empty($eventResult['ok']) || !is_array($eventResult['event'] ?? null)) {
+                client_app_api_log('local_mirror_event_fetch_failed', [
+                    'me_event_id' => $meEventId,
+                ]);
+                continue;
+            }
+
+            $eventCpf = client_app_api_me_client_cpf($pdo, $eventResult['event']);
+            if ($eventCpf !== '' && $eventCpf === $cpf) {
+                $meeting = client_app_api_sync_meeting_from_me($pdo, $meEventId);
+                if ($meeting) {
+                    client_app_api_log('local_mirror_match_synced', [
+                        'me_event_id' => $meEventId,
+                        'meeting_id' => $meeting['meeting_id'] ?? null,
+                    ]);
+                    return $meeting;
+                }
+            }
+        }
+
+        client_app_api_log('local_mirror_no_match_after_cpf', [
+            'event_date' => $eventDate,
+            'location_id' => $locationId,
+        ]);
+        return null;
+    } catch (Throwable $e) {
+        error_log('client_app_api_find_meeting_via_local_mirror_and_me_cpf: ' . $e->getMessage());
+        return null;
+    }
+}
+
+function client_app_api_find_meeting_via_local_meeting_and_me_cpf(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array
 {
     try {
         if (!client_app_api_me_available()) {
@@ -587,7 +706,7 @@ function client_app_api_find_meeting_via_local_event_and_me_cpf(PDO $pdo, string
                     )
                   )
             ORDER BY r.updated_at DESC NULLS LAST, r.id DESC
-            LIMIT 5
+            LIMIT 10
         ");
         $stmt->execute([
             ':event_date' => $eventDate,
@@ -596,10 +715,26 @@ function client_app_api_find_meeting_via_local_event_and_me_cpf(PDO $pdo, string
         $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (!$candidates) {
+            client_app_api_log('local_meeting_no_candidates', [
+                'event_date' => $eventDate,
+                'location_id' => $locationId,
+            ]);
             return null;
         }
 
         foreach ($candidates as $candidate) {
+            $snapshot = json_decode((string)($candidate['me_event_snapshot'] ?? ''), true);
+            if (is_array($snapshot)) {
+                $snapshotCpf = client_app_api_me_client_cpf($pdo, $snapshot);
+                if ($snapshotCpf !== '' && $snapshotCpf === $cpf) {
+                    client_app_api_log('local_meeting_match_snapshot_cpf', [
+                        'meeting_id' => $candidate['meeting_id'] ?? null,
+                        'me_event_id' => $candidate['me_event_id'] ?? null,
+                    ]);
+                    return $candidate;
+                }
+            }
+
             $meEventId = (int)($candidate['me_event_id'] ?? 0);
             if ($meEventId <= 0) {
                 continue;
@@ -612,100 +747,133 @@ function client_app_api_find_meeting_via_local_event_and_me_cpf(PDO $pdo, string
 
             $eventCpf = client_app_api_me_client_cpf($pdo, $eventResult['event']);
             if ($eventCpf !== '' && $eventCpf === $cpf) {
+                client_app_api_log('local_meeting_match_me_cpf', [
+                    'meeting_id' => $candidate['meeting_id'] ?? null,
+                    'me_event_id' => $meEventId,
+                ]);
                 return $candidate;
             }
         }
 
+        client_app_api_log('local_meeting_no_match_after_cpf', [
+            'event_date' => $eventDate,
+            'location_id' => $locationId,
+        ]);
         return null;
     } catch (Throwable $e) {
-        error_log('client_app_api_find_meeting_via_local_event_and_me_cpf: ' . $e->getMessage());
+        error_log('client_app_api_find_meeting_via_local_meeting_and_me_cpf: ' . $e->getMessage());
+        return null;
+    }
+}
+
+function client_app_api_find_meeting_via_internal_cpf_sources(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array
+{
+    try {
+        $sources = [];
+        if (client_app_api_has_column($pdo, 'comercial_inscricoes', 'me_cliente_cpf')) {
+            $sources[] = "
+                SELECT DISTINCT me_event_id
+                FROM comercial_inscricoes
+                WHERE me_event_id IS NOT NULL
+                  AND me_event_id > 0
+                  AND regexp_replace(COALESCE(me_cliente_cpf, ''), '\\D', '', 'g') = :cpf
+            ";
+        }
+        if (client_app_api_has_column($pdo, 'vendas_pre_contratos', 'cpf')) {
+            $sources[] = "
+                SELECT DISTINCT me_event_id
+                FROM vendas_pre_contratos
+                WHERE me_event_id IS NOT NULL
+                  AND me_event_id > 0
+                  AND regexp_replace(COALESCE(cpf, ''), '\\D', '', 'g') = :cpf
+            ";
+        }
+
+        if ($sources === []) {
+            client_app_api_log('internal_cpf_sources_unavailable');
+            return null;
+        }
+
+        $sql = "
+            WITH cpf_matches AS (
+                " . implode("\n                UNION\n", $sources) . "
+            )
+            SELECT
+                r.id AS meeting_id,
+                r.me_event_id,
+                r.me_event_snapshot,
+                le.idlocalevento,
+                le.localevento,
+                COALESCE(
+                    NULLIF(TRIM(r.me_event_snapshot->>'data'), '')::date,
+                    le.data_evento
+                ) AS event_date
+            FROM eventos_reunioes r
+            INNER JOIN cpf_matches cm
+                ON cm.me_event_id = r.me_event_id
+            LEFT JOIN logistica_eventos_espelho le
+                ON le.me_event_id = r.me_event_id
+            WHERE COALESCE(
+                    NULLIF(TRIM(r.me_event_snapshot->>'data'), '')::date,
+                    le.data_evento
+                  ) = :event_date
+              AND (
+                    le.idlocalevento = :location_id
+                    OR EXISTS (
+                        SELECT 1
+                        FROM logistica_me_locais lm
+                        WHERE lm.status_mapeamento = 'MAPEADO'
+                          AND lm.me_local_id = :location_id
+                          AND LOWER(TRIM(lm.me_local_nome)) = LOWER(TRIM(COALESCE(le.localevento, r.me_event_snapshot->>'local', r.me_event_snapshot->>'nomelocal', '')))
+                    )
+                  )
+            ORDER BY r.updated_at DESC NULLS LAST, r.id DESC
+            LIMIT 2
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            ':cpf' => $cpf,
+            ':event_date' => $eventDate,
+            ':location_id' => $locationId,
+        ]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (count($rows) === 1) {
+            client_app_api_log('internal_cpf_match', [
+                'meeting_id' => $rows[0]['meeting_id'] ?? null,
+                'me_event_id' => $rows[0]['me_event_id'] ?? null,
+            ]);
+            return $rows[0];
+        }
+
+        client_app_api_log('internal_cpf_no_match', [
+            'rows' => count($rows),
+        ]);
+        return null;
+    } catch (Throwable $e) {
+        error_log('client_app_api_find_meeting_via_internal_cpf_sources: ' . $e->getMessage());
         return null;
     }
 }
 
 function client_app_api_find_meeting(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array
 {
-    $commercialHasCpf = client_app_api_has_column($pdo, 'comercial_inscricoes', 'me_cliente_cpf');
-    $salesHasCpf = client_app_api_has_column($pdo, 'vendas_pre_contratos', 'cpf');
-
-    $sources = [];
-    if ($commercialHasCpf) {
-        $sources[] = "
-            SELECT DISTINCT me_event_id
-            FROM comercial_inscricoes
-            WHERE me_event_id IS NOT NULL
-              AND me_event_id > 0
-              AND regexp_replace(COALESCE(me_cliente_cpf, ''), '\\D', '', 'g') = :cpf
-        ";
-    }
-    if ($salesHasCpf) {
-        $sources[] = "
-            SELECT DISTINCT me_event_id
-            FROM vendas_pre_contratos
-            WHERE me_event_id IS NOT NULL
-              AND me_event_id > 0
-              AND regexp_replace(COALESCE(cpf, ''), '\\D', '', 'g') = :cpf
-        ";
+    $match = client_app_api_find_meeting_via_local_mirror_and_me_cpf($pdo, $cpf, $eventDate, $locationId);
+    if ($match) {
+        return $match;
     }
 
-    if (empty($sources)) {
-        throw new RuntimeException('Nenhuma fonte de CPF está disponível para a API do app.');
+    $match = client_app_api_find_meeting_via_local_meeting_and_me_cpf($pdo, $cpf, $eventDate, $locationId);
+    if ($match) {
+        return $match;
     }
 
-    $sql = "
-        WITH cpf_matches AS (
-            " . implode("\n            UNION\n", $sources) . "
-        )
-        SELECT
-            r.id AS meeting_id,
-            r.me_event_id,
-            r.me_event_snapshot,
-            le.idlocalevento,
-            le.localevento,
-            COALESCE(
-                NULLIF(TRIM(r.me_event_snapshot->>'data'), '')::date,
-                le.data_evento
-            ) AS event_date
-        FROM eventos_reunioes r
-        INNER JOIN cpf_matches cm
-            ON cm.me_event_id = r.me_event_id
-        LEFT JOIN logistica_eventos_espelho le
-            ON le.me_event_id = r.me_event_id
-        WHERE COALESCE(
-                NULLIF(TRIM(r.me_event_snapshot->>'data'), '')::date,
-                le.data_evento
-              ) = :event_date
-          AND (
-                le.idlocalevento = :location_id
-                OR EXISTS (
-                    SELECT 1
-                    FROM logistica_me_locais lm
-                    WHERE lm.status_mapeamento = 'MAPEADO'
-                      AND lm.me_local_id = :location_id
-                      AND LOWER(TRIM(lm.me_local_nome)) = LOWER(TRIM(COALESCE(le.localevento, r.me_event_snapshot->>'local', r.me_event_snapshot->>'nomelocal', '')))
-                )
-              )
-        ORDER BY r.updated_at DESC NULLS LAST, r.id DESC
-        LIMIT 2
-    ";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':cpf' => $cpf,
-        ':event_date' => $eventDate,
-        ':location_id' => $locationId,
-    ]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    if (count($rows) !== 1) {
-        $localMeetingMatch = client_app_api_find_meeting_via_local_event_and_me_cpf($pdo, $cpf, $eventDate, $locationId);
-        if ($localMeetingMatch) {
-            return $localMeetingMatch;
-        }
-        return client_app_api_find_meeting_via_me($pdo, $cpf, $eventDate, $locationId);
+    $match = client_app_api_find_meeting_via_me($pdo, $cpf, $eventDate, $locationId);
+    if ($match) {
+        return $match;
     }
 
-    return $rows[0];
+    return client_app_api_find_meeting_via_internal_cpf_sources($pdo, $cpf, $eventDate, $locationId);
 }
 
 function client_app_api_create_session(PDO $pdo, int $meetingId, string $cpf, array $meta = []): array

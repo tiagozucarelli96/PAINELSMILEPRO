@@ -141,10 +141,9 @@ if (!$tablesReady) {
         <main class="auth-card">
             <section class="auth-panel">
                 <span class="kicker">Setup inicial</span>
-                <h1 class="auth-title">Instalar o app separado de atendimento</h1>
+                <h1 class="auth-title">Instalar o Smile Chat</h1>
                 <p class="auth-copy">
-                    Esta área cria a base do novo sistema com tabelas próprias para atendentes, departamentos,
-                    inboxes, conversas e atalhos.
+                    Prepare o ambiente inicial do Smile Chat para equipes, filas e inboxes.
                 </p>
                 <?php if ($flash): ?>
                     <div class="flash flash-<?= wa_e($flash['type']) ?>"><?= wa_e($flash['message']) ?></div>
@@ -156,26 +155,25 @@ if (!$tablesReady) {
                 </form>
                 <p class="muted-note">
                     Schema base: <code><?= wa_e($schemaPath) ?></code><br>
-                    O acesso será feito pelos mesmos usuários e senhas do Painel Smile, via permissões no cadastro principal.
+                    O acesso usa os mesmos usuários e permissões do Painel Smile.
                 </p>
             </section>
             <aside class="auth-hero">
                 <div>
-                    <span class="kicker">Fase 1</span>
-                    <h2 class="auth-title">Estrutura pronta para um acesso separado</h2>
+                    <span class="kicker">Smile Chat</span>
+                    <h2 class="auth-title">Atendimento com operação própria</h2>
                     <p class="auth-copy">
-                        O módulo já nasce isolado do painel principal e preparado para evoluir para serviço próprio,
-                        inclusive com camada futura de sessão WhatsApp não-oficial.
+                        O módulo já nasce separado do painel principal, pronto para crescer com mais organização e velocidade.
                     </p>
                 </div>
                 <div class="stack">
                     <div class="topbar-card">
                         <strong>Inclui agora</strong>
-                        <p class="small">Login próprio, departamentos, atendentes, inboxes, base de conversas e atalhos.</p>
+                        <p class="small">Departamentos, atendentes, inboxes, conversas e atalhos.</p>
                     </div>
                     <div class="topbar-card">
                         <strong>Próxima etapa</strong>
-                        <p class="small">Motor de conexão com sessão QR, recebimento de mensagens, distribuição e realtime.</p>
+                        <p class="small">Conexão de WhatsApp, distribuição e tempo real.</p>
                     </div>
                 </div>
             </aside>
@@ -205,8 +203,7 @@ if (!wa_is_logged_in()) {
                 <span class="kicker">Acesso separado</span>
                 <h1 class="auth-title">Entrar no Smile Chat</h1>
                 <p class="auth-copy">
-                    Este é o novo ambiente de atendimento, isolado do painel principal e preparado para operação com
-                    atendentes, departamentos e filas.
+                    Acesse o ambiente de atendimento com o mesmo login do Painel Smile.
                 </p>
                 <?php if ($flash): ?>
                     <div class="flash flash-<?= wa_e($flash['type']) ?>"><?= wa_e($flash['message']) ?></div>
@@ -225,26 +222,25 @@ if (!wa_is_logged_in()) {
                 </form>
                 <p class="muted-note">
                     Caminho atual do app: <code><?= wa_e(wa_base_path()) ?></code><br>
-                    Liberação de acesso: <code>perm_smile_chat</code> e <code>perm_smile_chat_admin</code>.
+                    Liberação via permissões: <code>perm_smile_chat</code> e <code>perm_smile_chat_admin</code>.
                 </p>
             </section>
             <aside class="auth-hero">
                 <div>
-                    <span class="kicker">Base operacional</span>
-                    <h2 class="auth-title">Fluxo já separado para virar serviço próprio</h2>
+                    <span class="kicker">Smile Chat</span>
+                    <h2 class="auth-title">Comunicação organizada para a operação</h2>
                     <p class="auth-copy">
-                        A aplicação foi iniciada para funcionar com login, banco e navegação próprios. Isso permite
-                        colocar em outro subdomínio depois sem acoplar ao painel legado.
+                        O Smile Chat concentra equipe, inboxes e conversas em um ambiente limpo e direto.
                     </p>
                 </div>
                 <div class="stack">
                     <div class="topbar-card">
                         <strong>Modelo</strong>
-                        <p class="small">Departamentos, atendentes, inboxes, conversas e atalhos rápidos.</p>
+                        <p class="small">Departamentos, atendentes, inboxes e atalhos rápidos.</p>
                     </div>
                     <div class="topbar-card">
                         <strong>Objetivo</strong>
-                        <p class="small">Evoluir esta base para o motor não-oficial de WhatsApp com tempo real e distribuição.</p>
+                        <p class="small">Centralizar atendimento com mais agilidade no dia a dia.</p>
                     </div>
                 </div>
             </aside>
@@ -277,6 +273,7 @@ $selectedConversation = $selectedConversationId > 0 ? wa_fetch_conversation_deta
 $conversationMessages = $selectedConversation ? wa_fetch_conversation_messages((int)$selectedConversation['id']) : [];
 $transferTargets = wa_transfer_targets();
 $gatewayHealth = wa_gateway_health();
+$brandSubtitle = 'Conectar • Engajar • Entregar';
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -293,8 +290,18 @@ $gatewayHealth = wa_gateway_health();
 <div class="app-shell">
     <aside class="sidebar">
         <div class="brand-block">
-            <h1 class="brand-title">Smile Chat</h1>
-            <p class="brand-subtitle">Atendimento separado do painel principal, pronto para sessões, filas e operação em tempo real.</p>
+            <div class="brand-lockup">
+                <div class="brand-mark" aria-hidden="true">
+                    <span class="brand-dot dot-left"></span>
+                    <span class="brand-dot dot-center"></span>
+                    <span class="brand-dot dot-right"></span>
+                    <span class="brand-smile"></span>
+                </div>
+                <div class="brand-copy">
+                    <h1 class="brand-title">Smile Chat</h1>
+                    <p class="brand-tagline"><?= wa_e($brandSubtitle) ?></p>
+                </div>
+            </div>
         </div>
 
         <ul class="nav-list">
@@ -311,8 +318,11 @@ $gatewayHealth = wa_gateway_health();
         </ul>
 
         <div class="sidebar-footer">
-            <strong>Motor da sessão</strong><br>
-            Baileys como camada principal, com webhooks internos, fila de eventos e socket realtime.
+            <span class="sidebar-footer-label">Status técnico</span>
+            <div class="sidebar-status">
+                <span class="sidebar-status-dot <?= is_array($gatewayHealth) && !empty($gatewayHealth['ok']) ? 'is-online' : 'is-offline' ?>"></span>
+                <span><?= is_array($gatewayHealth) && !empty($gatewayHealth['ok']) ? 'Gateway online' : 'Gateway indisponível' ?></span>
+            </div>
         </div>
     </aside>
 
@@ -322,26 +332,30 @@ $gatewayHealth = wa_gateway_health();
                 <h2 class="page-title"><?= wa_e($page === 'settings' ? 'Configurações' : ($navItems[$page] ?? 'Dashboard')) ?></h2>
                 <p class="page-copy">
                     <?= match ($page) {
-                        'dashboard' => 'Visão geral do novo ambiente de atendimento.',
-                        'conversations' => 'Base da caixa de entrada compartilhada e atribuição por departamento.',
-                        'settings' => 'Área restrita para configurar inboxes, departamentos, acessos e atalhos do Smile Chat.',
+                        'dashboard' => 'Visão geral do Smile Chat.',
+                        'conversations' => 'Atendimento centralizado do Smile Chat.',
+                        'settings' => 'Configurações do Smile Chat.',
                         default => 'Operação do Smile Chat.',
                     } ?>
                 </p>
             </div>
             <div class="topbar-actions">
-                <?php if ($canManageSettings): ?>
-                    <a class="icon-button <?= $page === 'settings' ? 'active' : '' ?>" href="<?= wa_url('index.php?page=settings&tab=' . $settingsTab) ?>" title="Configurações do Smile Chat" aria-label="Configurações do Smile Chat">&#9881;</a>
-                <?php endif; ?>
-                <div class="topbar-card">
-                    <div class="status-pill"><?= wa_e(wa_status_label((string)$user['status'])) ?></div>
-                    <p><strong><?= wa_e((string)$user['display_name']) ?></strong></p>
-                    <p class="small"><?= wa_e((string)$user['email']) ?></p>
-                    <form method="post">
-                        <input type="hidden" name="action" value="logout">
-                        <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
-                        <button type="submit" class="button-secondary">Sair</button>
-                    </form>
+                <div class="account-panel">
+                    <?php if ($canManageSettings): ?>
+                        <a class="icon-button <?= $page === 'settings' ? 'active' : '' ?>" href="<?= wa_url('index.php?page=settings&tab=' . $settingsTab) ?>" title="Configurações do Smile Chat" aria-label="Configurações do Smile Chat">&#9881;</a>
+                    <?php endif; ?>
+                    <div class="topbar-card account-card">
+                        <div class="status-pill"><?= wa_e(wa_status_label((string)$user['status'])) ?></div>
+                        <div class="account-copy">
+                            <strong><?= wa_e((string)$user['display_name']) ?></strong>
+                            <p class="small"><?= wa_e((string)$user['email']) ?></p>
+                        </div>
+                        <form method="post">
+                            <input type="hidden" name="action" value="logout">
+                            <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
+                            <button type="submit" class="button-secondary">Sair</button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </header>
@@ -363,40 +377,39 @@ $gatewayHealth = wa_gateway_health();
 
             <section class="grid-2" style="margin-top: 18px;">
                 <article class="card">
-                    <div class="section-header">
-                        <h3 class="section-title">Estrutura já aberta</h3>
-                    </div>
-                    <div class="card-body stack">
-                        <div class="topbar-card"><strong>Fila operacional</strong><p class="small">Departamentos, supervisão por fila, status do atendente e atribuição futura por inbox.</p></div>
-                        <div class="topbar-card"><strong>Camada de conexão</strong><p class="small">Tabela de inboxes pronta para receber QR, session key, status e eventos de conexão.</p></div>
-                        <div class="topbar-card"><strong>Inbox compartilhada</strong><p class="small">Base de contatos, conversas e mensagens criada para o motor realtime da próxima etapa.</p></div>
-                    </div>
-                </article>
-                <article class="card">
-                    <div class="section-header">
-                        <h3 class="section-title">Gateway de sessão</h3>
-                    </div>
-                    <div class="card-body stack">
+                        <div class="section-header">
+                            <h3 class="section-title">Operação</h3>
+                        </div>
+                        <div class="card-body stack">
+                            <div class="topbar-card"><strong>Conversas centralizadas</strong><p class="small">Atendimento por fila, histórico por contato e distribuição entre atendentes.</p></div>
+                            <div class="topbar-card"><strong>Conexões ativas</strong><p class="small">Inboxes prontas para QR, pareamento e acompanhamento da sessão.</p></div>
+                            <div class="topbar-card"><strong>Atalhos e equipes</strong><p class="small">Departamentos, acessos e respostas rápidas no mesmo módulo.</p></div>
+                        </div>
+                    </article>
+                    <article class="card">
+                        <div class="section-header">
+                            <h3 class="section-title">Sessão</h3>
+                        </div>
+                        <div class="card-body stack">
                         <?php if (is_array($gatewayHealth) && !empty($gatewayHealth['ok'])): ?>
                             <div class="topbar-card">
                                 <strong>Gateway online</strong>
                                 <p class="small">Serviço respondendo em <code><?= wa_e(wa_gateway_base_url()) ?></code>.</p>
                             </div>
-                            <div class="topbar-card">
-                                <strong>Conectadas agora</strong>
-                                <p class="small"><?= (int)($gatewayHealth['overview']['connected_inboxes'] ?? 0) ?> inboxes conectadas no gateway.</p>
-                            </div>
-                            <div class="topbar-card">
-                                <strong>Mensagens 24h</strong>
-                                <p class="small"><?= (int)($gatewayHealth['overview']['messages_last_day'] ?? 0) ?> eventos entregues pelo gateway nas últimas 24 horas.</p>
-                            </div>
-                        <?php else: ?>
-                            <div class="topbar-card"><strong>Gateway indisponível</strong><p class="small"><?= wa_e((string)($gatewayHealth['error'] ?? 'Serviço não respondeu.')) ?></p></div>
-                            <div class="topbar-card"><strong>URL esperada</strong><p class="small"><code><?= wa_e(wa_gateway_base_url()) ?></code></p></div>
-                            <div class="topbar-card"><strong>Próximo incremento</strong><p class="small">Quando o gateway estiver online, as inboxes passam a exibir QR, status e ações de conectar/desconectar.</p></div>
-                        <?php endif; ?>
-                    </div>
-                </article>
+                                <div class="topbar-card">
+                                    <strong>Inboxes conectadas</strong>
+                                    <p class="small"><?= (int)($gatewayHealth['overview']['connected_inboxes'] ?? 0) ?> conexão(ões) ativas no momento.</p>
+                                </div>
+                                <div class="topbar-card">
+                                    <strong>Mensagens 24h</strong>
+                                    <p class="small"><?= (int)($gatewayHealth['overview']['messages_last_day'] ?? 0) ?> evento(s) processados nas últimas 24 horas.</p>
+                                </div>
+                            <?php else: ?>
+                                <div class="topbar-card"><strong>Gateway indisponível</strong><p class="small"><?= wa_e((string)($gatewayHealth['error'] ?? 'Serviço não respondeu.')) ?></p></div>
+                                <div class="topbar-card"><strong>URL esperada</strong><p class="small"><code><?= wa_e(wa_gateway_base_url()) ?></code></p></div>
+                            <?php endif; ?>
+                        </div>
+                    </article>
             </section>
         <?php elseif ($page === 'settings' && $canManageSettings): ?>
             <section class="settings-tabs">
@@ -544,12 +557,6 @@ $gatewayHealth = wa_gateway_health();
                                             <option value="<?= (int)$department['id'] ?>"><?= wa_e($department['name']) ?></option>
                                         <?php endforeach; ?>
                                     </select>
-                                </div>
-                                <div class="full">
-                                    <div class="topbar-card">
-                                        <strong>O que é realmente necessário</strong>
-                                        <p class="small">O sistema agora gera a <code>session_key</code> automaticamente e usa <code>WhatsApp Web</code> como engine padrão. O telefone só é obrigatório se você optar por <strong>Pairing Code</strong>.</p>
-                                    </div>
                                 </div>
                                 <div class="full">
                                     <button class="button" type="submit">Salvar inbox</button>
@@ -700,22 +707,25 @@ $gatewayHealth = wa_gateway_health();
         <?php elseif ($page === 'conversations'): ?>
             <?php
             $waitingConversations = array_values(array_filter($conversations, static fn (array $conversation): bool => ($conversation['status'] ?? '') === 'waiting'));
-            $activeConversations = array_values(array_filter($conversations, static fn (array $conversation): bool => in_array(($conversation['status'] ?? ''), ['open', 'pending'], true)));
+            $activeConversations = array_values(array_filter($conversations, static fn (array $conversation): bool => ($conversation['status'] ?? '') === 'open'));
+            $closedConversations = array_values(array_filter($conversations, static fn (array $conversation): bool => in_array(($conversation['status'] ?? ''), ['pending', 'closed'], true)));
             $visibleConversations = match ($selectedBucket) {
                 'waiting' => $waitingConversations,
                 'active' => $activeConversations,
+                'closed' => $closedConversations,
                 default => $conversations,
             };
             ?>
             <section class="conversation-shell">
                 <article class="card conversation-list-card">
                     <div class="conversation-search">
-                        <input class="field" placeholder="Procure sua conversa..." disabled>
+                        <input class="field" placeholder="Buscar conversa" disabled>
                     </div>
                     <div class="conversation-buckets">
-                        <a class="bucket-pill <?= $selectedBucket === 'active' ? 'active' : '' ?>" href="<?= wa_url('index.php?page=conversations&bucket=active') ?>">Ativos <span class="badge"><?= count($activeConversations) ?></span></a>
-                        <a class="bucket-pill <?= $selectedBucket === 'waiting' ? 'active' : '' ?>" href="<?= wa_url('index.php?page=conversations&bucket=waiting') ?>">Aguardando <span class="badge"><?= count($waitingConversations) ?></span></a>
                         <a class="bucket-pill <?= $selectedBucket === 'all' ? 'active' : '' ?>" href="<?= wa_url('index.php?page=conversations&bucket=all') ?>">Todas <span class="badge"><?= count($conversations) ?></span></a>
+                        <a class="bucket-pill <?= $selectedBucket === 'waiting' ? 'active' : '' ?>" href="<?= wa_url('index.php?page=conversations&bucket=waiting') ?>">Aguardando <span class="badge"><?= count($waitingConversations) ?></span></a>
+                        <a class="bucket-pill <?= $selectedBucket === 'active' ? 'active' : '' ?>" href="<?= wa_url('index.php?page=conversations&bucket=active') ?>">Ativas <span class="badge"><?= count($activeConversations) ?></span></a>
+                        <a class="bucket-pill <?= $selectedBucket === 'closed' ? 'active' : '' ?>" href="<?= wa_url('index.php?page=conversations&bucket=closed') ?>">Encerradas <span class="badge"><?= count($closedConversations) ?></span></a>
                     </div>
 
                     <?php if ($visibleConversations === []): ?>
@@ -725,7 +735,21 @@ $gatewayHealth = wa_gateway_health();
                             <?php foreach ($visibleConversations as $conversation): ?>
                                 <?php
                                 $isSelected = $selectedConversation && (int)$selectedConversation['id'] === (int)$conversation['id'];
-                                $conversationBucket = ($conversation['status'] ?? '') === 'waiting' ? 'waiting' : 'active';
+                                $conversationStatus = (string)($conversation['status'] ?? '');
+                                $conversationBucket = match ($conversationStatus) {
+                                    'waiting' => 'waiting',
+                                    'open' => 'active',
+                                    'closed' => 'closed',
+                                    'pending' => 'closed',
+                                    default => 'all',
+                                };
+                                $conversationStatusLabel = match ($conversationStatus) {
+                                    'waiting' => 'Nova',
+                                    'open' => 'Em atendimento',
+                                    'closed' => 'Encerrada',
+                                    'pending' => 'Encerrada',
+                                    default => wa_status_label($conversationStatus),
+                                };
                                 ?>
                                 <a class="conversation-item <?= $isSelected ? 'active' : '' ?>" href="<?= wa_url('index.php?page=conversations&bucket=' . $conversationBucket . '&conversation_id=' . (int)$conversation['id']) ?>">
                                     <div class="conversation-avatar"><?= wa_e(mb_strtoupper(mb_substr(trim((string)$conversation['contact_name']), 0, 1))) ?></div>
@@ -734,7 +758,13 @@ $gatewayHealth = wa_gateway_health();
                                             <strong><?= wa_e($conversation['contact_name']) ?></strong>
                                             <span class="small"><?= wa_e(date('H:i', strtotime((string)($conversation['last_message_at'] ?? 'now')))) ?></span>
                                         </div>
-                                        <div class="small"><?= wa_e($conversation['phone_e164'] ?: 'Sem telefone') ?> • <?= wa_e($conversation['department_name'] ?: 'Sem departamento') ?></div>
+                                        <div class="conversation-subline">
+                                            <span class="small"><?= wa_e($conversation['phone_e164'] ?: 'Sem telefone') ?></span>
+                                            <?php if (!empty($conversation['department_name'])): ?>
+                                                <span class="small"><?= wa_e($conversation['department_name']) ?></span>
+                                            <?php endif; ?>
+                                            <span class="status-tag status-<?= wa_e($conversationStatus) ?>"><?= wa_e($conversationStatusLabel) ?></span>
+                                        </div>
                                         <div class="conversation-preview"><?= wa_e($conversation['last_message_preview'] ?: 'Sem mensagens ainda.') ?></div>
                                     </div>
                                     <?php if ((int)$conversation['unread_count'] > 0): ?>
@@ -750,17 +780,25 @@ $gatewayHealth = wa_gateway_health();
                     <?php if (!$selectedConversation): ?>
                         <div class="conversation-empty-state">
                             <h3 class="section-title">Selecione uma conversa</h3>
-                            <p class="page-copy">As novas conversas entram em <strong>Aguardando</strong>. Ao aceitar, passam para <strong>Ativos</strong> com transferência, finalização e encerramento no cabeçalho.</p>
+                            <p class="page-copy">As mensagens aparecerão aqui.</p>
                         </div>
                     <?php else: ?>
                         <header class="conversation-header">
                             <div class="conversation-headline">
                                 <h3 class="section-title"><?= wa_e($selectedConversation['contact_name']) ?></h3>
-                                <p class="small">
-                                    <?= wa_e($selectedConversation['phone_e164']) ?> •
-                                    <?= wa_e($selectedConversation['department_name'] ?: 'Sem departamento') ?> •
-                                    <?= wa_e(wa_status_label((string)$selectedConversation['status'])) ?>
-                                </p>
+                                <div class="conversation-headline-meta">
+                                    <span class="small"><?= wa_e($selectedConversation['phone_e164']) ?></span>
+                                    <span class="status-tag status-<?= wa_e((string)$selectedConversation['status']) ?>"><?= wa_e(match ((string)$selectedConversation['status']) {
+                                        'waiting' => 'Nova conversa',
+                                        'open' => 'Em atendimento',
+                                        'closed' => 'Encerrada',
+                                        'pending' => 'Encerrada',
+                                        default => wa_status_label((string)$selectedConversation['status']),
+                                    }) ?></span>
+                                    <?php if (!empty($selectedConversation['department_name'])): ?>
+                                        <span class="small"><?= wa_e($selectedConversation['department_name']) ?></span>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                             <div class="conversation-actions">
                                 <?php if (($selectedConversation['status'] ?? '') === 'waiting'): ?>
@@ -768,11 +806,11 @@ $gatewayHealth = wa_gateway_health();
                                         <input type="hidden" name="action" value="accept_conversation">
                                         <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
                                         <input type="hidden" name="conversation_id" value="<?= (int)$selectedConversation['id'] ?>">
-                                        <button class="button" type="submit">Aceitar conversa</button>
+                                        <button class="button" type="submit">Aceitar</button>
                                     </form>
                                 <?php endif; ?>
 
-                                <?php if (($selectedConversation['status'] ?? '') !== 'closed'): ?>
+                                <?php if (!in_array(($selectedConversation['status'] ?? ''), ['pending', 'closed'], true)): ?>
                                     <div class="action-stack">
                                         <form method="post" class="inline-form inline-form-transfer">
                                             <input type="hidden" name="action" value="transfer_conversation">
@@ -833,7 +871,7 @@ $gatewayHealth = wa_gateway_health();
                             <?php endforeach; ?>
                         </div>
 
-                        <?php if (($selectedConversation['status'] ?? '') !== 'closed'): ?>
+                        <?php if (!in_array(($selectedConversation['status'] ?? ''), ['pending', 'closed'], true)): ?>
                             <form method="post" class="composer">
                                 <input type="hidden" name="action" value="send_conversation_reply">
                                 <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
@@ -852,15 +890,14 @@ $gatewayHealth = wa_gateway_health();
                 <article class="card">
                     <div class="section-header"><h3 class="section-title">Acesso restrito</h3></div>
                     <div class="empty">
-                        As configurações do Smile Chat ficam na engrenagem do canto superior direito e são liberadas apenas para usuários com
-                        <code>perm_smile_chat_admin</code> ou <code>perm_superadmin</code>.
+                        As configurações do Smile Chat ficam disponíveis apenas para administradores.
                     </div>
                 </article>
                 <article class="card">
-                    <div class="section-header"><h3 class="section-title">Próximo passo</h3></div>
+                    <div class="section-header"><h3 class="section-title">Organização</h3></div>
                     <div class="card-body stack">
-                        <div class="topbar-card"><strong>Login unificado</strong><p class="small">O acesso do chat agora depende das permissões do cadastro principal de usuários.</p></div>
-                        <div class="topbar-card"><strong>Configuração isolada</strong><p class="small">Inboxes, departamentos e atalhos saíram da navegação operacional e foram concentrados na engrenagem.</p></div>
+                        <div class="topbar-card"><strong>Login unificado</strong><p class="small">O acesso do chat depende das permissões do cadastro principal de usuários.</p></div>
+                        <div class="topbar-card"><strong>Configuração isolada</strong><p class="small">Inboxes, departamentos e atalhos ficam concentrados na engrenagem.</p></div>
                     </div>
                 </article>
             </section>
@@ -897,7 +934,6 @@ $gatewayHealth = wa_gateway_health();
                 });
 
                 socket.on("message.inbound", scheduleRefresh);
-                socket.on("message.outbound", scheduleRefresh);
                 socket.on("session.connected", scheduleRefresh);
                 socket.on("session.status", (payload) => {
                     if (payload && (payload.status === "connected" || payload.status === "disconnected")) {

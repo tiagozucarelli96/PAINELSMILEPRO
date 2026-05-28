@@ -837,6 +837,7 @@ function wa_fetch_conversations(): array
             c.last_message_preview,
             c.unread_count,
             c.last_message_at,
+            c.created_at,
             ct.full_name AS contact_name,
             ct.phone_e164,
             d.name AS department_name,
@@ -847,7 +848,19 @@ function wa_fetch_conversations(): array
         JOIN wa_inboxes i ON i.id = c.inbox_id
         LEFT JOIN wa_departments d ON d.id = c.department_id
         LEFT JOIN wa_users u ON u.id = c.assigned_user_id
-        ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
+        ORDER BY
+            CASE
+                WHEN c.unread_count > 0 THEN 0
+                ELSE 1
+            END,
+            CASE c.status
+                WHEN 'waiting' THEN 0
+                WHEN 'open' THEN 1
+                WHEN 'pending' THEN 2
+                ELSE 3
+            END,
+            COALESCE(c.last_message_at, c.created_at) DESC,
+            c.id DESC
         LIMIT 40
     ";
 

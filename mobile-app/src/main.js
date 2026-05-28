@@ -1,5 +1,9 @@
 const DEFAULT_API_BASE = "https://smile-client-app-api-production.up.railway.app/api";
 const APP_KEY = "smile-client-app-session";
+const DEBUG_SETTINGS_ENABLED =
+  new URLSearchParams(window.location.search).get("debug") === "1" ||
+  window.localStorage.getItem("smile-client-app-debug") === "1" ||
+  /(^localhost$)|(^127\.0\.0\.1$)|(^0\.0\.0\.0$)/.test(window.location.hostname);
 
 const state = {
   apiBase: (window.localStorage.getItem("smile-client-api-base") || DEFAULT_API_BASE).replace(/\/$/, ""),
@@ -89,12 +93,17 @@ function render() {
 
 function renderLogin() {
   const wrap = document.createElement("section");
+  wrap.className = "hero hero-login";
   wrap.innerHTML = `
-    <div class="hero">
-      <div class="eyebrow">Smile Eventos</div>
-      <h1>Portal do Cliente</h1>
-      <p>Acesse o seu evento com CPF, data e local. Esta base já está pronta para virar app iOS e Android.</p>
+    <div class="brand-lockup">
+      <div class="brand-mark">GS</div>
+      <div>
+        <div class="eyebrow">Grupo Smile</div>
+        <div class="brand-name">Smile Eventos</div>
+      </div>
     </div>
+    <h1>Portal do Cliente</h1>
+    <p>Acesse as informações do seu evento com segurança.</p>
   `;
 
   const formCard = document.createElement("div");
@@ -107,8 +116,13 @@ function renderLogin() {
 
   const title = document.createElement("h2");
   title.className = "section-title";
-  title.textContent = "Entrar no evento";
+  title.textContent = "Entrar no portal";
   formCard.append(title);
+
+  const subtitle = document.createElement("p");
+  subtitle.className = "section-copy";
+  subtitle.textContent = "Informe seus dados para visualizar o evento liberado para o seu atendimento.";
+  formCard.append(subtitle);
 
   const form = document.createElement("form");
   form.className = "stack";
@@ -136,24 +150,11 @@ function renderLogin() {
   form.addEventListener("submit", onLoginSubmit);
   formCard.append(form);
 
-  const settings = document.createElement("div");
-  settings.className = "card";
-  settings.innerHTML = `
-    <div class="header-row">
-      <div>
-        <div class="eyebrow">API</div>
-        <h2 class="section-title" style="margin-top:8px;">Conexão do aplicativo</h2>
-      </div>
-    </div>
-    <div class="field" style="margin-top:10px;">
-      <label for="api_base">URL da API</label>
-      <input id="api_base" name="api_base" value="${escapeAttribute(state.apiBase)}" />
-    </div>
-  `;
-  settings.querySelector("#api_base").addEventListener("change", onApiBaseChange);
-
   const fragment = document.createDocumentFragment();
-  fragment.append(wrap, formCard, settings);
+  fragment.append(wrap, formCard);
+  if (DEBUG_SETTINGS_ENABLED) {
+    fragment.append(renderDebugSettings());
+  }
   return fragment;
 }
 
@@ -166,20 +167,53 @@ function renderDashboard() {
   const wrap = document.createElement("div");
   wrap.className = "stack";
 
+  const portalItems = [
+    portalCard("Resumo do Evento", true, "RE", "Dados principais do evento e visão geral do atendimento."),
+    portalCard(
+      "Reunião Final",
+      cards.reuniao_final,
+      "RF",
+      permissions.reuniao_editavel ? "Liberado para acompanhamento e edição do cliente." : "Liberado para consulta quando a equipe publicar."
+    ),
+    portalCard(
+      "Convidados",
+      cards.convidados,
+      "CV",
+      permissions.convidados_editavel ? "Lista liberada para edição do cliente." : "Lista disponível apenas para consulta."
+    ),
+    portalCard(
+      "Arquivos",
+      cards.arquivos,
+      "AR",
+      permissions.arquivos_editavel ? "Envio e acompanhamento de arquivos liberados." : "Área de arquivos ainda não liberada."
+    ),
+    portalCard("DJ", cards.dj, "DJ", cards.dj ? "Informações de protocolo e alinhamento do DJ." : "Ainda não liberado."),
+    portalCard("Formulários", cards.formulario, "FM", cards.formulario ? "Formulários adicionais já disponíveis para o evento." : "Ainda não liberado.")
+  ].join("");
+
   wrap.innerHTML = `
     <section class="hero">
-      <div class="header-row">
-        <div>
-          <div class="eyebrow">Evento do Cliente</div>
-          <div class="event-title">${escapeHtml(event.name || "Seu Evento")}</div>
+      <div class="header-row header-row-top">
+        <div class="hero-copy">
+          <div class="eyebrow">Grupo Smile</div>
+          <div class="event-title">${escapeHtml(event.name || "Seu evento")}</div>
           <p>${escapeHtml(event.client_name || "Cliente")} • ${formatDate(event.date)} • ${escapeHtml(event.location || "Local não informado")}</p>
         </div>
-        <div class="badge">Sessão ativa</div>
+        <div class="badge">Acesso liberado</div>
+      </div>
+      <div class="hero-banner">
+        <div class="hero-banner-label">Portal do Cliente</div>
+        <strong>Informações centralizadas para acompanhar seu evento com a equipe Smile.</strong>
       </div>
     </section>
 
     <section class="surface">
-      <h2 class="section-title">Resumo do evento</h2>
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Resumo</div>
+          <h2 class="section-title">Dados do evento</h2>
+        </div>
+      </div>
       <div class="meta-grid">
         <div class="meta-item">
           <span>Cliente</span>
@@ -201,7 +235,12 @@ function renderDashboard() {
     </section>
 
     <section class="surface">
-      <h2 class="section-title">Indicadores rápidos</h2>
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Visão rápida</div>
+          <h2 class="section-title">Indicadores</h2>
+        </div>
+      </div>
       <div class="stats-grid">
         <div class="stat-item">
           <span>Convidados</span>
@@ -223,19 +262,19 @@ function renderDashboard() {
     </section>
 
     <section class="surface">
-      <h2 class="section-title">Áreas do portal</h2>
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Acompanhamento</div>
+          <h2 class="section-title">Áreas do portal</h2>
+        </div>
+      </div>
       <div class="cards-grid">
-        ${portalCard("Resumo do Evento", true, "Visão geral do evento e dados principais.")}
-        ${portalCard("Reunião Final", cards.reuniao_final, permissions.reuniao_editavel ? "Liberada para edição do cliente." : "Disponível para consulta quando publicada.")}
-        ${portalCard("Convidados", cards.convidados, permissions.convidados_editavel ? "Cliente pode editar a lista." : "Lista publicada somente para visualização.")}
-        ${portalCard("Arquivos", cards.arquivos, permissions.arquivos_editavel ? "Cliente pode enviar e acompanhar arquivos." : "Arquivos liberados apenas para consulta.")}
-        ${portalCard("DJ", cards.dj, "Área de protocolo e informações do DJ.")}
-        ${portalCard("Formulários", cards.formulario, "Formulários adicionais do evento.")}
+        ${portalItems}
       </div>
     </section>
 
     <section class="card footer-actions">
-      <button class="button-secondary" type="button" id="refresh-event">Atualizar dados</button>
+      <button class="button-secondary" type="button" id="refresh-event">Atualizar informações</button>
       <button class="button" type="button" id="logout-event">Sair</button>
     </section>
   `;
@@ -245,14 +284,33 @@ function renderDashboard() {
   return wrap;
 }
 
-function portalCard(title, enabled, description) {
+function portalCard(title, enabled, monogram, description) {
   return `
     <div class="portal-card ${enabled ? "" : "disabled"}">
-      <span>${enabled ? "Disponível" : "Oculto no momento"}</span>
+      <div class="portal-card-top">
+        <div class="portal-icon">${escapeHtml(monogram)}</div>
+        <span class="portal-status">${enabled ? "Liberado" : "Ainda não liberado"}</span>
+      </div>
       <strong>${escapeHtml(title)}</strong>
       <div class="muted">${escapeHtml(description)}</div>
     </div>
   `;
+}
+
+function renderDebugSettings() {
+  const settings = document.createElement("div");
+  settings.className = "card debug-card";
+  settings.innerHTML = `
+    <div class="section-kicker">Debug</div>
+    <h2 class="section-title">Configuração interna</h2>
+    <p class="section-copy">Área visível apenas em modo de desenvolvimento.</p>
+    <div class="field">
+      <label for="api_base">URL da API</label>
+      <input id="api_base" name="api_base" value="${escapeAttribute(state.apiBase)}" />
+    </div>
+  `;
+  settings.querySelector("#api_base").addEventListener("change", onApiBaseChange);
+  return settings;
 }
 
 function renderAlerts() {
@@ -303,7 +361,7 @@ async function onLoginSubmit(event) {
       expires_at: data.expires_at,
     };
     persistSession();
-    state.success = "Acesso autorizado.";
+    state.success = "Acesso liberado.";
     await refreshEventSummary();
   } catch (error) {
     console.error(error);
@@ -327,7 +385,7 @@ async function refreshEventSummary() {
       headers: withAuthHeaders(),
     });
     state.event = data.event;
-    state.success = "Dados do evento atualizados.";
+    state.success = "Informações atualizadas.";
   } catch (error) {
     console.error(error);
     state.error = error.message || "Não foi possível carregar o evento.";
@@ -351,7 +409,7 @@ async function logout() {
     console.error(error);
   } finally {
     clearSession();
-    state.success = "Sessão encerrada.";
+    state.success = "Acesso encerrado.";
     render();
   }
 }
