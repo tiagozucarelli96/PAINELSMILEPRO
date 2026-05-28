@@ -592,6 +592,56 @@ function wa_core_user_is_active(array $user): bool
     return !($value === false || $value === 0 || $value === '0' || $value === 'f' || $value === 'false' || $value === null);
 }
 
+function wa_core_user_login_value(array $user): string
+{
+    foreach (['login', 'loguin', 'usuario', 'username', 'user', 'email'] as $column) {
+        $value = trim((string)($user[$column] ?? ''));
+        if ($value !== '') {
+            return $column === 'email' ? wa_normalize_email($value) : $value;
+        }
+    }
+
+    return '';
+}
+
+function wa_login_user_options(): array
+{
+    wa_ensure_core_permission_columns();
+
+    $rows = wa_pdo()->query("
+        SELECT *
+        FROM usuarios
+        WHERE COALESCE(ativo, TRUE) = TRUE
+          AND (
+            COALESCE(perm_smile_chat, FALSE) = TRUE
+            OR COALESCE(perm_smile_chat_admin, FALSE) = TRUE
+            OR COALESCE(perm_superadmin, FALSE) = TRUE
+          )
+        ORDER BY
+            COALESCE(nome_completo, nome, name, email) ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    $options = [];
+    foreach ($rows as $row) {
+        $authValue = wa_core_user_login_value($row);
+        if ($authValue === '') {
+            continue;
+        }
+
+        $displayName = trim((string)($row['nome_completo'] ?? $row['nome'] ?? $row['name'] ?? $authValue));
+        $email = trim((string)($row['email'] ?? ''));
+        $subtitle = $email !== '' && wa_normalize_email($email) !== wa_normalize_email($authValue) ? $email : $authValue;
+
+        $options[] = [
+            'value' => $authValue,
+            'label' => $displayName,
+            'hint' => $subtitle,
+        ];
+    }
+
+    return $options;
+}
+
 function wa_verify_core_password(array $user, string $password): bool
 {
     foreach (['senha', 'senha_hash', 'password', 'pass'] as $column) {
