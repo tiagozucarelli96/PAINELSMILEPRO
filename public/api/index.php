@@ -124,6 +124,99 @@ try {
         ]);
     }
 
+    if ($method === 'GET' && $path === '/v1/client/modules/reuniao-final') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        client_app_api_json(200, [
+            'ok' => true,
+            'module' => client_app_api_module_reuniao_final($pdo, (int)$session['meeting_id']),
+        ]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/client/modules/convidados') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        $search = trim((string)($_GET['search'] ?? ''));
+        client_app_api_json(200, [
+            'ok' => true,
+            'module' => client_app_api_module_convidados($pdo, (int)$session['meeting_id'], $search),
+        ]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/client/modules/convidados/save') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        $body = client_app_api_request_body();
+        client_app_api_json(200, client_app_api_module_convidados_salvar($pdo, (int)$session['meeting_id'], $body));
+    }
+
+    if ($method === 'POST' && $path === '/v1/client/modules/convidados/delete') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        $body = client_app_api_request_body();
+        client_app_api_json(200, client_app_api_module_convidados_excluir($pdo, (int)$session['meeting_id'], $body));
+    }
+
+    if ($method === 'GET' && $path === '/v1/client/modules/arquivos') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        client_app_api_json(200, [
+            'ok' => true,
+            'module' => client_app_api_module_arquivos($pdo, (int)$session['meeting_id']),
+        ]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/client/modules/arquivos/upload') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        client_app_api_json(200, client_app_api_module_arquivos_upload($pdo, (int)$session['meeting_id']));
+    }
+
+    if ($method === 'POST' && $path === '/v1/client/modules/arquivos/delete') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        $body = client_app_api_request_body();
+        client_app_api_json(200, client_app_api_module_arquivos_excluir($pdo, (int)$session['meeting_id'], $body));
+    }
+
+    if ($method === 'GET' && $path === '/v1/client/modules/dj') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        client_app_api_json(200, [
+            'ok' => true,
+            'module' => client_app_api_module_links($pdo, (int)$session['meeting_id'], 'dj'),
+        ]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/client/modules/formulario') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        client_app_api_json(200, [
+            'ok' => true,
+            'module' => client_app_api_module_links($pdo, (int)$session['meeting_id'], 'formulario'),
+        ]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/client/modules/form-response/save') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        $body = client_app_api_request_body();
+        client_app_api_json(200, client_app_api_module_form_response_salvar($pdo, (int)$session['meeting_id'], $body));
+    }
+
+    if ($method === 'POST' && $path === '/v1/client/modules/form-response/upload') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        client_app_api_json(200, client_app_api_module_form_response_upload($pdo, (int)$session['meeting_id'], $_POST, $_FILES));
+    }
+
+    if ($method === 'POST' && $path === '/v1/client/modules/form-response/delete-file') {
+        $pdo = client_app_api_pdo();
+        $session = client_app_api_require_session($pdo);
+        $body = client_app_api_request_body();
+        client_app_api_json(200, client_app_api_module_form_response_excluir_arquivo($pdo, (int)$session['meeting_id'], $body));
+    }
+
     client_app_api_error(404, 'Endpoint não encontrado.');
 } catch (Throwable $e) {
     error_log('client_app_api: ' . $e->getMessage());

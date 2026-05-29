@@ -1427,6 +1427,753 @@ function client_app_api_event_payload(PDO $pdo, int $meetingId): array
     ];
 }
 
+function client_app_api_require_eventos_helpers(): void
+{
+    static $loaded = false;
+    if ($loaded) {
+        return;
+    }
+
+    require_once dirname(__DIR__) . '/eventos_reuniao_helper.php';
+    require_once dirname(__DIR__) . '/upload_magalu.php';
+    $loaded = true;
+}
+
+function client_app_api_module_guard(PDO $pdo, int $meetingId, string $moduleKey): array
+{
+    $event = client_app_api_event_payload($pdo, $meetingId);
+    $cards = is_array($event['cards'] ?? null) ? $event['cards'] : [];
+    if (empty($cards[$moduleKey])) {
+        client_app_api_error(403, 'Esta área não está liberada para este evento.');
+    }
+
+    return $event;
+}
+
+function client_app_api_event_brief(array $event): array
+{
+    return [
+        'meeting_id' => (int)($event['meeting_id'] ?? 0),
+        'me_event_id' => (int)($event['me_event_id'] ?? 0),
+        'name' => (string)($event['name'] ?? ''),
+        'client_name' => (string)($event['client_name'] ?? ''),
+        'date' => (string)($event['date'] ?? ''),
+        'time_start' => (string)($event['time_start'] ?? ''),
+        'time_end' => (string)($event['time_end'] ?? ''),
+        'location' => (string)($event['location'] ?? ''),
+    ];
+}
+
+function client_app_api_summary_row(array $event): array
+{
+    $items = [];
+    if (!empty($event['date'])) {
+        $items[] = ['label' => 'Data', 'value' => (string)$event['date']];
+    }
+    if (!empty($event['time_start']) || !empty($event['time_end'])) {
+        $time = trim((string)($event['time_start'] ?? ''));
+        if (!empty($event['time_end'])) {
+            $time .= ($time !== '' ? ' às ' : '') . (string)$event['time_end'];
+        }
+        $items[] = ['label' => 'Horário', 'value' => $time];
+    }
+    if (!empty($event['location'])) {
+        $items[] = ['label' => 'Local', 'value' => (string)$event['location']];
+    }
+    if (!empty($event['client_name'])) {
+        $items[] = ['label' => 'Cliente', 'value' => (string)$event['client_name']];
+    }
+    return $items;
+}
+
+function client_app_api_form_payload_values(string $contentHtml, string $section): array
+{
+    client_app_api_require_eventos_helpers();
+    $payload = eventos_reuniao_extrair_payload_formulario($contentHtml);
+    $values = [];
+    if (is_array($payload['values'] ?? null)) {
+        foreach ($payload['values'] as $key => $value) {
+            $values[(string)$key] = is_scalar($value) ? trim((string)$value) : '';
+        }
+    }
+    $legacyHtml = trim((string)($payload['legacy_html'] ?? ''));
+    if ($legacyHtml !== '') {
+        $values['legacy_portal_text_' . $section] = eventos_reuniao_html_para_texto($legacyHtml);
+    }
+    return $values;
+}
+
+function client_app_api_schema_normalized(array $schema, array $values = []): array
+{
+    client_app_api_require_eventos_helpers();
+    $normalized = eventos_form_template_normalizar_schema($schema);
+    if (!empty($values)) {
+        $normalized = eventos_reuniao_schema_aplicar_valores_payload($normalized, $values);
+    }
+    return $normalized;
+}
+
+function client_app_api_section_payload(PDO $pdo, int $meetingId, string $section, array $sectionPortalConfig): array
+{
+    client_app_api_require_eventos_helpers();
+    $secao = eventos_reuniao_get_secao($pdo, $meetingId, $section);
+    $contentHtml = trim((string)($secao['content_html'] ?? ''));
+    $values = client_app_api_form_payload_values($contentHtml, $section);
+    $schemaRaw = json_decode((string)($secao['form_schema_json'] ?? '[]'), true);
+    $schema = client_app_api_schema_normalized(is_array($schemaRaw) ? $schemaRaw : [], $values);
+    $legacyVisible = array_key_exists('legacy_text_portal_visible', (array)$secao)
+        ? !empty($secao['legacy_text_portal_visible'])
+        : true;
+    if ($legacyVisible) {
+        $legacyDefault = trim((string)($values['legacy_portal_text_' . $section] ?? ''));
+        $schema = eventos_reuniao_schema_adicionar_texto_livre($schema, $section, $legacyDefault);
+    }
+
+    return [
+        'key' => $section,
+        'title' => client_app_api_section_title($section),
+        'visible' => !empty($sectionPortalConfig['visivel']),
+        'editable' => !empty($sectionPortalConfig['editavel']),
+        'schema' => $schema,
+        'values' => $values,
+        'text_preview' => client_app_api_section_preview($schema, $values),
+    ];
+}
+
+function client_app_api_section_title(string $section): string
+{
+    $map = [
+        'decoracao' => 'Decoração',
+        'observacoes_gerais' => 'Observações Gerais',
+        'dj_protocolo' => 'DJ e Protocolo',
+        'formulario' => 'Formulário',
+    ];
+    return $map[$section] ?? ucfirst(str_replace('_', ' ', $section));
+}
+
+function client_app_api_field_value(array $field, array $values): string
+{
+    $fieldId = trim((string)($field['id'] ?? ''));
+    if ($fieldId !== '' && array_key_exists($fieldId, $values)) {
+        return trim((string)$values[$fieldId]);
+    }
+    return trim((string)($field['default_value'] ?? ''));
+}
+
+function client_app_api_section_preview(array $schema, array $values): string
+{
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? '')));
+        if (!in_array($type, ['text', 'textarea', 'yesno', 'select'], true)) {
+            continue;
+        }
+        $value = client_app_api_field_value($field, $values);
+        if ($value !== '') {
+            return $value;
+        }
+    }
+    return '';
+}
+
+function client_app_api_module_reuniao_final(PDO $pdo, int $meetingId): array
+{
+    $event = client_app_api_module_guard($pdo, $meetingId, 'reuniao_final');
+    $portal = client_app_api_fetch_portal($pdo, $meetingId);
+    $sectionsConfig = is_array($portal['secoes'] ?? null) ? $portal['secoes'] : [];
+
+    $sections = [];
+    foreach (['decoracao', 'observacoes_gerais'] as $sectionKey) {
+        $config = is_array($sectionsConfig[$sectionKey] ?? null) ? $sectionsConfig[$sectionKey] : ['visivel' => true, 'editavel' => false];
+        if (empty($config['visivel'])) {
+            continue;
+        }
+        $sections[] = client_app_api_section_payload($pdo, $meetingId, $sectionKey, $config);
+    }
+
+    return [
+        'key' => 'reuniao_final',
+        'title' => 'Reunião Final',
+        'event' => client_app_api_event_brief($event),
+        'summary' => client_app_api_summary_row($event),
+        'sections' => $sections,
+        'editable' => !empty($event['permissions']['reuniao_editavel']),
+    ];
+}
+
+function client_app_api_module_convidados(PDO $pdo, int $meetingId, string $search = ''): array
+{
+    client_app_api_require_eventos_helpers();
+    $event = client_app_api_module_guard($pdo, $meetingId, 'convidados');
+    $config = eventos_convidados_get_config($pdo, $meetingId);
+    $items = eventos_convidados_listar($pdo, $meetingId, $search);
+    $summary = eventos_convidados_resumo($pdo, $meetingId);
+
+    return [
+        'key' => 'convidados',
+        'title' => 'Convidados',
+        'event' => client_app_api_event_brief($event),
+        'editable' => !empty($event['permissions']['convidados_editavel']),
+        'config' => $config,
+        'summary' => $summary,
+        'items' => array_map(static function (array $row): array {
+            return [
+                'id' => (int)($row['id'] ?? 0),
+                'name' => (string)($row['nome'] ?? ''),
+                'age_group' => (string)($row['faixa_etaria'] ?? ''),
+                'table_number' => (string)($row['numero_mesa'] ?? ''),
+                'is_checked_in' => !empty($row['is_checked_in']),
+                'is_draft' => !empty($row['is_draft']),
+            ];
+        }, $items),
+    ];
+}
+
+function client_app_api_module_convidados_salvar(PDO $pdo, int $meetingId, array $body): array
+{
+    client_app_api_require_eventos_helpers();
+    $event = client_app_api_module_guard($pdo, $meetingId, 'convidados');
+    if (empty($event['permissions']['convidados_editavel'])) {
+        client_app_api_error(403, 'A lista de convidados está em modo de consulta.');
+    }
+
+    $guestId = (int)($body['id'] ?? 0);
+    $name = trim((string)($body['name'] ?? ''));
+    $ageGroup = trim((string)($body['age_group'] ?? ''));
+    $tableNumber = trim((string)($body['table_number'] ?? ''));
+
+    $result = $guestId > 0
+        ? eventos_convidados_atualizar($pdo, $meetingId, $guestId, $name, $ageGroup, $tableNumber, 0, false)
+        : eventos_convidados_adicionar($pdo, $meetingId, $name, $ageGroup, $tableNumber, 'cliente', 0, false);
+
+    if (empty($result['ok'])) {
+        client_app_api_log('guests_save_failed', ['meeting_id' => $meetingId, 'error' => $result['error'] ?? 'erro']);
+        client_app_api_error(422, (string)($result['error'] ?? 'Não foi possível salvar o convidado.'));
+    }
+
+    return [
+        'ok' => true,
+        'module' => client_app_api_module_convidados($pdo, $meetingId),
+    ];
+}
+
+function client_app_api_module_convidados_excluir(PDO $pdo, int $meetingId, array $body): array
+{
+    client_app_api_require_eventos_helpers();
+    $event = client_app_api_module_guard($pdo, $meetingId, 'convidados');
+    if (empty($event['permissions']['convidados_editavel'])) {
+        client_app_api_error(403, 'A lista de convidados está em modo de consulta.');
+    }
+
+    $guestId = (int)($body['id'] ?? 0);
+    $result = eventos_convidados_excluir($pdo, $meetingId, $guestId, 0);
+    if (empty($result['ok'])) {
+        client_app_api_log('guests_delete_failed', ['meeting_id' => $meetingId, 'guest_id' => $guestId, 'error' => $result['error'] ?? 'erro']);
+        client_app_api_error(422, (string)($result['error'] ?? 'Não foi possível excluir o convidado.'));
+    }
+
+    return [
+        'ok' => true,
+        'module' => client_app_api_module_convidados($pdo, $meetingId),
+    ];
+}
+
+function client_app_api_module_arquivos(PDO $pdo, int $meetingId): array
+{
+    client_app_api_require_eventos_helpers();
+    $event = client_app_api_module_guard($pdo, $meetingId, 'arquivos');
+    $campos = array_values(array_filter(
+        eventos_arquivos_listar_campos($pdo, $meetingId, true, false),
+        static fn(array $campo): bool => trim((string)($campo['chave_sistema'] ?? '')) === ''
+    ));
+    $arquivos = eventos_arquivos_listar($pdo, $meetingId, true, null, false);
+    $summary = eventos_arquivos_resumo($pdo, $meetingId);
+
+    $grouped = [];
+    foreach ($arquivos as $arquivo) {
+        $campoId = (int)($arquivo['campo_id'] ?? 0);
+        if (!isset($grouped[$campoId])) {
+            $grouped[$campoId] = [];
+        }
+        $grouped[$campoId][] = [
+            'id' => (int)($arquivo['id'] ?? 0),
+            'name' => (string)($arquivo['original_name'] ?? 'Arquivo'),
+            'description' => (string)($arquivo['descricao'] ?? ''),
+            'uploaded_by_type' => (string)($arquivo['uploaded_by_type'] ?? ''),
+            'public_url' => (string)($arquivo['public_url'] ?? ''),
+            'mime_type' => (string)($arquivo['mime_type'] ?? ''),
+            'size_bytes' => (int)($arquivo['size_bytes'] ?? 0),
+            'uploaded_at' => (string)($arquivo['uploaded_at'] ?? ''),
+            'uploaded_by_client' => strtolower(trim((string)($arquivo['uploaded_by_type'] ?? ''))) === 'cliente',
+        ];
+    }
+
+    return [
+        'key' => 'arquivos',
+        'title' => 'Arquivos',
+        'event' => client_app_api_event_brief($event),
+        'editable' => !empty($event['permissions']['arquivos_editavel']),
+        'summary' => $summary,
+        'fields' => array_map(static function (array $campo) use ($grouped): array {
+            $campoId = (int)($campo['id'] ?? 0);
+            return [
+                'id' => $campoId,
+                'title' => (string)($campo['titulo'] ?? ''),
+                'description' => (string)($campo['descricao'] ?? ''),
+                'required' => !empty($campo['obrigatorio_cliente']),
+                'files' => $grouped[$campoId] ?? [],
+            ];
+        }, $campos),
+    ];
+}
+
+function client_app_api_upload_error_message(int $code): string
+{
+    switch ($code) {
+        case UPLOAD_ERR_OK:
+            return '';
+        case UPLOAD_ERR_INI_SIZE:
+        case UPLOAD_ERR_FORM_SIZE:
+            return 'Arquivo excede o limite permitido pelo servidor.';
+        case UPLOAD_ERR_PARTIAL:
+            return 'Upload incompleto. Tente novamente.';
+        case UPLOAD_ERR_NO_FILE:
+            return 'Selecione um arquivo para enviar.';
+        case UPLOAD_ERR_NO_TMP_DIR:
+            return 'Servidor sem pasta temporária para upload.';
+        case UPLOAD_ERR_CANT_WRITE:
+            return 'Falha ao gravar arquivo temporário.';
+        case UPLOAD_ERR_EXTENSION:
+            return 'Upload bloqueado por extensão do servidor.';
+        default:
+            return 'Erro desconhecido de upload.';
+    }
+}
+
+function client_app_api_module_arquivos_upload(PDO $pdo, int $meetingId): array
+{
+    client_app_api_require_eventos_helpers();
+    $event = client_app_api_module_guard($pdo, $meetingId, 'arquivos');
+    if (empty($event['permissions']['arquivos_editavel'])) {
+        client_app_api_error(403, 'O envio de arquivos não está habilitado para este evento.');
+    }
+
+    $file = $_FILES['arquivo'] ?? null;
+    if (!$file || !is_array($file)) {
+        client_app_api_error(422, 'Selecione um arquivo para enviar.');
+    }
+    $uploadError = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($uploadError !== UPLOAD_ERR_OK) {
+        client_app_api_error(422, client_app_api_upload_error_message($uploadError));
+    }
+
+    $campoId = (int)($_POST['campo_id'] ?? 0);
+    $descricao = trim((string)($_POST['descricao'] ?? ''));
+
+    try {
+        $uploader = new MagaluUpload(500);
+        $uploadResult = $uploader->upload($file, 'eventos/reunioes/' . $meetingId . '/cliente_app_arquivos');
+        $saved = eventos_arquivos_salvar_item(
+            $pdo,
+            $meetingId,
+            $uploadResult,
+            $campoId > 0 ? $campoId : null,
+            $descricao,
+            true,
+            'cliente',
+            null
+        );
+    } catch (Throwable $e) {
+        client_app_api_log('files_upload_exception', ['meeting_id' => $meetingId, 'error' => $e->getMessage()]);
+        client_app_api_error(500, 'Falha ao enviar arquivo. Tente novamente.');
+    }
+
+    if (empty($saved['ok'])) {
+        client_app_api_log('files_upload_failed', ['meeting_id' => $meetingId, 'error' => $saved['error'] ?? 'erro']);
+        client_app_api_error(422, (string)($saved['error'] ?? 'Não foi possível salvar o arquivo.'));
+    }
+
+    return [
+        'ok' => true,
+        'module' => client_app_api_module_arquivos($pdo, $meetingId),
+    ];
+}
+
+function client_app_api_module_arquivos_excluir(PDO $pdo, int $meetingId, array $body): array
+{
+    client_app_api_require_eventos_helpers();
+    $event = client_app_api_module_guard($pdo, $meetingId, 'arquivos');
+    if (empty($event['permissions']['arquivos_editavel'])) {
+        client_app_api_error(403, 'Os arquivos estão em modo de consulta.');
+    }
+
+    $arquivoId = (int)($body['id'] ?? 0);
+    $result = eventos_arquivos_excluir_item($pdo, $meetingId, $arquivoId, 0, 'cliente');
+    if (empty($result['ok'])) {
+        client_app_api_log('files_delete_failed', ['meeting_id' => $meetingId, 'file_id' => $arquivoId, 'error' => $result['error'] ?? 'erro']);
+        client_app_api_error(422, (string)($result['error'] ?? 'Não foi possível excluir o arquivo.'));
+    }
+
+    return [
+        'ok' => true,
+        'module' => client_app_api_module_arquivos($pdo, $meetingId),
+    ];
+}
+
+function client_app_api_public_form_payload(PDO $pdo, int $meetingId, array $link, string $section): array
+{
+    client_app_api_require_eventos_helpers();
+    $linkId = (int)($link['id'] ?? 0);
+    $submittedPayload = eventos_reuniao_extrair_payload_formulario((string)($link['content_html_snapshot'] ?? ''));
+    $draftPayload = eventos_reuniao_extrair_payload_formulario((string)($link['draft_content_html_snapshot'] ?? ''));
+    $submittedValues = is_array($submittedPayload['values'] ?? null) ? $submittedPayload['values'] : [];
+    $draftValues = is_array($draftPayload['values'] ?? null) ? $draftPayload['values'] : [];
+    $currentValues = !empty($draftValues) ? $draftValues : $submittedValues;
+    $schema = client_app_api_schema_normalized(
+        is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
+        $currentValues
+    );
+
+    $draftAttachments = $linkId > 0 ? eventos_reuniao_get_anexos_link_rascunho($pdo, $meetingId, $section, $linkId) : [];
+    $submittedAttachments = $linkId > 0 ? eventos_reuniao_get_anexos_link_finais($pdo, $meetingId, $section, $linkId) : [];
+
+    $filesByField = [];
+    foreach (array_merge($submittedAttachments, $draftAttachments) as $attachment) {
+        $fieldKey = trim((string)($attachment['form_field_id'] ?? ''));
+        if ($fieldKey === '') {
+            continue;
+        }
+        if (!isset($filesByField[$fieldKey])) {
+            $filesByField[$fieldKey] = [];
+        }
+        $filesByField[$fieldKey][] = [
+            'id' => (int)($attachment['id'] ?? 0),
+            'name' => trim((string)($attachment['original_name'] ?? 'Arquivo')),
+            'description' => trim((string)($attachment['note'] ?? '')),
+            'public_url' => trim((string)($attachment['public_url'] ?? '')),
+            'size_bytes' => (int)($attachment['size_bytes'] ?? 0),
+            'uploaded_by_client' => strtolower(trim((string)($attachment['uploaded_by_type'] ?? ''))) === 'cliente',
+        ];
+    }
+
+    return [
+        'id' => $linkId,
+        'slot_index' => (int)($link['slot_index'] ?? 1),
+        'title' => trim((string)($link['form_title'] ?? '')) !== '' ? (string)$link['form_title'] : client_app_api_section_title($section),
+        'editable' => !empty($link['portal_editable']),
+        'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
+        'draft_saved_at' => array_key_exists('draft_saved_at', $link) && $link['draft_saved_at'] !== null ? (string)$link['draft_saved_at'] : null,
+        'schema' => $schema,
+        'values' => $currentValues,
+        'draft_attachments' => $draftAttachments,
+        'submitted_attachments' => $submittedAttachments,
+        'files_by_field' => $filesByField,
+        'preview' => client_app_api_section_preview($schema, $currentValues),
+    ];
+}
+
+function client_app_api_find_module_link(PDO $pdo, int $meetingId, string $moduleKey, int $linkId): array
+{
+    $mapping = [
+        'reuniao_final' => ['link_type' => 'cliente_observacoes', 'section' => 'decoracao'],
+        'dj' => ['link_type' => 'cliente_dj', 'section' => 'dj_protocolo'],
+        'formulario' => ['link_type' => 'cliente_formulario', 'section' => 'formulario'],
+    ];
+    $meta = $mapping[$moduleKey] ?? null;
+    if (!$meta) {
+        client_app_api_error(422, 'Módulo inválido para formulários.');
+    }
+
+    client_app_api_module_guard($pdo, $meetingId, $moduleKey === 'reuniao_final' ? 'reuniao_final' : $moduleKey);
+
+    $link = null;
+    foreach (eventos_reuniao_listar_links_cliente($pdo, $meetingId, $meta['link_type']) as $candidate) {
+        if ((int)($candidate['id'] ?? 0) === $linkId) {
+            $link = $candidate;
+            break;
+        }
+    }
+
+    if (!$link || empty($link['portal_visible'])) {
+        client_app_api_error(404, 'Formulário não encontrado.');
+    }
+
+    return [$link, $meta];
+}
+
+function client_app_api_module_links(PDO $pdo, int $meetingId, string $moduleKey): array
+{
+    client_app_api_require_eventos_helpers();
+    $event = client_app_api_module_guard($pdo, $meetingId, $moduleKey);
+    $mapping = [
+        'dj' => ['link_type' => 'cliente_dj', 'section' => 'dj_protocolo', 'title' => 'DJ e Protocolo'],
+        'formulario' => ['link_type' => 'cliente_formulario', 'section' => 'formulario', 'title' => 'Formulários'],
+    ];
+    $meta = $mapping[$moduleKey] ?? null;
+    if (!$meta) {
+        client_app_api_error(404, 'Módulo não encontrado.');
+    }
+
+    $forms = [];
+    foreach (eventos_reuniao_listar_links_cliente($pdo, $meetingId, $meta['link_type']) as $link) {
+        if (empty($link['portal_visible'])) {
+            continue;
+        }
+        if (!client_app_api_form_schema_has_fields($link['form_schema'] ?? null)) {
+            continue;
+        }
+        $forms[] = client_app_api_public_form_payload($pdo, $meetingId, $link, $meta['section']);
+    }
+
+    return [
+        'key' => $moduleKey,
+        'title' => $meta['title'],
+        'event' => client_app_api_event_brief($event),
+        'forms' => $forms,
+    ];
+}
+
+function client_app_api_form_value_to_html(string $value): string
+{
+    return nl2br(htmlspecialchars(trim($value), ENT_QUOTES, 'UTF-8'));
+}
+
+function client_app_api_compose_form_snapshot(array $schema, array $values, string $section, string $title): string
+{
+    client_app_api_require_eventos_helpers();
+    $parts = [];
+    $title = trim($title);
+    if ($title !== '') {
+        $parts[] = '<h2>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h2>';
+    }
+
+    $legacyHtml = '';
+    foreach (eventos_form_template_normalizar_schema($schema) as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        $label = trim((string)($field['label'] ?? ''));
+        $fieldId = trim((string)($field['id'] ?? ''));
+        $value = isset($values[$fieldId]) ? trim((string)$values[$fieldId]) : trim((string)($field['default_value'] ?? ''));
+
+        if (strpos($fieldId, 'legacy_portal_text_') === 0) {
+            if ($value !== '') {
+                $legacyHtml = '<p>' . client_app_api_form_value_to_html($value) . '</p>';
+            }
+            continue;
+        }
+
+        if ($type === 'divider') {
+            $parts[] = '<hr>';
+            continue;
+        }
+        if ($type === 'section') {
+            $parts[] = '<h3>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</h3>';
+            continue;
+        }
+        if ($type === 'note') {
+            $noteHtml = trim((string)($field['content_html'] ?? ''));
+            if ($noteHtml !== '') {
+                $parts[] = $noteHtml;
+            }
+            continue;
+        }
+        if ($type === 'file') {
+            continue;
+        }
+        if ($value === '') {
+            continue;
+        }
+
+        $parts[] = '<p><strong>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</strong><br>' . client_app_api_form_value_to_html($value) . '</p>';
+    }
+
+    $payload = [
+        'section' => $section,
+        'values' => $values,
+    ];
+    if ($legacyHtml !== '') {
+        $payload['legacy_html'] = $legacyHtml;
+    }
+    $encodedPayload = base64_encode((string)json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    if ($encodedPayload !== '') {
+        $parts[] = '<div data-smile-form-payload="' . htmlspecialchars($encodedPayload, ENT_QUOTES, 'UTF-8') . '" style="display:none;"></div>';
+    }
+
+    return implode("\n", $parts);
+}
+
+function client_app_api_module_form_response_salvar(PDO $pdo, int $meetingId, array $body): array
+{
+    client_app_api_require_eventos_helpers();
+    $moduleKey = trim((string)($body['module'] ?? ''));
+    $linkId = (int)($body['link_id'] ?? 0);
+    $submit = !empty($body['submit']);
+    $values = is_array($body['values'] ?? null) ? $body['values'] : [];
+
+    [$link, $meta] = client_app_api_find_module_link($pdo, $meetingId, $moduleKey, $linkId);
+    if (empty($link['portal_editable'])) {
+        client_app_api_error(403, 'Este formulário está disponível apenas para consulta.');
+    }
+
+    $schema = eventos_form_template_normalizar_schema(is_array($link['form_schema'] ?? null) ? $link['form_schema'] : []);
+    $normalizedValues = [];
+    $errors = [];
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        $fieldId = trim((string)($field['id'] ?? ''));
+        if ($fieldId === '' || in_array($type, ['divider', 'section', 'note', 'file'], true)) {
+            continue;
+        }
+        $value = trim((string)($values[$fieldId] ?? ''));
+        $normalizedValues[$fieldId] = $value;
+        if (!empty($field['required']) && $value === '') {
+            $errors[] = 'Preencha o campo "' . trim((string)($field['label'] ?? 'Campo obrigatório')) . '".';
+        }
+    }
+    if (!empty($errors)) {
+        client_app_api_error(422, $errors[0]);
+    }
+
+    $snapshotHtml = client_app_api_compose_form_snapshot(
+        $schema,
+        $normalizedValues,
+        $meta['section'],
+        trim((string)($link['form_title'] ?? ''))
+    );
+    $saved = $submit
+        ? eventos_link_publico_registrar_envio($pdo, $linkId, $snapshotHtml)
+        : eventos_link_publico_salvar_rascunho($pdo, $linkId, $snapshotHtml);
+
+    if (!$saved) {
+        client_app_api_log('form_save_failed', ['meeting_id' => $meetingId, 'link_id' => $linkId, 'module' => $moduleKey]);
+        client_app_api_error(500, 'Não foi possível salvar o formulário agora.');
+    }
+
+    if ($submit) {
+        eventos_reuniao_promover_anexos_rascunho_link($pdo, $linkId);
+    }
+
+    return [
+        'ok' => true,
+        'module' => $moduleKey === 'reuniao_final'
+            ? client_app_api_module_reuniao_final($pdo, $meetingId)
+            : client_app_api_module_links($pdo, $meetingId, $moduleKey),
+    ];
+}
+
+function client_app_api_module_form_response_upload(PDO $pdo, int $meetingId, array $body, array $files): array
+{
+    client_app_api_require_eventos_helpers();
+    $moduleKey = trim((string)($body['module'] ?? ''));
+    $linkId = (int)($body['link_id'] ?? 0);
+    $fieldId = trim((string)($body['field_id'] ?? ''));
+    $description = trim((string)($body['description'] ?? ''));
+    $submit = !empty($body['submit']);
+
+    if ($fieldId === '') {
+        client_app_api_error(422, 'Campo do formulário não informado.');
+    }
+    if (!isset($files['arquivo']) || !is_array($files['arquivo'])) {
+        client_app_api_error(422, 'Selecione um arquivo para enviar.');
+    }
+
+    [$link, $meta] = client_app_api_find_module_link($pdo, $meetingId, $moduleKey, $linkId);
+    if (empty($link['portal_editable'])) {
+        client_app_api_error(403, 'Este formulário está disponível apenas para consulta.');
+    }
+
+    $schema = eventos_form_template_normalizar_schema(is_array($link['form_schema'] ?? null) ? $link['form_schema'] : []);
+    $fieldMeta = null;
+    foreach ($schema as $field) {
+        if (trim((string)($field['id'] ?? '')) === $fieldId) {
+            $fieldMeta = $field;
+            break;
+        }
+    }
+    if (!$fieldMeta || strtolower(trim((string)($fieldMeta['type'] ?? ''))) !== 'file') {
+        client_app_api_error(404, 'Campo de arquivo não encontrado.');
+    }
+
+    $errorCode = (int)($files['arquivo']['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($errorCode !== UPLOAD_ERR_OK) {
+        client_app_api_error(422, client_app_api_upload_error_message($errorCode));
+    }
+
+    try {
+        $uploader = new MagaluUpload();
+        $upload = $uploader->upload($files['arquivo'], 'cliente-formulario/' . $meetingId . '/' . $moduleKey);
+    } catch (Throwable $e) {
+        client_app_api_log('form_upload_exception', ['meeting_id' => $meetingId, 'link_id' => $linkId, 'field_id' => $fieldId, 'message' => $e->getMessage()]);
+        client_app_api_error(500, 'Não foi possível enviar o arquivo agora.');
+    }
+
+    if (empty($upload['sucesso'])) {
+        client_app_api_error(422, trim((string)($upload['erro'] ?? 'Falha ao enviar o arquivo.')) ?: 'Falha ao enviar o arquivo.');
+    }
+
+    $saved = eventos_reuniao_salvar_anexo(
+        $pdo,
+        $meetingId,
+        $meta['section'],
+        $upload,
+        'cliente',
+        null,
+        $description !== '' ? $description : (trim((string)($fieldMeta['label'] ?? '')) ?: null),
+        $linkId,
+        !$submit,
+        $fieldId
+    );
+
+    if (empty($saved['ok'])) {
+        client_app_api_log('form_upload_save_failed', ['meeting_id' => $meetingId, 'link_id' => $linkId, 'field_id' => $fieldId, 'error' => $saved['error'] ?? 'unknown']);
+        client_app_api_error(500, 'Não foi possível registrar o arquivo enviado.');
+    }
+
+    if ($submit) {
+        eventos_reuniao_promover_anexos_rascunho_link($pdo, $linkId);
+    }
+
+    return [
+        'ok' => true,
+        'module' => client_app_api_module_links($pdo, $meetingId, $moduleKey),
+    ];
+}
+
+function client_app_api_module_form_response_excluir_arquivo(PDO $pdo, int $meetingId, array $body): array
+{
+    client_app_api_require_eventos_helpers();
+    $moduleKey = trim((string)($body['module'] ?? ''));
+    $linkId = (int)($body['link_id'] ?? 0);
+    $fileId = (int)($body['file_id'] ?? 0);
+
+    if ($fileId <= 0) {
+        client_app_api_error(422, 'Arquivo inválido para exclusão.');
+    }
+
+    [$link, $meta] = client_app_api_find_module_link($pdo, $meetingId, $moduleKey, $linkId);
+    if (empty($link['portal_editable'])) {
+        client_app_api_error(403, 'Este formulário está disponível apenas para consulta.');
+    }
+
+    $deleted = eventos_reuniao_excluir_anexo_cliente_publico($pdo, $meetingId, $meta['section'], $fileId, $linkId);
+    if (empty($deleted['ok'])) {
+        client_app_api_error(422, trim((string)($deleted['error'] ?? 'Não foi possível excluir o arquivo.')) ?: 'Não foi possível excluir o arquivo.');
+    }
+
+    return [
+        'ok' => true,
+        'module' => client_app_api_module_links($pdo, $meetingId, $moduleKey),
+    ];
+}
+
 function client_app_api_require_session(PDO $pdo): array
 {
     $session = client_app_api_load_session($pdo, client_app_api_bearer_token());
