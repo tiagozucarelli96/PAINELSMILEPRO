@@ -60,16 +60,18 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
     require_once __DIR__ . '/conexao.php';
     $check_id = (int)$_GET['inscricao_id'];
     
-    // Verificar quais colunas de valor existem
+    // Verificar quais colunas de pagamento existem
     $check_valor_cols = $pdo->query("
         SELECT column_name 
         FROM information_schema.columns 
         WHERE table_name = 'comercial_inscricoes' 
-        AND column_name IN ('valor_total', 'valor_pago')
+        AND column_name IN ('valor_total', 'valor_pago', 'asaas_qr_code_id', 'asaas_payment_id')
     ");
     $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
     $has_valor_total = in_array('valor_total', $valor_columns);
     $has_valor_pago = in_array('valor_pago', $valor_columns);
+    $has_asaas_qr_code_id = in_array('asaas_qr_code_id', $valor_columns);
+    $has_asaas_payment_id = in_array('asaas_payment_id', $valor_columns);
     
     // Montar expressão de valor dinamicamente
     if ($has_valor_total && $has_valor_pago) {
@@ -82,11 +84,16 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
         $valor_expr = "0 as valor_pago";
     }
     
+    $asaas_qr_code_select = $has_asaas_qr_code_id ? ", asaas_qr_code_id" : ", NULL::text as asaas_qr_code_id";
+    $asaas_payment_select = $has_asaas_payment_id ? ", asaas_payment_id" : ", NULL::text as asaas_payment_id";
+
     // Buscar status de pagamento e valor (mesma lógica da página de inscritos)
     $stmt = $pdo->prepare("
         SELECT 
             pagamento_status,
             $valor_expr
+            $asaas_qr_code_select
+            $asaas_payment_select
         FROM comercial_inscricoes 
         WHERE id = :id
     ");
@@ -100,6 +107,42 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
             'inscricao_id' => $check_id
         ]);
         exit;
+    }
+
+    // Se o webhook ainda não atualizou o banco, consultar o Asaas pelo QR Code estático.
+    if (($inscricao['pagamento_status'] ?? 'aguardando') !== 'pago' && !empty($inscricao['asaas_qr_code_id'])) {
+        try {
+            $asaasHelper = new AsaasHelper();
+            $payments = $asaasHelper->getPaymentsByStaticQrCode($inscricao['asaas_qr_code_id']);
+            $paid_statuses = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH_APP'];
+            $found_payment_id = null;
+
+            if (isset($payments['data']) && is_array($payments['data'])) {
+                foreach ($payments['data'] as $payment) {
+                    if (in_array($payment['status'] ?? '', $paid_statuses, true)) {
+                        $found_payment_id = $payment['id'] ?? null;
+                        $inscricao['pagamento_status'] = 'pago';
+                        break;
+                    }
+                }
+            }
+
+            if (($inscricao['pagamento_status'] ?? '') === 'pago') {
+                $update_fields = ["pagamento_status = 'pago'"];
+                $update_params = [':id' => $check_id];
+
+                if ($has_asaas_payment_id && $found_payment_id) {
+                    $update_fields[] = "asaas_payment_id = :payment_id";
+                    $update_params[':payment_id'] = $found_payment_id;
+                    $inscricao['asaas_payment_id'] = $found_payment_id;
+                }
+
+                $stmt_update = $pdo->prepare("UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id");
+                $stmt_update->execute($update_params);
+            }
+        } catch (Exception $e) {
+            error_log("Erro ao consultar pagamento do QR Code no Asaas (inscrição #{$check_id}): " . $e->getMessage());
+        }
     }
     
     // Converter status para texto legível (mesma lógica da página de inscritos)
@@ -1182,14 +1225,31 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 }
                 
                 let intervaloVerificacao = null;
+
+                function montarUrlPagamento(params) {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('t', <?= json_encode($token, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>);
+
+                    Object.keys(params).forEach(function(key) {
+                        if (params[key] === null || params[key] === undefined) {
+                            url.searchParams.delete(key);
+                        } else {
+                            url.searchParams.set(key, params[key]);
+                        }
+                    });
+
+                    return url.toString();
+                }
                 
                 // Verificação SILENCIOSA em background (sem mostrar erros ou tocar no botão)
                 function verificarPagamentoSilencioso() {
-                    const url = '<?= $_SERVER['REQUEST_URI'] ?? '' ?>';
-                    const baseUrl = url.split('?')[0] + '?t=<?= urlencode($token) ?>';
                     // Adicionar timestamp para evitar cache do navegador
                     const timestamp = new Date().getTime();
-                    const verificarUrl = baseUrl + '&verificar_pagamento=1&inscricao_id=<?= $qr_inscricao_id ?>&_t=' + timestamp;
+                    const verificarUrl = montarUrlPagamento({
+                        verificar_pagamento: '1',
+                        inscricao_id: '<?= $qr_inscricao_id ?>',
+                        _t: timestamp
+                    });
                     
                     fetch(verificarUrl, {
                         method: 'GET',
@@ -1226,7 +1286,12 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                             
                             // Recarregar página após 2 segundos para mostrar confirmação completa
                             setTimeout(() => {
-                                window.location.href = baseUrl + '&qr_code=1&inscricao_id=<?= $qr_inscricao_id ?>';
+                                window.location.href = montarUrlPagamento({
+                                    verificar_pagamento: null,
+                                    qr_code: '1',
+                                    inscricao_id: '<?= $qr_inscricao_id ?>',
+                                    _t: null
+                                });
                             }, 2000);
                         }
                         // Se não estiver pago, não fazer nada (verificação silenciosa)
@@ -1251,10 +1316,12 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     btnVerificar.disabled = true;
                     btnVerificar.style.opacity = '0.6';
                     
-                    const url = '<?= $_SERVER['REQUEST_URI'] ?? '' ?>';
-                    const baseUrl = url.split('?')[0] + '?t=<?= urlencode($token) ?>';
                     const timestamp = new Date().getTime();
-                    const verificarUrl = baseUrl + '&verificar_pagamento=1&inscricao_id=<?= $qr_inscricao_id ?>&_t=' + timestamp;
+                    const verificarUrl = montarUrlPagamento({
+                        verificar_pagamento: '1',
+                        inscricao_id: '<?= $qr_inscricao_id ?>',
+                        _t: timestamp
+                    });
                     
                     fetch(verificarUrl, {
                         method: 'GET',
@@ -1289,7 +1356,12 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                             
                             // Recarregar página após 2 segundos
                             setTimeout(() => {
-                                window.location.href = baseUrl + '&qr_code=1&inscricao_id=<?= $qr_inscricao_id ?>';
+                                window.location.href = montarUrlPagamento({
+                                    verificar_pagamento: null,
+                                    qr_code: '1',
+                                    inscricao_id: '<?= $qr_inscricao_id ?>',
+                                    _t: null
+                                });
                             }, 2000);
                         } else {
                             // Ainda aguardando
