@@ -597,6 +597,22 @@ includeSidebar('Comercial');
             </div>
         </div>
         
+        <!-- Clientes -->
+        <a href="index.php?page=comercial_cadastro_cliente" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">
+                <span class="funcionalidade-card-icon">👤</span>
+                <div class="funcionalidade-card-title">Cadastro do cliente</div>
+                <div class="funcionalidade-card-subtitle">Dados para contrato e atendimento</div>
+            </div>
+            <div class="funcionalidade-card-content">
+                <div class="funcionalidade-card-item">
+                    <span class="funcionalidade-item-icon">➕</span>
+                    <span class="funcionalidade-item-text">Cadastrar novo cliente</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </div>
+            </div>
+        </a>
+
         <!-- Funil de Conversão -->
         <a href="index.php?page=comercial_clientes" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">

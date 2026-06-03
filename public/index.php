@@ -281,6 +281,7 @@ $routes = [
   'comercial_degust_inscricoes' => 'comercial_degust_inscricoes.php',
   'comercial_degustacao_editar' => 'comercial_degustacao_editar.php',
   'comercial_degust_public' => 'comercial_degust_public.php',
+  'comercial_cadastro_cliente' => 'comercial_cadastro_cliente.php',
   'comercial_clientes' => 'comercial_clientes.php',
   'vendas_pre_contratos' => 'vendas_pre_contratos.php',
   'vendas_lancamento_presencial' => 'vendas_lancamento_presencial.php',
