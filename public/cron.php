@@ -413,6 +413,27 @@ if ($tipo === 'demandas_fixas') {
         echo json_encode($resultado);
     }
     
+} elseif ($tipo === 'eventos_formularios_pendentes') {
+    // Cron para avisar formulários/DJ em aberto antes do evento.
+    try {
+        require_once __DIR__ . '/eventos_formularios_pendentes_helper.php';
+
+        $resultado = eventos_formularios_pendentes_processar($pdo, [
+            'dry_run' => !empty($_GET['dry_run']),
+            'event_date' => $_GET['event_date'] ?? null,
+            'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 200,
+        ]);
+
+        cron_logger_finish($pdo, $execucao_id, !empty($resultado['success']), $resultado, $inicio_ms);
+        echo json_encode($resultado);
+
+    } catch (Exception $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
+        http_response_code(500);
+        echo json_encode($resultado);
+    }
+
 } else {
     http_response_code(400);
     echo json_encode([
@@ -425,7 +446,8 @@ if ($tipo === 'demandas_fixas') {
             'google_calendar_daily',
             'google_calendar_sync',
             'google_calendar_renewal',
-            'eventos_limpeza_anexos'
+            'eventos_limpeza_anexos',
+            'eventos_formularios_pendentes'
         ]
     ]);
 }
