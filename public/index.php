@@ -129,6 +129,15 @@ if (isset($_GET['page']) && $_GET['page'] === 'eventos_upload_imagem' && $_SERVE
     }
 }
 
+// Upload de imagem para editores TinyMCE em Cadastros: resposta JSON limpa.
+if (isset($_GET['page']) && $_GET['page'] === 'cadastros_upload_imagem' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $upload_file = __DIR__ . '/cadastros_upload_imagem.php';
+    if (file_exists($upload_file)) {
+        require $upload_file;
+        exit;
+    }
+}
+
 // IMPORTANTE: Processar requisições AJAX ANTES de qualquer verificação de login/redirecionamento
 // Isso permite que endpoints AJAX retornem JSON mesmo quando há problemas de sessão
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -205,6 +214,7 @@ $routes = [
   'cadastros' => 'cadastros.php',
   'cadastros_contratos' => 'cadastros_contratos.php',
   'cadastros_tags' => 'cadastros_tags.php',
+  'cadastros_pacotes_produtos' => 'cadastros_pacotes_produtos.php',
   'financeiro' => 'financeiro.php',
   'administrativo' => 'administrativo.php',
   'administrativo_avisos' => 'administrativo_avisos.php',

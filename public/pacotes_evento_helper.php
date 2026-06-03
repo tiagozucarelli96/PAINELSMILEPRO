@@ -47,6 +47,11 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
                 id BIGSERIAL PRIMARY KEY,
                 nome VARCHAR(180) NOT NULL,
                 descricao TEXT NULL,
+                categoria VARCHAR(20) NOT NULL DEFAULT 'Pacote',
+                valor_venda NUMERIC(12,2) NULL,
+                valor_pacote NUMERIC(12,2) NULL,
+                pessoas_base INTEGER NULL,
+                valor_convidado_adicional NUMERIC(12,2) NULL,
                 oculto BOOLEAN NOT NULL DEFAULT FALSE,
                 created_by_user_id INTEGER NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -57,6 +62,11 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
         ");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS nome VARCHAR(180)");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS descricao TEXT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS categoria VARCHAR(20) NOT NULL DEFAULT 'Pacote'");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_venda NUMERIC(12,2) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_pacote NUMERIC(12,2) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS pessoas_base INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS oculto BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
@@ -65,6 +75,7 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS deleted_by_user_id INTEGER NULL");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_nome ON logistica_pacotes_evento(lower(nome))");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_oculto ON logistica_pacotes_evento(oculto, deleted_at)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_categoria ON logistica_pacotes_evento(categoria, deleted_at)");
     } catch (Throwable $e) {
         error_log('pacotes_evento_ensure_schema tabela pacotes: ' . $e->getMessage());
     }
@@ -106,6 +117,7 @@ function pacotes_evento_listar(PDO $pdo, bool $incluir_ocultos = false): array {
         $row['id'] = (int)($row['id'] ?? 0);
         $row['nome'] = trim((string)($row['nome'] ?? ''));
         $row['descricao'] = trim((string)($row['descricao'] ?? ''));
+        $row['categoria'] = trim((string)($row['categoria'] ?? 'Pacote'));
         $row['oculto'] = !empty($row['oculto']);
     }
     unset($row);
@@ -144,6 +156,7 @@ function pacotes_evento_get(PDO $pdo, int $pacote_id): ?array {
     $row['id'] = (int)($row['id'] ?? 0);
     $row['nome'] = trim((string)($row['nome'] ?? ''));
     $row['descricao'] = trim((string)($row['descricao'] ?? ''));
+    $row['categoria'] = trim((string)($row['categoria'] ?? 'Pacote'));
     $row['oculto'] = !empty($row['oculto']);
     return $row;
 }
@@ -279,15 +292,6 @@ function pacotes_evento_excluir(PDO $pdo, int $pacote_id, int $user_id = 0): arr
         if (!$row) {
             return ['ok' => false, 'error' => 'Pacote não encontrado.'];
         }
-
-        // Desvincula pacote já removido das reuniões.
-        $stmt_clear = $pdo->prepare("
-            UPDATE eventos_reunioes
-            SET pacote_evento_id = NULL,
-                updated_at = NOW()
-            WHERE pacote_evento_id = :pacote_id
-        ");
-        $stmt_clear->execute([':pacote_id' => $pacote_id]);
 
         return ['ok' => true, 'pacote' => $row];
     } catch (Throwable $e) {

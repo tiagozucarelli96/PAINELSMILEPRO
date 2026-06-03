@@ -28,7 +28,6 @@ contratos_modelos_ensure_schema($pdo);
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $success = '';
 $errors = [];
-$editId = (int)($_GET['id'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? 'save');
@@ -100,22 +99,6 @@ if (!empty($_SESSION['cadastros_contratos_success'])) {
     unset($_SESSION['cadastros_contratos_success']);
 }
 
-$modeloAtual = null;
-if ($editId > 0) {
-    try {
-        $stmt = $pdo->prepare("SELECT * FROM contrato_modelos WHERE id = :id LIMIT 1");
-        $stmt->execute([':id' => $editId]);
-        $modeloAtual = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-        if (!$modeloAtual) {
-            $errors[] = 'Modelo não encontrado.';
-            $editId = 0;
-        }
-    } catch (Throwable $e) {
-        error_log('cadastros_contratos edit: ' . $e->getMessage());
-        $errors[] = 'Não foi possível carregar o modelo.';
-    }
-}
-
 try {
     $stmt = $pdo->query("SELECT * FROM contrato_modelos ORDER BY ativo DESC, updated_at DESC, id DESC");
     $modelos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -132,9 +115,6 @@ try {
     $tags = [];
 }
 
-$formNome = (string)($modeloAtual['nome'] ?? '');
-$formConteudo = (string)($modeloAtual['conteudo_html'] ?? '');
-
 includeSidebar('Contratos');
 ?>
 
@@ -143,106 +123,148 @@ includeSidebar('Contratos');
 .contratos-header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; margin-bottom: 1rem; }
 .contratos-title { margin: 0; color: #1e3a8a; font-size: 1.8rem; font-weight: 800; }
 .contratos-subtitle { margin: 0.35rem 0 0; color: #64748b; }
-.contratos-back { border: 1px solid #dbe3ef; border-radius: 999px; background: #fff; color: #1e293b; text-decoration: none; font-weight: 800; padding: 0.7rem 1rem; }
+.contratos-header-actions { display: flex; gap: 0.65rem; flex-wrap: wrap; }
+.contratos-back, .contratos-primary { border-radius: 999px; text-decoration: none; font-weight: 800; padding: 0.7rem 1rem; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #dbe3ef; cursor: pointer; }
+.contratos-back { background: #fff; color: #1e293b; }
+.contratos-primary { background: #1e3a8a; color: #fff; border-color: #1e3a8a; }
 .contratos-alert { margin-bottom: 1rem; border-radius: 10px; padding: 0.85rem 1rem; font-weight: 800; }
 .contratos-alert.success { background: #ecfdf5; color: #166534; border: 1px solid #a7f3d0; }
 .contratos-alert.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-.contratos-layout { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 1rem; align-items: start; }
 .contratos-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07); overflow: hidden; }
 .contratos-card-header { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; background: #f8fbff; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 .contratos-card-title { margin: 0; color: #1e293b; font-weight: 800; font-size: 1.05rem; }
-.contratos-form { padding: 1rem; display: grid; gap: 0.9rem; }
-.contratos-field { display: grid; gap: 0.35rem; }
-.contratos-field label { color: #334155; font-size: 0.82rem; font-weight: 800; }
-.contratos-field input, .contratos-field textarea { width: 100%; border: 1px solid #d1d9e6; border-radius: 10px; padding: 0.68rem 0.78rem; color: #1e293b; background: #fff; }
-.contratos-actions { display: flex; justify-content: flex-end; gap: 0.65rem; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
-.contratos-btn { border: none; border-radius: 10px; background: #1e3a8a; color: #fff; font-weight: 800; padding: 0.75rem 1rem; cursor: pointer; text-decoration: none; }
-.contratos-btn.secondary { background: #f1f5f9; color: #334155; border: 1px solid #dbe3ef; }
-.contratos-list { display: grid; gap: 0.75rem; padding: 1rem; }
-.modelo-item { border: 1px solid #e2e8f0; border-radius: 12px; background: #fbfdff; padding: 0.85rem; display: grid; gap: 0.55rem; }
+.contratos-table-wrap { overflow: auto; }
+.contratos-table { width: 100%; border-collapse: collapse; }
+.contratos-table th, .contratos-table td { padding: 0.85rem; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
+.contratos-table th { background: #f8fafc; color: #475569; font-size: 0.78rem; text-transform: uppercase; }
 .modelo-name { color: #1e293b; font-weight: 900; }
-.modelo-meta { color: #64748b; font-size: 0.84rem; }
+.modelo-meta { color: #64748b; font-size: 0.84rem; margin-top: 0.2rem; }
 .modelo-actions { display: flex; gap: 0.45rem; flex-wrap: wrap; }
 .modelo-action { border: 1px solid #dbe3ef; background: #fff; color: #334155; border-radius: 8px; padding: 0.45rem 0.62rem; font-weight: 800; text-decoration: none; cursor: pointer; font-size: 0.84rem; }
 .modelo-status { display: inline-flex; width: fit-content; border-radius: 999px; padding: 0.22rem 0.55rem; font-size: 0.78rem; font-weight: 900; }
 .modelo-status.on { background: #dcfce7; color: #166534; }
 .modelo-status.off { background: #fee2e2; color: #991b1b; }
-.tags-help { display: flex; flex-wrap: wrap; gap: 0.42rem; padding: 0.75rem 1rem 1rem; border-top: 1px solid #e2e8f0; }
+.contratos-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(15, 23, 42, 0.55); }
+.contratos-modal-backdrop.open { display: flex; }
+.contratos-modal { width: min(1120px, 100%); max-height: calc(100vh - 2rem); overflow: auto; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }
+.contratos-modal-header { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.contratos-modal-title { margin: 0; color: #1e293b; font-weight: 900; font-size: 1.15rem; }
+.contratos-modal-close { width: 36px; height: 36px; border: none; border-radius: 999px; background: #f1f5f9; color: #334155; cursor: pointer; font-size: 1.25rem; }
+.contratos-form { padding: 1rem; display: grid; gap: 0.9rem; }
+.contratos-field { display: grid; gap: 0.35rem; }
+.contratos-field label { color: #334155; font-size: 0.82rem; font-weight: 800; }
+.contratos-field input, .contratos-field textarea { width: 100%; border: 1px solid #d1d9e6; border-radius: 10px; padding: 0.68rem 0.78rem; color: #1e293b; background: #fff; }
+.tags-help { display: flex; flex-wrap: wrap; gap: 0.42rem; padding: 0 1rem 1rem; }
 .tag-chip { border: 1px solid #bae6fd; background: #e0f2fe; color: #075985; border-radius: 999px; padding: 0.25rem 0.55rem; font-weight: 900; font-size: 0.78rem; cursor: pointer; }
-@media (max-width: 1100px) { .contratos-layout { grid-template-columns: 1fr; } }
+.contratos-modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; border-top: 1px solid #e2e8f0; padding: 1rem; }
+.contratos-btn { border: none; border-radius: 10px; background: #1e3a8a; color: #fff; font-weight: 800; padding: 0.75rem 1rem; cursor: pointer; text-decoration: none; }
+.contratos-btn.secondary { background: #f1f5f9; color: #334155; border: 1px solid #dbe3ef; }
 </style>
 
 <main class="contratos-page">
     <div class="contratos-header">
         <div>
             <h1 class="contratos-title">Contratos</h1>
-            <p class="contratos-subtitle">Modelos de contratos com tags automáticas para uso nos eventos.</p>
+            <p class="contratos-subtitle">Modelos de contratos com tags automáticas.</p>
         </div>
-        <a class="contratos-back" href="index.php?page=cadastros">← Cadastros</a>
+        <div class="contratos-header-actions">
+            <a class="contratos-back" href="index.php?page=cadastros">← Cadastros</a>
+            <button class="contratos-primary" type="button" data-open-contrato-modal>+ Adicionar contrato</button>
+        </div>
     </div>
 
     <?php if ($success !== ''): ?><div class="contratos-alert success"><?= cadastros_contratos_e($success) ?></div><?php endif; ?>
     <?php foreach ($errors as $error): ?><div class="contratos-alert error"><?= cadastros_contratos_e((string)$error) ?></div><?php endforeach; ?>
 
-    <div class="contratos-layout">
-        <section class="contratos-card">
-            <div class="contratos-card-header">
-                <h2 class="contratos-card-title"><?= $editId > 0 ? 'Editar modelo' : 'Novo modelo' ?></h2>
-                <?php if ($editId > 0): ?><a class="contratos-btn secondary" href="index.php?page=cadastros_contratos">Novo</a><?php endif; ?>
-            </div>
-            <form method="post" class="contratos-form" id="contrato-form">
-                <input type="hidden" name="action" value="save">
-                <input type="hidden" name="id" value="<?= (int)$editId ?>">
-                <div class="contratos-field">
-                    <label for="nome">Nome do modelo</label>
-                    <input type="text" name="nome" id="nome" value="<?= cadastros_contratos_e($formNome) ?>" maxlength="180" required placeholder="CONTRATO BUFFET INFANTIL LISBON">
-                </div>
-                <div class="contratos-field">
-                    <label for="conteudo_html">Texto do contrato</label>
-                    <textarea name="conteudo_html" id="conteudo_html" rows="18"><?= cadastros_contratos_e($formConteudo) ?></textarea>
-                </div>
-                <div class="contratos-actions">
-                    <a class="contratos-btn secondary" href="index.php?page=cadastros_tags">Gerenciar tags</a>
-                    <button class="contratos-btn" type="submit">Salvar modelo</button>
-                </div>
-            </form>
-            <div class="tags-help" aria-label="Tags disponíveis">
-                <?php foreach ($tags as $tag): ?>
-                    <button class="tag-chip" type="button" data-tag="<?= cadastros_contratos_e((string)$tag['tag_codigo']) ?>" title="<?= cadastros_contratos_e((string)$tag['nome']) ?>"><?= cadastros_contratos_e((string)$tag['tag_codigo']) ?></button>
-                <?php endforeach; ?>
-            </div>
-        </section>
-
-        <aside class="contratos-card">
-            <div class="contratos-card-header"><h2 class="contratos-card-title">Modelos cadastrados</h2></div>
-            <div class="contratos-list">
-                <?php foreach ($modelos as $modelo): ?>
-                    <div class="modelo-item">
-                        <div class="modelo-name"><?= cadastros_contratos_e((string)$modelo['nome']) ?></div>
-                        <span class="modelo-status <?= !empty($modelo['ativo']) ? 'on' : 'off' ?>"><?= !empty($modelo['ativo']) ? 'Ativo' : 'Inativo' ?></span>
-                        <div class="modelo-meta">Atualizado em <?= cadastros_contratos_e(date('d/m/Y H:i', strtotime((string)$modelo['updated_at']))) ?></div>
-                        <div class="modelo-actions">
-                            <a class="modelo-action" href="index.php?page=cadastros_contratos&id=<?= (int)$modelo['id'] ?>">Editar</a>
-                            <form method="post">
-                                <input type="hidden" name="action" value="toggle">
-                                <input type="hidden" name="id" value="<?= (int)$modelo['id'] ?>">
-                                <button class="modelo-action" type="submit"><?= !empty($modelo['ativo']) ? 'Inativar' : 'Ativar' ?></button>
-                            </form>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-                <?php if (empty($modelos)): ?>
-                    <div class="modelo-item"><div class="modelo-meta">Nenhum modelo cadastrado.</div></div>
-                <?php endif; ?>
-            </div>
-        </aside>
-    </div>
+    <section class="contratos-card">
+        <div class="contratos-card-header"><h2 class="contratos-card-title">Modelos cadastrados</h2></div>
+        <div class="contratos-table-wrap">
+            <table class="contratos-table">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Status</th>
+                        <th>Atualização</th>
+                        <th>Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($modelos as $modelo): ?>
+                        <tr>
+                            <td>
+                                <div class="modelo-name"><?= cadastros_contratos_e((string)$modelo['nome']) ?></div>
+                                <div class="modelo-meta">ID <?= (int)$modelo['id'] ?></div>
+                            </td>
+                            <td><span class="modelo-status <?= !empty($modelo['ativo']) ? 'on' : 'off' ?>"><?= !empty($modelo['ativo']) ? 'Ativo' : 'Inativo' ?></span></td>
+                            <td><?= cadastros_contratos_e(date('d/m/Y H:i', strtotime((string)$modelo['updated_at']))) ?></td>
+                            <td>
+                                <div class="modelo-actions">
+                                    <button
+                                        class="modelo-action"
+                                        type="button"
+                                        data-edit-contrato
+                                        data-id="<?= (int)$modelo['id'] ?>"
+                                        data-nome="<?= cadastros_contratos_e((string)$modelo['nome']) ?>"
+                                        data-conteudo="<?= cadastros_contratos_e((string)$modelo['conteudo_html']) ?>"
+                                    >Editar</button>
+                                    <form method="post">
+                                        <input type="hidden" name="action" value="toggle">
+                                        <input type="hidden" name="id" value="<?= (int)$modelo['id'] ?>">
+                                        <button class="modelo-action" type="submit"><?= !empty($modelo['ativo']) ? 'Inativar' : 'Ativar' ?></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if (empty($modelos)): ?>
+                        <tr><td colspan="4">Nenhum modelo cadastrado.</td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </main>
+
+<div class="contratos-modal-backdrop" id="contrato-modal" role="dialog" aria-modal="true" aria-labelledby="contrato-modal-title">
+    <div class="contratos-modal">
+        <div class="contratos-modal-header">
+            <h2 class="contratos-modal-title" id="contrato-modal-title">Adicionar contrato</h2>
+            <button class="contratos-modal-close" type="button" data-close-contrato-modal aria-label="Fechar">×</button>
+        </div>
+        <form method="post" class="contratos-form" id="contrato-form">
+            <input type="hidden" name="action" value="save">
+            <input type="hidden" name="id" id="contrato_id" value="0">
+            <div class="contratos-field">
+                <label for="nome">Nome do modelo</label>
+                <input type="text" name="nome" id="nome" maxlength="180" required placeholder="CONTRATO BUFFET INFANTIL LISBON">
+            </div>
+            <div class="contratos-field">
+                <label for="conteudo_html">Texto do contrato</label>
+                <textarea name="conteudo_html" id="conteudo_html" rows="18"></textarea>
+            </div>
+        </form>
+        <div class="tags-help" aria-label="Tags disponíveis">
+            <?php foreach ($tags as $tag): ?>
+                <button class="tag-chip" type="button" data-tag="<?= cadastros_contratos_e((string)$tag['tag_codigo']) ?>" title="<?= cadastros_contratos_e((string)$tag['nome']) ?>"><?= cadastros_contratos_e((string)$tag['tag_codigo']) ?></button>
+            <?php endforeach; ?>
+        </div>
+        <div class="contratos-modal-actions">
+            <a class="contratos-btn secondary" href="index.php?page=cadastros_tags">Gerenciar tags</a>
+            <button class="contratos-btn secondary" type="button" data-close-contrato-modal>Cancelar</button>
+            <button class="contratos-btn" type="submit" form="contrato-form">Salvar modelo</button>
+        </div>
+    </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js"></script>
 <script>
+const contratoModal = document.getElementById('contrato-modal');
+const contratoId = document.getElementById('contrato_id');
+const contratoNome = document.getElementById('nome');
+const contratoTextarea = document.getElementById('conteudo_html');
+
 function initContratoTiny() {
-    if (typeof tinymce === 'undefined') return;
+    if (typeof tinymce === 'undefined' || tinymce.get('conteudo_html')) return;
     tinymce.init({
         selector: '#conteudo_html',
         menubar: true,
@@ -254,7 +276,45 @@ function initContratoTiny() {
         content_style: 'body { font-family: Arial, Helvetica, sans-serif; font-size: 12pt; line-height: 1.45; color: #111827; }'
     });
 }
-initContratoTiny();
+
+function setEditorContent(html) {
+    if (typeof tinymce !== 'undefined' && tinymce.get('conteudo_html')) {
+        tinymce.get('conteudo_html').setContent(html || '');
+    } else if (contratoTextarea) {
+        contratoTextarea.value = html || '';
+    }
+}
+
+function openContratoModal(data = null) {
+    if (!contratoModal) return;
+    document.getElementById('contrato-modal-title').textContent = data ? 'Editar contrato' : 'Adicionar contrato';
+    contratoId.value = data?.id || '0';
+    contratoNome.value = data?.nome || '';
+    contratoModal.classList.add('open');
+    initContratoTiny();
+    window.setTimeout(() => {
+        setEditorContent(data?.conteudo || '');
+        contratoNome.focus();
+    }, 120);
+}
+
+function closeContratoModal() {
+    contratoModal?.classList.remove('open');
+}
+
+document.querySelector('[data-open-contrato-modal]')?.addEventListener('click', () => openContratoModal());
+document.querySelectorAll('[data-close-contrato-modal]').forEach((button) => button.addEventListener('click', closeContratoModal));
+contratoModal?.addEventListener('click', (event) => {
+    if (event.target === contratoModal) closeContratoModal();
+});
+
+document.querySelectorAll('[data-edit-contrato]').forEach((button) => {
+    button.addEventListener('click', () => openContratoModal({
+        id: button.dataset.id || '0',
+        nome: button.dataset.nome || '',
+        conteudo: button.dataset.conteudo || '',
+    }));
+});
 
 document.getElementById('contrato-form')?.addEventListener('submit', () => {
     if (typeof tinymce !== 'undefined') {
@@ -270,13 +330,15 @@ document.querySelectorAll('.tag-chip[data-tag]').forEach((button) => {
             tinymce.get('conteudo_html').insertContent(tag);
             return;
         }
-        const textarea = document.getElementById('conteudo_html');
-        if (!textarea) return;
-        const start = textarea.selectionStart || 0;
-        const end = textarea.selectionEnd || 0;
-        textarea.value = textarea.value.slice(0, start) + tag + textarea.value.slice(end);
-        textarea.focus();
-        textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+        const start = contratoTextarea.selectionStart || 0;
+        const end = contratoTextarea.selectionEnd || 0;
+        contratoTextarea.value = contratoTextarea.value.slice(0, start) + tag + contratoTextarea.value.slice(end);
+        contratoTextarea.focus();
+        contratoTextarea.selectionStart = contratoTextarea.selectionEnd = start + tag.length;
     });
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeContratoModal();
 });
 </script>

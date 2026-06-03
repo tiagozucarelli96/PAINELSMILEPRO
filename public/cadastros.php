@@ -137,7 +137,7 @@ ob_start();
         <a href="index.php?page=logistica_pacotes_evento" class="funcionalidade-card">
             <div class="funcionalidade-card-header">
                 <span class="funcionalidade-card-icon">📦</span>
-                <div class="funcionalidade-card-title">Pacotes</div>
+                <div class="funcionalidade-card-title">Regra do Pacote</div>
                 <div class="funcionalidade-card-subtitle">Criar pacotes e definir regras por seção</div>
             </div>
             <div class="funcionalidade-card-content"></div>
@@ -166,6 +166,15 @@ ob_start();
                 <span class="funcionalidade-card-icon">🏷️</span>
                 <div class="funcionalidade-card-title">Tags</div>
                 <div class="funcionalidade-card-subtitle">Cadastrar variáveis como #NOME#, #CPF# e #BAIRRO#</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
+        <a href="index.php?page=cadastros_pacotes_produtos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header">
+                <span class="funcionalidade-card-icon">🧾</span>
+                <div class="funcionalidade-card-title">Pacotes, serviços e produtos</div>
+                <div class="funcionalidade-card-subtitle">Cadastrar itens comerciais, valores e descrição</div>
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
