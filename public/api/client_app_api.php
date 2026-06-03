@@ -1500,6 +1500,10 @@ function client_app_api_form_payload_values(string $contentHtml, string $section
     if ($legacyHtml !== '') {
         $values['legacy_portal_text_' . $section] = eventos_reuniao_html_para_texto($legacyHtml);
     }
+    $decoracaoAdicionaisHtml = trim((string)($payload['decoracao_adicionais_html'] ?? ''));
+    if ($section === 'decoracao' && $decoracaoAdicionaisHtml !== '') {
+        $values['legacy_portal_text_decoracao_adicionais'] = eventos_reuniao_html_para_texto($decoracaoAdicionaisHtml);
+    }
     return $values;
 }
 
@@ -1950,6 +1954,7 @@ function client_app_api_compose_form_snapshot(array $schema, array $values, stri
     }
 
     $legacyHtml = '';
+    $decoracaoAdicionaisHtml = '';
     foreach (eventos_form_template_normalizar_schema($schema) as $field) {
         if (!is_array($field)) {
             continue;
@@ -1962,7 +1967,11 @@ function client_app_api_compose_form_snapshot(array $schema, array $values, stri
 
         if (strpos($fieldId, 'legacy_portal_text_') === 0) {
             if ($value !== '') {
-                $legacyHtml = '<p>' . client_app_api_form_value_to_html($value) . '</p>';
+                if ($section === 'decoracao' && $fieldId === 'legacy_portal_text_decoracao_adicionais') {
+                    $decoracaoAdicionaisHtml = '<p>' . client_app_api_form_value_to_html($value) . '</p>';
+                } else {
+                    $legacyHtml = '<p>' . client_app_api_form_value_to_html($value) . '</p>';
+                }
             }
             continue;
         }
@@ -1998,6 +2007,9 @@ function client_app_api_compose_form_snapshot(array $schema, array $values, stri
     ];
     if ($legacyHtml !== '') {
         $payload['legacy_html'] = $legacyHtml;
+    }
+    if ($decoracaoAdicionaisHtml !== '') {
+        $payload['decoracao_adicionais_html'] = $decoracaoAdicionaisHtml;
     }
     $encodedPayload = base64_encode((string)json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     if ($encodedPayload !== '') {

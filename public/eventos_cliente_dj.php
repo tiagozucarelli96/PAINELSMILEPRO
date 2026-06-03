@@ -175,6 +175,12 @@ function eventos_cliente_extract_payload_from_html(string $html, string $section
             $values['legacy_portal_text_' . $payload_section] = $legacy_text;
         }
     }
+    if ($payload_section === 'decoracao' && isset($payload['decoracao_adicionais_html'])) {
+        $decoracao_adicionais_text = eventos_cliente_html_to_text((string)$payload['decoracao_adicionais_html']);
+        if ($decoracao_adicionais_text !== '') {
+            $values['legacy_portal_text_decoracao_adicionais'] = $decoracao_adicionais_text;
+        }
+    }
 
     return $values;
 }
@@ -575,43 +581,71 @@ function eventos_cliente_normalizar_schema($raw): array {
  * Garante a presença do campo de texto livre quando visível no portal.
  */
 function eventos_cliente_schema_garantir_texto_livre(array $schema, string $section, string $default_value = ''): array {
-    $field_id = 'legacy_portal_text_' . trim($section);
+    $section = trim($section);
+    $field_id = 'legacy_portal_text_' . $section;
+    $additional_field_id = 'legacy_portal_text_decoracao_adicionais';
+    $found_main = false;
+    $found_additional = false;
     foreach ($schema as &$field) {
         if (!is_array($field)) {
             continue;
         }
         $current_id = trim((string)($field['id'] ?? ''));
-        if ($current_id !== $field_id) {
+        if ($current_id !== $field_id && !($section === 'decoracao' && $current_id === $additional_field_id)) {
             continue;
+        }
+        if ($current_id === $field_id) {
+            $found_main = true;
+        }
+        if ($current_id === $additional_field_id) {
+            $found_additional = true;
         }
         $type = strtolower(trim((string)($field['type'] ?? 'text')));
         if ($type === 'note') {
             $field['type'] = 'textarea';
             $field['content_html'] = '';
         }
-        if (trim((string)($field['label'] ?? '')) === '') {
+        if ($current_id === $additional_field_id) {
+            $field['label'] = 'Adicionais de decoração';
+        } elseif ($section === 'decoracao') {
+            $field['label'] = 'Informações da decoração';
+        } elseif (trim((string)($field['label'] ?? '')) === '') {
             $field['label'] = 'Texto livre (opcional)';
         }
         $existing_default = trim((string)($field['default_value'] ?? ''));
-        if ($existing_default === '' && trim($default_value) !== '') {
+        if ($current_id === $field_id && $existing_default === '' && trim($default_value) !== '') {
             $field['default_value'] = trim($default_value);
         }
-        unset($field);
-        return $schema;
     }
     unset($field);
 
-    $schema[] = [
-        'id' => $field_id,
-        'type' => 'textarea',
-        'label' => 'Texto livre (opcional)',
-        'required' => false,
-        'orderable' => false,
-        'allow_extra_moments' => false,
-        'options' => [],
-        'content_html' => '',
-        'default_value' => trim($default_value),
-    ];
+    if (!$found_main) {
+        $schema[] = [
+            'id' => $field_id,
+            'type' => 'textarea',
+            'label' => $section === 'decoracao' ? 'Informações da decoração' : 'Texto livre (opcional)',
+            'required' => false,
+            'orderable' => false,
+            'allow_extra_moments' => false,
+            'options' => [],
+            'content_html' => '',
+            'default_value' => trim($default_value),
+        ];
+    }
+
+    if ($section === 'decoracao' && !$found_additional) {
+        $schema[] = [
+            'id' => $additional_field_id,
+            'type' => 'textarea',
+            'label' => 'Adicionais de decoração',
+            'required' => false,
+            'orderable' => false,
+            'allow_extra_moments' => false,
+            'options' => [],
+            'content_html' => '',
+            'default_value' => '',
+        ];
+    }
 
     return $schema;
 }
