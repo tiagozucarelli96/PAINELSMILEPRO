@@ -4710,14 +4710,16 @@ function eventos_reuniao_resumir_snapshot_publico(string $html, int $max_chars =
  */
 function eventos_reuniao_schema_adicionar_texto_livre(array $schema, string $section, string $legacy_text = ''): array {
     $normalized = eventos_form_template_normalizar_schema($schema);
-    $field_id = 'legacy_portal_text_' . trim($section);
+    $section = trim($section);
+    $field_id = 'legacy_portal_text_' . $section;
+    $additional_field_id = 'legacy_portal_text_decoracao_adicionais';
     $filtered = [];
     foreach ($normalized as $field) {
         if (!is_array($field)) {
             continue;
         }
         $current_id = trim((string)($field['id'] ?? ''));
-        if ($current_id === $field_id) {
+        if ($current_id === $field_id || ($section === 'decoracao' && $current_id === $additional_field_id)) {
             continue;
         }
         $filtered[] = $field;
@@ -4726,12 +4728,24 @@ function eventos_reuniao_schema_adicionar_texto_livre(array $schema, string $sec
     $filtered[] = [
         'id' => $field_id,
         'type' => 'textarea',
-        'label' => 'Texto livre (opcional)',
+        'label' => $section === 'decoracao' ? 'Informações da decoração' : 'Texto livre (opcional)',
         'required' => false,
         'options' => [],
         'content_html' => '',
         'default_value' => trim($legacy_text),
     ];
+
+    if ($section === 'decoracao') {
+        $filtered[] = [
+            'id' => $additional_field_id,
+            'type' => 'textarea',
+            'label' => 'Adicionais de decoração',
+            'required' => false,
+            'options' => [],
+            'content_html' => '',
+            'default_value' => '',
+        ];
+    }
 
     return eventos_form_template_normalizar_schema($filtered);
 }
@@ -4789,6 +4803,7 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
     $form_title = 'Reunião Final - Decoração';
     $legacy_text_portal_visible = true;
     $legacy_text = '';
+    $decoracao_adicionais_text = '';
 
     $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
     if (is_array($secao_decoracao) && !empty($secao_decoracao)) {
@@ -4810,10 +4825,19 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
                 if (isset($payload['legacy_html'])) {
                     $legacy_text = eventos_reuniao_html_para_texto((string)$payload['legacy_html']);
                 }
+                if (isset($payload['decoracao_adicionais_html'])) {
+                    $decoracao_adicionais_text = eventos_reuniao_html_para_texto((string)$payload['decoracao_adicionais_html']);
+                }
                 if ($legacy_text === '' && isset($payload['values']) && is_array($payload['values'])) {
                     $legacy_key = 'legacy_portal_text_decoracao';
                     if (array_key_exists($legacy_key, $payload['values'])) {
                         $legacy_text = trim((string)$payload['values'][$legacy_key]);
+                    }
+                }
+                if ($decoracao_adicionais_text === '' && isset($payload['values']) && is_array($payload['values'])) {
+                    $legacy_adicionais_key = 'legacy_portal_text_decoracao_adicionais';
+                    if (array_key_exists($legacy_adicionais_key, $payload['values'])) {
+                        $decoracao_adicionais_text = trim((string)$payload['values'][$legacy_adicionais_key]);
                     }
                 }
             }
@@ -4859,6 +4883,11 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
             'decoracao',
             $legacy_text
         );
+        if ($decoracao_adicionais_text !== '' && is_array($schema_snapshot)) {
+            $schema_snapshot = eventos_reuniao_schema_aplicar_valores_payload($schema_snapshot, [
+                'legacy_portal_text_decoracao_adicionais' => $decoracao_adicionais_text,
+            ]);
+        }
     }
 
     $result = eventos_reuniao_atualizar_slot_portal_config(

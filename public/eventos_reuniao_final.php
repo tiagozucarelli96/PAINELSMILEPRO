@@ -1303,6 +1303,10 @@ $formulario_schema_saved = is_array($formulario_schema_decoded) ? $formulario_sc
 $decoracao_payload = eventos_reuniao_extrair_payload_formulario((string)($secoes['decoracao']['content_html'] ?? ''));
 $decoracao_values = is_array($decoracao_payload['values'] ?? null) ? $decoracao_payload['values'] : [];
 $decoracao_legacy_html = trim((string)($decoracao_payload['legacy_html'] ?? ''));
+$decoracao_adicionais_html = trim((string)($decoracao_payload['decoracao_adicionais_html'] ?? ''));
+if ($decoracao_adicionais_html === '' && isset($decoracao_values['legacy_portal_text_decoracao_adicionais'])) {
+    $decoracao_adicionais_html = nl2br(htmlspecialchars(trim((string)$decoracao_values['legacy_portal_text_decoracao_adicionais']), ENT_QUOTES, 'UTF-8'));
+}
 $tiny_reuniao_gallery_items = [];
 try {
     $tinyThumbSelect = eventosGaleriaThumbColumns($pdo)['thumb_public_url']
@@ -3246,8 +3250,14 @@ includeSidebar($sidebar_title);
                 </div>
                 <?php if ($decoracao_legacy_html !== ''): ?>
                 <div class="readonly-panel">
-                    <h4 class="readonly-panel-title">Texto livre da decoração</h4>
+                    <h4 class="readonly-panel-title">Informações da decoração</h4>
                     <div class="readonly-rich-box"><?= eventos_reuniao_sanitizar_html_visualizacao($decoracao_legacy_html) ?></div>
+                </div>
+                <?php endif; ?>
+                <?php if ($decoracao_adicionais_html !== ''): ?>
+                <div class="readonly-panel">
+                    <h4 class="readonly-panel-title">Adicionais de decoração</h4>
+                    <div class="readonly-rich-box"><?= eventos_reuniao_sanitizar_html_visualizacao($decoracao_adicionais_html) ?></div>
                 </div>
                 <?php endif; ?>
             </div>
@@ -3419,7 +3429,7 @@ includeSidebar($sidebar_title);
             <?php if ($key === 'decoracao' || ($key === 'dj_protocolo' && $show_dj_legacy_text_toggle)): ?>
             <div class="legacy-editor-toggle">
                 <div>
-                    <strong>Texto livre (opcional)</strong>
+                    <strong><?= $key === 'decoracao' ? 'Informações da decoração' : 'Texto livre (opcional)' ?></strong>
                     <div class="builder-field-meta">Mantido para observações extras. Clique para abrir/fechar.</div>
                 </div>
                 <div class="legacy-portal-option">
@@ -3499,6 +3509,22 @@ includeSidebar($sidebar_title);
                           <?= ($is_locked || $readonly_mode) ? 'readonly' : '' ?>
                           style="width:100%; min-height: 400px; border: 0;"><?= $safe_content ?></textarea>
             </div>
+            <?php if ($key === 'decoracao'): ?>
+            <div class="legacy-editor-toggle">
+                <div>
+                    <strong>Adicionais de decoração</strong>
+                    <div class="builder-field-meta">Mantido para observações extras. Clique para abrir/fechar.</div>
+                </div>
+                <button type="button" class="btn btn-secondary" id="btnToggleEditor-decoracao_adicionais" onclick="toggleLegacyEditor('decoracao_adicionais')">Abrir texto</button>
+            </div>
+            <div class="editor-wrapper legacy-editor-wrap" id="legacyEditorWrap-decoracao_adicionais" style="display:none;">
+                <?php $safe_decoracao_adicionais = str_replace('</textarea>', '&lt;/textarea&gt;', $decoracao_adicionais_html); ?>
+                <textarea id="editor-decoracao_adicionais"
+                          data-section="decoracao_adicionais"
+                          <?= ($is_locked || $readonly_mode) ? 'readonly' : '' ?>
+                          style="width:100%; min-height: 400px; border: 0;"><?= $safe_decoracao_adicionais ?></textarea>
+            </div>
+            <?php endif; ?>
             <?php endif; ?>
             
             <?php if ($key !== 'formulario'): ?>
@@ -3949,7 +3975,7 @@ function initEditoresReuniao() {
         });
     }
 
-    ['decoracao', 'dj_protocolo'].forEach(function(section) {
+    ['decoracao', 'decoracao_adicionais', 'dj_protocolo'].forEach(function(section) {
         initTinyEditorById('editor-' + section, 420);
     });
     (observacoesEditorBlocks || []).forEach(function(block) {
@@ -5975,25 +6001,40 @@ function buildPortalSchemaWithLegacyText(section, schema) {
         ? buildObservacoesBlocksContent({ onlyPublic: true })
         : getEditorContent(section);
     const legacyHtml = sanitizeRichHtmlForField(String(legacyRaw || '')).trim();
-    if (stripHtmlToText(legacyHtml) === '') {
+    const decoracaoAdicionaisHtml = section === 'decoracao'
+        ? sanitizeRichHtmlForField(String(getEditorContent('decoracao_adicionais') || '')).trim()
+        : '';
+    if (stripHtmlToText(legacyHtml) === '' && stripHtmlToText(decoracaoAdicionaisHtml) === '') {
         return normalized;
     }
 
-    const noteId = `legacy_portal_text_${section}`;
     const filtered = normalized.filter((field) => {
         const fieldId = String(field && field.id ? field.id : '').trim();
-        return fieldId !== noteId;
+        return fieldId !== `legacy_portal_text_${section}` && fieldId !== 'legacy_portal_text_decoracao_adicionais';
     });
 
-    filtered.push({
-        id: noteId,
-        type: 'textarea',
-        label: 'Texto livre (opcional)',
-        required: false,
-        options: [],
-        content_html: '',
-        default_value: stripHtmlToText(legacyHtml)
-    });
+    if (stripHtmlToText(legacyHtml) !== '') {
+        filtered.push({
+            id: `legacy_portal_text_${section}`,
+            type: 'textarea',
+            label: section === 'decoracao' ? 'Informações da decoração' : 'Texto livre (opcional)',
+            required: false,
+            options: [],
+            content_html: '',
+            default_value: stripHtmlToText(legacyHtml)
+        });
+    }
+    if (section === 'decoracao' && stripHtmlToText(decoracaoAdicionaisHtml) !== '') {
+        filtered.push({
+            id: 'legacy_portal_text_decoracao_adicionais',
+            type: 'textarea',
+            label: 'Adicionais de decoração',
+            required: false,
+            options: [],
+            content_html: '',
+            default_value: stripHtmlToText(decoracaoAdicionaisHtml)
+        });
+    }
     return filtered;
 }
 
@@ -7107,7 +7148,7 @@ function getSectionFormTitle(section) {
 
 function getSectionLegacyTitle(section) {
     if (section === 'decoracao') {
-        return 'Observações complementares da decoração';
+        return 'Informações da decoração';
     }
     if (section === 'observacoes_gerais') {
         return 'Observações gerais complementares';
@@ -7418,6 +7459,16 @@ function hydrateSectionFormDraftFromSavedContent(section) {
     } else {
         setEditorContent('', section);
     }
+
+    if (section === 'decoracao') {
+        if (typeof payload.decoracao_adicionais_html === 'string') {
+            setEditorContent(payload.decoracao_adicionais_html, 'decoracao_adicionais');
+        } else if (payload.values && typeof payload.values.legacy_portal_text_decoracao_adicionais === 'string') {
+            setEditorContent(escapeHtmlForField(payload.values.legacy_portal_text_decoracao_adicionais).replace(/\n/g, '<br>'), 'decoracao_adicionais');
+        } else {
+            setEditorContent('', 'decoracao_adicionais');
+        }
+    }
 }
 
 function hydrateAllSectionFormDraftsFromSavedContent() {
@@ -7426,7 +7477,7 @@ function hydrateAllSectionFormDraftsFromSavedContent() {
     });
 }
 
-function buildSectionContentFromForm(section, schema, values, legacyContentHtml) {
+function buildSectionContentFromForm(section, schema, values, legacyContentHtml, decoracaoAdicionaisHtml = '') {
     const errors = [];
     const parts = [];
     const title = getSectionFormTitle(section);
@@ -7502,12 +7553,20 @@ function buildSectionContentFromForm(section, schema, values, legacyContentHtml)
         parts.push(legacyContentHtml);
     }
 
+    const trimmedDecoracaoAdicionais = section === 'decoracao' ? stripHtmlToText(decoracaoAdicionaisHtml) : '';
+    if (trimmedDecoracaoAdicionais !== '') {
+        parts.push('<hr>');
+        parts.push('<h3>Adicionais de decoração</h3>');
+        parts.push(decoracaoAdicionaisHtml);
+    }
+
     const payload = encodePayloadBase64({
         section: section,
         template_id: templateId,
         schema_signature: getSchemaSignature(schema),
         values: values,
         legacy_html: trimmedLegacy !== '' ? legacyContentHtml : '',
+        decoracao_adicionais_html: trimmedDecoracaoAdicionais !== '' ? decoracaoAdicionaisHtml : '',
     });
     if (payload !== '') {
         parts.push(`<div data-smile-form-payload="${payload}" style="display:none;"></div>`);
@@ -7518,6 +7577,36 @@ function buildSectionContentFromForm(section, schema, values, legacyContentHtml)
         errors: [],
         content_html: parts.join('\n'),
     };
+}
+
+function buildDecoracaoLegacyOnlyContent(legacyContentHtml, decoracaoAdicionaisHtml) {
+    const trimmedLegacy = stripHtmlToText(legacyContentHtml);
+    const trimmedDecoracaoAdicionais = stripHtmlToText(decoracaoAdicionaisHtml);
+    if (trimmedDecoracaoAdicionais === '') {
+        return legacyContentHtml;
+    }
+
+    const parts = [];
+    if (trimmedLegacy !== '') {
+        parts.push('<h3>Informações da decoração</h3>');
+        parts.push(legacyContentHtml);
+    }
+    parts.push('<hr>');
+    parts.push('<h3>Adicionais de decoração</h3>');
+    parts.push(decoracaoAdicionaisHtml);
+
+    const payload = encodePayloadBase64({
+        section: 'decoracao',
+        template_id: null,
+        schema_signature: getSchemaSignature([]),
+        values: {},
+        legacy_html: trimmedLegacy !== '' ? legacyContentHtml : '',
+        decoracao_adicionais_html: decoracaoAdicionaisHtml,
+    });
+    if (payload !== '') {
+        parts.push(`<div data-smile-form-payload="${payload}" style="display:none;"></div>`);
+    }
+    return parts.join('\n');
 }
 
 async function fetchTemplates() {
@@ -7660,6 +7749,7 @@ async function salvarSecao(section, options = {}) {
     let formSchemaJson = null;
 
     if (section === 'decoracao') {
+        const decoracaoAdicionaisContent = getEditorContent('decoracao_adicionais');
         const normalizedSchema = getSelectedSectionSchema(section);
         if (normalizedSchema.length > 0) {
             syncSectionFormDraft(section);
@@ -7668,7 +7758,7 @@ async function salvarSecao(section, options = {}) {
             if (!extractSectionPayloadFromContent(legacyContent) && isLegacyGeneratedSchemaHtml(legacyContent)) {
                 legacyContent = '';
             }
-            const built = buildSectionContentFromForm(section, normalizedSchema, values, legacyContent);
+            const built = buildSectionContentFromForm(section, normalizedSchema, values, legacyContent, decoracaoAdicionaisContent);
             if (!built.ok) {
                 if (!suppressValidationAlert) {
                     alert((built.errors || ['Preencha os campos obrigatórios do formulário.']).join(' | '));
@@ -7678,6 +7768,8 @@ async function salvarSecao(section, options = {}) {
             content = String(built.content_html || '');
             formSchemaJson = JSON.stringify(normalizedSchema);
             lastSavedSectionSchemaSignatures[section] = getSchemaSignature(normalizedSchema);
+        } else {
+            content = buildDecoracaoLegacyOnlyContent(content, decoracaoAdicionaisContent);
         }
     }
     if (section === 'observacoes_gerais') {
