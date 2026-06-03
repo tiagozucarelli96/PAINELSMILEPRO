@@ -7969,7 +7969,9 @@ function renderPreviewTextWithInlineAttachments(previewText, attachments, schema
         : [];
 
     if (attachmentEntries.length === 0) {
-        return escapeHtmlForField(text).replace(/\n/g, '<br>');
+        return escapeHtmlForField(
+            text.replace(/Arquivo anexado separadamente\.?/giu, 'Não informado')
+        ).replace(/\n/g, '<br>');
     }
 
     const attachmentsByField = {};
@@ -8020,19 +8022,19 @@ function renderPreviewTextWithInlineAttachments(previewText, attachments, schema
         }
 
         if (lineAttachments.length === 0) {
-            return `<em>${escapeHtmlForField(trimmed || 'Arquivo anexado separadamente.')}</em>`;
+            return '<em>Não informado</em>';
         }
 
         lineAttachments.forEach((entry) => renderedKeys.add(entry.key));
         const linksHtml = lineAttachments.map((entry) => buildPreviewAttachmentLinkHtml(entry.anexo)).join(' • ');
-        return `<em>${escapeHtmlForField(trimmed || 'Arquivo anexado separadamente.')}</em> ${linksHtml}`;
+        return linksHtml;
     });
 
     const remainingLinksHtml = attachmentEntries
         .filter((entry) => !renderedKeys.has(entry.key))
         .map((entry) => buildPreviewAttachmentLinkHtml(entry.anexo));
     if (remainingLinksHtml.length > 0) {
-        linesHtml.push(`<em>Arquivo anexado separadamente.</em> ${remainingLinksHtml.join(' • ')}`);
+        linesHtml.push(`<strong>Anexos:</strong><br>${remainingLinksHtml.join(' • ')}`);
     }
 
     return linesHtml.join('<br>');

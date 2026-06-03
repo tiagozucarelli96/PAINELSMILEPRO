@@ -277,8 +277,8 @@ function portal_dj_render_inline_anexo_link(array $anexo): string
 }
 
 /**
- * Injeta os anexos na mesma linha da frase "Arquivo anexado separadamente.",
- * replicando o comportamento do "Ver enviado" da reunião final.
+ * Usa a frase legada "Arquivo anexado separadamente." como marcador interno:
+ * exibe o anexo no campo quando houver vínculo e "Não informado" quando não houver.
  */
 function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array $anexos, ?array $secao): array
 {
@@ -288,7 +288,18 @@ function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array
     ];
 
     $content_html = trim($content_html);
-    if ($content_html === '' || empty($anexos)) {
+    if ($content_html === '') {
+        return $result;
+    }
+    if (empty($anexos)) {
+        $cleaned_html = preg_replace(
+            '/Arquivo anexado separadamente\.?/iu',
+            'Não informado',
+            $content_html
+        );
+        if (is_string($cleaned_html)) {
+            $result['html'] = $cleaned_html;
+        }
         return $result;
     }
 
@@ -354,7 +365,7 @@ function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array
             }
 
             if (empty($line_attachments)) {
-                return (string)($matches[0] ?? 'Arquivo anexado separadamente.');
+                return 'Não informado';
             }
 
             $placeholder_hits++;
@@ -370,11 +381,10 @@ function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array
                 $links[] = portal_dj_render_inline_anexo_link((array)($entry['anexo'] ?? []));
             }
 
-            $prefix = (string)($matches[0] ?? 'Arquivo anexado separadamente.');
             if (empty($links)) {
-                return $prefix;
+                return 'Não informado';
             }
-            return $prefix . ' ' . implode(' • ', $links);
+            return implode(' • ', $links);
         },
         $content_html
     );
@@ -393,7 +403,7 @@ function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array
     }
 
     if (!empty($remaining_links)) {
-        $rendered_html .= '<p><em>Arquivo anexado separadamente.</em> ' . implode(' • ', $remaining_links) . '</p>';
+        $rendered_html .= '<p><strong>Anexos:</strong><br>' . implode(' • ', $remaining_links) . '</p>';
         $placeholder_hits++;
     }
 
@@ -1701,7 +1711,7 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                     $anexos_aba_ativa = is_array($aba_atual['anexos'] ?? null) ? $aba_atual['anexos'] : [];
                     $mostrar_lista_anexos_aba = !empty($anexos_aba_ativa);
 
-                    if ($aba_detalhe === 'formulario' && $html_secao_ativa !== '' && !empty($anexos_aba_ativa)) {
+                    if (in_array($aba_detalhe, ['dj_protocolo', 'formulario'], true) && $html_secao_ativa !== '') {
                         $inline = portal_dj_renderizar_html_com_anexos_inline($html_secao_ativa, $anexos_aba_ativa, $secao_ativa);
                         $html_secao_ativa_render = trim((string)($inline['html'] ?? $html_secao_ativa));
                         if (!empty($inline['used_inline'])) {
