@@ -14,6 +14,7 @@ require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/eventos_historico_helper.php';
 
 function eventos_organizacao_e(string $value): string
 {
@@ -68,10 +69,25 @@ if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
 
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
+$preselect_me_event_id = (int)($_GET['me_event_id'] ?? 0);
 $action = trim((string)($_POST['action'] ?? ''));
 if (painel_runtime_schema_setup_enabled()) {
     pacotes_evento_ensure_schema($pdo);
     logistica_cardapio_ensure_schema($pdo);
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $meeting_id <= 0 && $preselect_me_event_id > 0) {
+    try {
+        $stmt_preselect = $pdo->prepare("SELECT id FROM eventos_reunioes WHERE me_event_id = :me_event_id ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1");
+        $stmt_preselect->execute([':me_event_id' => $preselect_me_event_id]);
+        $existing_preselect_id = (int)($stmt_preselect->fetchColumn() ?: 0);
+        if ($existing_preselect_id > 0) {
+            header('Location: index.php?page=eventos_organizacao&id=' . $existing_preselect_id);
+            exit;
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_organizacao preselect: ' . $e->getMessage());
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['upload_resumo_evento_card', 'excluir_resumo_evento_card'], true)) {
@@ -135,6 +151,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['upload_resumo_e
                         ? 'Resumo do evento atualizado com sucesso.'
                         : 'Resumo do evento anexado com sucesso.'
                 );
+                eventos_historico_registrar(
+                    $pdo,
+                    $meeting_id,
+                    $replaced_count > 0 ? 'resumo_evento_atualizado' : 'resumo_evento_anexado',
+                    $replaced_count > 0 ? 'Resumo do evento atualizado' : 'Resumo do evento anexado',
+                    $descricao !== '' ? $descricao : 'Arquivo de resumo do evento enviado pela equipe.',
+                    null,
+                    [
+                        'arquivo' => (string)($file['name'] ?? ''),
+                        'tamanho_bytes' => (int)($file['size'] ?? 0),
+                    ],
+                    $user_id
+                );
             } else {
                 eventos_organizacao_flash_set('error', (string)($saved['error'] ?? 'Falha ao salvar o Resumo do evento.'));
             }
@@ -145,6 +174,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['upload_resumo_e
             $deleted = eventos_arquivos_excluir_item($pdo, $meeting_id, $arquivo_id, $user_id);
             if (!empty($deleted['ok'])) {
                 eventos_organizacao_flash_set('success', 'Resumo do evento removido com sucesso.');
+                eventos_historico_registrar(
+                    $pdo,
+                    $meeting_id,
+                    'resumo_evento_removido',
+                    'Resumo do evento removido',
+                    'O arquivo de resumo do evento foi removido.',
+                    ['arquivo_id' => $arquivo_id],
+                    null,
+                    $user_id
+                );
             } else {
                 eventos_organizacao_flash_set('error', (string)($deleted['error'] ?? 'Falha ao remover o Resumo do evento.'));
             }
@@ -249,6 +288,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     $pacote_evento_novo = (int)($updated['reuniao']['pacote_evento_id'] ?? 0);
                     if ($pacote_evento_anterior !== $pacote_evento_novo) {
                         logistica_cardapio_evento_resetar($pdo, $meeting_id);
+                        eventos_historico_registrar(
+                            $pdo,
+                            $meeting_id,
+                            'pacote_evento_alterado',
+                            'Pacote do evento alterado',
+                            'O pacote do evento foi atualizado e o cardápio foi recalculado.',
+                            ['pacote_evento_id' => $pacote_evento_anterior],
+                            ['pacote_evento_id' => $pacote_evento_novo],
+                            $user_id
+                        );
                     }
                 }
                 echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -289,12 +338,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     }
                     $config_payload[$field] = ((string)($_POST[$field] ?? '0') === '1');
                 }
+                $portal_antes = eventos_cliente_portal_get($pdo, $meeting_id) ?: [];
                 $result = eventos_cliente_portal_atualizar_config(
                     $pdo,
                     $meeting_id,
                     $config_payload,
                     $user_id
                 );
+                if (!empty($result['ok'])) {
+                    $portal_depois = eventos_cliente_portal_get($pdo, $meeting_id) ?: [];
+                    $antes_resumo = [];
+                    $depois_resumo = [];
+                    foreach (array_keys($config_payload) as $field) {
+                        $antes_resumo[$field] = !empty($portal_antes[$field]);
+                        $depois_resumo[$field] = !empty($portal_depois[$field]);
+                    }
+                    if ($antes_resumo !== $depois_resumo) {
+                        eventos_historico_registrar(
+                            $pdo,
+                            $meeting_id,
+                            'portal_cliente_config_alterada',
+                            'Organização do evento alterada',
+                            'As permissões do portal do cliente foram atualizadas.',
+                            $antes_resumo,
+                            $depois_resumo,
+                            $user_id
+                        );
+                    }
+                }
 
                 echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
@@ -1221,6 +1292,7 @@ includeSidebar('Organização eventos');
 
 <script>
 const meetingId = <?= $meeting_id > 0 ? (int)$meeting_id : 'null' ?>;
+const preselectMeEventId = <?= $preselect_me_event_id > 0 ? (int)$preselect_me_event_id : 'null' ?>;
 let selectedEventId = null;
 let selectedEventData = null;
 let searchDebounceTimer = null;
@@ -1430,6 +1502,34 @@ function selectEvent(el, id) {
     if (el) el.classList.add('selected');
     renderSelectedEventSummary(selectedEventData);
     updateSelectedAction(selectedEventData);
+}
+
+async function preselectEventFromUrl() {
+    const id = Number(preselectMeEventId || 0);
+    if (id <= 0 || meetingId) return;
+
+    try {
+        const input = document.getElementById('eventSearch');
+        if (input) input.value = String(id);
+        const events = await fetchRemoteEvents('', false);
+        let ev = (events || []).find((item) => Number(item.id) === id) || null;
+        if (!ev) {
+            const remote = await fetchRemoteEvents(String(id), true);
+            ev = (remote || []).find((item) => Number(item.id) === id) || null;
+            renderEventsList(remote);
+        } else {
+            renderEventsList(events);
+        }
+        if (!ev) return;
+
+        selectedEventId = id;
+        pendingOrganizarEventId = id;
+        selectedEventData = ev;
+        renderSelectedEventSummary(ev);
+        updateSelectedAction(ev);
+    } catch (err) {
+        console.warn('Não foi possível pré-selecionar evento:', err);
+    }
 }
 
 function sugerirTipoEventoReal(ev) {
@@ -1861,7 +1961,7 @@ function bindSearchEvents() {
         }
     });
 
-    searchEvents('', false);
+    searchEvents('', false).then(() => preselectEventFromUrl());
 }
 
 document.addEventListener('DOMContentLoaded', () => {

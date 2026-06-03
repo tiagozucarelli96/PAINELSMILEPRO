@@ -241,7 +241,7 @@ if (!$temTabelaEventos) {
         $joinReunioes = $temTabelaReunioes
             ? "
                 LEFT JOIN LATERAL (
-                    SELECT er.me_event_snapshot
+                    SELECT er.id AS meeting_id, er.me_event_snapshot
                     FROM eventos_reunioes er
                     WHERE er.me_event_id = e.me_event_id
                     ORDER BY er.updated_at DESC NULLS LAST, er.id DESC
@@ -253,6 +253,8 @@ if (!$temTabelaEventos) {
         $nomeEventoSql = $temColunaNomeEvento
             ? "COALESCE(NULLIF(TRIM(e.nome_evento), ''), 'Evento sem nome')"
             : "'Evento sem nome'";
+
+        $meetingIdSql = $temTabelaReunioes ? 'COALESCE(r.meeting_id, 0)' : '0';
 
         $horaFimSql = $temTabelaReunioes
             ? "COALESCE(
@@ -275,6 +277,7 @@ if (!$temTabelaEventos) {
             SELECT
                 e.id,
                 e.me_event_id,
+                {$meetingIdSql} AS meeting_id,
                 e.data_evento::text AS data_evento,
                 COALESCE(TO_CHAR(e.hora_inicio, 'HH24:MI'), '') AS hora_inicio,
                 {$horaFimSql} AS hora_fim,
@@ -321,7 +324,7 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
         $joinReunioesDetalhe = $temTabelaReunioes
             ? "
                 LEFT JOIN LATERAL (
-                    SELECT er.me_event_snapshot
+                    SELECT er.id AS meeting_id, er.me_event_snapshot
                     FROM eventos_reunioes er
                     WHERE er.me_event_id = e.me_event_id
                     ORDER BY er.updated_at DESC NULLS LAST, er.id DESC
@@ -333,6 +336,8 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
         $nomeEventoDetalheSql = $temColunaNomeEvento
             ? "COALESCE(NULLIF(TRIM(e.nome_evento), ''), 'Evento sem nome')"
             : "'Evento sem nome'";
+
+        $meetingIdDetalheSql = $temTabelaReunioes ? 'COALESCE(r.meeting_id, 0)' : '0';
 
         $horaFimDetalheSql = $temTabelaReunioes
             ? "COALESCE(
@@ -355,6 +360,7 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
             SELECT
                 e.id,
                 e.me_event_id,
+                {$meetingIdDetalheSql} AS meeting_id,
                 e.data_evento::text AS data_evento,
                 COALESCE(TO_CHAR(e.hora_inicio, 'HH24:MI'), '') AS hora_inicio,
                 {$horaFimDetalheSql} AS hora_fim,
@@ -1034,14 +1040,22 @@ includeSidebar('Agenda Geral');
         if (!empty($eventoSelecionado['data_evento']) && preg_match('/^\d{4}-\d{2}/', (string)$eventoSelecionado['data_evento']) === 1) {
             $eventMesLink = substr((string)$eventoSelecionado['data_evento'], 0, 7);
         }
+        $meetingId = (int)($eventoSelecionado['meeting_id'] ?? 0);
+        $meEventId = (int)($eventoSelecionado['me_event_id'] ?? 0);
+        $organizacaoHref = $meetingId > 0
+            ? 'index.php?page=eventos_organizacao&id=' . $meetingId
+            : 'index.php?page=eventos_organizacao' . ($meEventId > 0 ? '&me_event_id=' . $meEventId : '');
+        $historicoHref = $meetingId > 0
+            ? 'index.php?page=eventos_historico&meeting_id=' . $meetingId
+            : 'index.php?page=eventos_historico' . ($meEventId > 0 ? '&me_event_id=' . $meEventId : '');
+
         $cards = [
-            ['icon' => '📝', 'title' => 'Informações Gerais', 'pill' => ''],
             ['icon' => '☑️', 'title' => 'Checklist', 'pill' => '10% / 90%'],
             ['icon' => '🧮', 'title' => 'Financeiro do Evento', 'pill' => 'Pagamentos em Dia', 'href' => 'index.php?page=eventos_financeiro&evento_id=' . (int)$eventoSelecionado['id']],
-            ['icon' => '🖥️', 'title' => 'Área do Cliente', 'pill' => 'Área Ativa'],
+            ['icon' => '🖥️', 'title' => 'Organização do evento', 'pill' => 'Portal do cliente', 'href' => $organizacaoHref],
             ['icon' => '🏷️', 'title' => 'Fornecedores', 'pill' => '0'],
             ['icon' => '📄', 'title' => 'Contratos e Documentos', 'pill' => ''],
-            ['icon' => '❕', 'title' => 'Histórico', 'pill' => ''],
+            ['icon' => '❕', 'title' => 'Histórico', 'pill' => '', 'href' => $historicoHref],
         ];
         ?>
         <div class="calendar-toolbar">

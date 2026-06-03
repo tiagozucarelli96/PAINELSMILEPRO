@@ -7,6 +7,7 @@
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_me_helper.php';
 require_once __DIR__ . '/eventos_notificacoes_central_helper.php';
+require_once __DIR__ . '/eventos_historico_helper.php';
 
 function eventos_reuniao_buscar_defaults_pre_contrato(PDO $pdo, int $me_event_id): array
 {
@@ -1870,6 +1871,21 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
             $user_id
         );
     }
+
+    eventos_historico_registrar(
+        $pdo,
+        (int)$reuniao['id'],
+        'evento_organizado',
+        'Evento organizado no painel',
+        'O evento foi vinculado à Organização do evento no Painel Smile.',
+        null,
+        [
+            'me_event_id' => $me_event_id,
+            'tipo_evento_real' => $tipo_evento_real_norm,
+            'pacote_evento_id' => (int)($reuniao['pacote_evento_id'] ?? 0),
+        ],
+        $user_id
+    );
     
     return ['ok' => true, 'reuniao' => $reuniao, 'created' => true];
 }
@@ -1947,6 +1963,8 @@ function eventos_reuniao_atualizar_tipo_evento_real(PDO $pdo, int $meeting_id, s
         return ['ok' => false, 'error' => 'Reunião não encontrada'];
     }
 
+    $tipoAnterior = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ''));
+
     $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
     if (!is_array($snapshot)) {
         $snapshot = [];
@@ -1990,6 +2008,19 @@ function eventos_reuniao_atualizar_tipo_evento_real(PDO $pdo, int $meeting_id, s
             if (empty($padrao['ok'])) {
                 error_log('eventos_reuniao_atualizar_tipo_evento_real: falha ao aplicar padrão 15 anos: ' . ($padrao['error'] ?? 'erro desconhecido'));
             }
+        }
+
+        if ($tipoAnterior !== $tipo) {
+            eventos_historico_registrar(
+                $pdo,
+                $meeting_id,
+                'tipo_evento_real_alterado',
+                'Tipo real do evento alterado',
+                'O tipo real usado nos módulos do evento foi atualizado.',
+                ['tipo_evento_real' => $tipoAnterior],
+                ['tipo_evento_real' => $tipo],
+                $user_id
+            );
         }
 
         return ['ok' => true, 'reuniao' => $row];
@@ -2212,6 +2243,43 @@ function eventos_reuniao_salvar_secao(
             }
         } catch (Throwable $e) {
             error_log("eventos_reuniao_salvar_secao: falha ao notificar atualização: " . $e->getMessage());
+        }
+
+        $secaoAlterouConteudo = trim($prev_html) !== trim($content_html);
+        $secaoAlterouSchema = false;
+        if ($form_schema_json !== null && $prev_schema !== null) {
+            $secaoAlterouSchema = trim($prev_schema) !== trim($form_schema_json);
+        } elseif ($form_schema_json !== null && $prev_schema === null) {
+            $secaoAlterouSchema = trim($form_schema_json) !== '';
+        }
+
+        if ($secaoAlterouConteudo || $secaoAlterouSchema) {
+            $sectionLabels = [
+                'decoracao' => 'Decoração',
+                'observacoes_gerais' => 'Observações gerais',
+                'dj_protocolo' => 'DJ / Protocolo',
+                'formulario' => 'Formulário',
+            ];
+            $sectionLabel = $sectionLabels[$section] ?? $section;
+            eventos_historico_registrar(
+                $pdo,
+                $meeting_id,
+                'secao_alterada',
+                $sectionLabel . ' alterado',
+                $note !== '' ? $note : 'Conteúdo do evento atualizado.',
+                [
+                    'secao' => $sectionLabel,
+                    'versao_anterior' => max(0, $next - 1),
+                ],
+                [
+                    'secao' => $sectionLabel,
+                    'versao' => $next,
+                    'alterou_conteudo' => $secaoAlterouConteudo,
+                    'alterou_formulario' => $secaoAlterouSchema,
+                ],
+                $user_id,
+                $author_type
+            );
         }
         
         return ['ok' => true, 'version' => $next];
@@ -2947,6 +3015,19 @@ function eventos_reuniao_atualizar_status(PDO $pdo, int $meeting_id, string $sta
         }
     } catch (Throwable $e) {
         error_log("eventos_reuniao_atualizar_status: falha ao notificar decoração concluída: " . $e->getMessage());
+    }
+
+    if ($ok && $prev !== null && $prev !== $status) {
+        eventos_historico_registrar(
+            $pdo,
+            $meeting_id,
+            'status_alterado',
+            'Status do evento alterado',
+            'O status da organização do evento foi atualizado.',
+            ['status' => $prev],
+            ['status' => $status],
+            $user_id
+        );
     }
 
     return $ok;
