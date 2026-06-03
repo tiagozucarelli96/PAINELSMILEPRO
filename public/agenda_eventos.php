@@ -489,6 +489,14 @@ includeSidebar('Agenda Geral');
     flex-wrap: wrap;
 }
 
+.event-detail-toolbar {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 1rem 1.15rem;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
 .calendar-nav {
     display: inline-flex;
     align-items: center;
@@ -518,7 +526,7 @@ includeSidebar('Agenda Geral');
 
 .calendar-toolbar-title {
     margin: 0;
-    font-size: 1.35rem;
+    font-size: 1.42rem;
     font-weight: 800;
     color: #0f172a;
 }
@@ -800,8 +808,8 @@ includeSidebar('Agenda Geral');
 
 .agenda-detail-layout {
     display: grid;
-    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-    gap: 1.5rem;
+    grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+    gap: 1.25rem;
     align-items: start;
 }
 
@@ -809,28 +817,32 @@ includeSidebar('Agenda Geral');
 .event-functions-panel {
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 16px 38px rgba(15, 23, 42, 0.08);
 }
 
 .event-side-panel {
-    padding: 1.5rem;
+    overflow: hidden;
 }
 
 .event-side-title {
-    margin: 0 0 1.25rem;
-    color: #e05a43;
-    font-size: 1.35rem;
+    margin: 0;
+    padding: 1.3rem 1.35rem 0.4rem;
+    color: #dc6047;
+    font-size: 1.45rem;
     font-weight: 800;
     text-align: center;
+    line-height: 1.2;
 }
 
 .event-avatar {
-    width: 150px;
-    height: 150px;
-    margin: 0 auto 1.2rem;
+    width: 138px;
+    height: 138px;
+    margin: 0.8rem auto 1rem;
     border-radius: 999px;
-    background: #c7cdd6;
+    background: linear-gradient(180deg, #d5dbe4 0%, #bcc5d1 100%);
     position: relative;
+    box-shadow: inset 0 -8px 16px rgba(15, 23, 42, 0.05);
 }
 
 .event-avatar::before,
@@ -843,45 +855,49 @@ includeSidebar('Agenda Geral');
 }
 
 .event-avatar::before {
-    top: 34px;
-    width: 54px;
-    height: 54px;
+    top: 31px;
+    width: 50px;
+    height: 50px;
     border-radius: 999px;
 }
 
 .event-avatar::after {
-    bottom: 28px;
-    width: 96px;
-    height: 48px;
+    bottom: 27px;
+    width: 90px;
+    height: 45px;
     border-radius: 48px 48px 18px 18px;
 }
 
 .event-side-summary {
+    padding: 0 1.35rem 0.35rem;
     text-align: center;
-    color: #4b5563;
+    color: #475569;
     font-size: 0.98rem;
     line-height: 1.55;
 }
 
 .event-type-dot {
     display: inline-flex;
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     border-radius: 999px;
     align-items: center;
     justify-content: center;
-    margin: 0.7rem auto 1rem;
+    margin: 0.75rem auto 0.9rem;
     color: #ffffff;
     font-weight: 800;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
 }
 
 .event-info-block {
-    margin-top: 1rem;
-    border-left: 5px solid #62b4ee;
+    margin: 0 1.1rem 1rem;
+    border-left: 4px solid #62b4ee;
     background: #f8fafc;
-    padding: 0.95rem 1rem;
-    color: #4b5563;
+    border-radius: 10px;
+    padding: 0.9rem 0.95rem;
+    color: #475569;
     line-height: 1.55;
+    font-size: 0.92rem;
 }
 
 .event-info-block.event-info-block--place {
@@ -891,21 +907,21 @@ includeSidebar('Agenda Geral');
 
 .event-info-label {
     display: block;
-    color: #374151;
+    color: #1f2937;
     font-weight: 800;
     margin-bottom: 0.35rem;
 }
 
 .event-functions-panel {
-    min-height: 680px;
-    padding: 2rem;
+    min-height: 620px;
+    padding: 1.25rem;
 }
 
 .event-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
+    gap: 0.6rem;
+    margin-bottom: 1.15rem;
 }
 
 .event-action-btn {
@@ -914,58 +930,86 @@ includeSidebar('Agenda Geral');
     justify-content: center;
     gap: 0.4rem;
     border: none;
-    border-radius: 8px;
-    padding: 0.75rem 1.1rem;
+    border-radius: 10px;
+    padding: 0.68rem 1rem;
     color: #ffffff;
     background: #5ebfd4;
     font-weight: 800;
+    font-size: 0.9rem;
     text-decoration: none;
+    box-shadow: 0 10px 20px rgba(14, 116, 144, 0.16);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.event-action-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(0.98);
+    box-shadow: 0 14px 28px rgba(14, 116, 144, 0.2);
 }
 
 .event-action-btn.event-action-btn--green {
     background: #58c786;
+    width: 44px;
+    padding-inline: 0;
 }
 
 .event-functions-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    gap: 1rem;
 }
 
 .event-function-card {
-    min-height: 178px;
-    border: 1px solid #d7dde7;
-    background: #ffffff;
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    min-height: 172px;
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.8rem;
-    padding: 1.25rem;
+    gap: 0.7rem;
+    padding: 1.15rem;
     text-align: center;
     text-decoration: none;
+    color: inherit;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+a.event-function-card:hover {
+    transform: translateY(-3px);
+    border-color: #93c5fd;
+    box-shadow: 0 18px 36px rgba(37, 99, 235, 0.13);
 }
 
 .event-function-icon {
-    font-size: 3.4rem;
+    width: 64px;
+    height: 64px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    background: #eff6ff;
+    font-size: 2.25rem;
     line-height: 1;
     color: #4d8df7;
 }
 
 .event-function-title {
-    color: #4d80a8;
-    font-size: 1.35rem;
+    color: #2f638a;
+    font-size: 1.18rem;
     font-weight: 800;
+    line-height: 1.15;
 }
 
 .event-function-pill {
     display: inline-flex;
     border-radius: 999px;
-    padding: 0.25rem 0.75rem;
-    background: #72bd61;
+    padding: 0.27rem 0.72rem;
+    background: #73b866;
     color: #ffffff;
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     font-weight: 800;
 }
 
@@ -1058,7 +1102,7 @@ includeSidebar('Agenda Geral');
             ['icon' => '❕', 'title' => 'Histórico', 'pill' => '', 'href' => $historicoHref],
         ];
         ?>
-        <div class="calendar-toolbar">
+        <div class="calendar-toolbar event-detail-toolbar">
             <div>
                 <h2 class="calendar-toolbar-title"><?= h((string)($eventoSelecionado['nome_evento'] ?? 'Evento')) ?></h2>
                 <p class="calendar-toolbar-subtitle">Primeira tela de substituição gradual das funções da ME Eventos.</p>
