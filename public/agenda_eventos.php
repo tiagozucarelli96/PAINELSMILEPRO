@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/comercial_cliente_sync_helper.php';
 
 if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -231,6 +232,22 @@ $errors = [];
 $temTabelaEventos = agenda_eventos_has_table($pdo, 'logistica_eventos_espelho');
 $temColunaNomeEvento = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
 $temTabelaReunioes = agenda_eventos_has_table($pdo, 'eventos_reunioes');
+$temColunaClienteCadastro = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
+$temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
+
+if ($temTabelaEventos) {
+    $lastClienteSync = (int)($_SESSION['agenda_eventos_cliente_sync_at'] ?? 0);
+    if ($lastClienteSync <= 0 || (time() - $lastClienteSync) > 600) {
+        try {
+            comercial_cliente_sync_future_from_local($pdo, 500);
+            $_SESSION['agenda_eventos_cliente_sync_at'] = time();
+            $temColunaClienteCadastro = agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
+            $temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
+        } catch (Throwable $e) {
+            error_log('[AGENDA_EVENTOS_CLIENTE_SYNC] ' . $e->getMessage());
+        }
+    }
+}
 
 if (!$temTabelaEventos) {
     $errors[] = 'A tabela de eventos da logística ainda não existe. Execute a base da Logística antes de usar este módulo.';
@@ -248,6 +265,10 @@ if (!$temTabelaEventos) {
                     LIMIT 1
                 ) r ON TRUE
             "
+            : '';
+
+        $joinClientes = ($temColunaClienteCadastro && $temTabelaClientesCadastro)
+            ? "LEFT JOIN comercial_cadastro_clientes cc ON cc.id = e.cliente_cadastro_id"
             : '';
 
         $nomeEventoSql = $temColunaNomeEvento
@@ -273,11 +294,32 @@ if (!$temTabelaEventos) {
                )"
             : "NULL";
 
+        $clienteSelectSql = ($temColunaClienteCadastro && $temTabelaClientesCadastro)
+            ? "
+                COALESCE(e.cliente_cadastro_id, 0) AS cliente_cadastro_id,
+                COALESCE(NULLIF(TRIM(cc.nome_completo), ''), '') AS cliente_nome,
+                COALESCE(NULLIF(TRIM(cc.email), ''), '') AS cliente_email,
+                COALESCE(NULLIF(TRIM(cc.telefone_whatsapp), ''), '') AS cliente_telefone,
+                COALESCE(NULLIF(TRIM(cc.documento_tipo), ''), '') AS cliente_documento_tipo,
+                COALESCE(NULLIF(TRIM(cc.documento_numero), ''), '') AS cliente_documento_numero,
+                COALESCE(NULLIF(TRIM(cc.rg), ''), '') AS cliente_rg,
+            "
+            : "
+                0 AS cliente_cadastro_id,
+                '' AS cliente_nome,
+                '' AS cliente_email,
+                '' AS cliente_telefone,
+                '' AS cliente_documento_tipo,
+                '' AS cliente_documento_numero,
+                '' AS cliente_rg,
+            ";
+
         $sql = "
             SELECT
                 e.id,
                 e.me_event_id,
                 {$meetingIdSql} AS meeting_id,
+                {$clienteSelectSql}
                 e.data_evento::text AS data_evento,
                 COALESCE(TO_CHAR(e.hora_inicio, 'HH24:MI'), '') AS hora_inicio,
                 {$horaFimSql} AS hora_fim,
@@ -289,6 +331,7 @@ if (!$temTabelaEventos) {
                 COALESCE(e.idlocalevento, 0) AS id_local_me
             FROM logistica_eventos_espelho e
             {$joinReunioes}
+            {$joinClientes}
             WHERE COALESCE(e.arquivado, FALSE) = FALSE
               AND e.data_evento BETWEEN :inicio AND :fim
         ";
@@ -333,6 +376,10 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
             "
             : '';
 
+        $joinClientesDetalhe = ($temColunaClienteCadastro && $temTabelaClientesCadastro)
+            ? "LEFT JOIN comercial_cadastro_clientes cc ON cc.id = e.cliente_cadastro_id"
+            : '';
+
         $nomeEventoDetalheSql = $temColunaNomeEvento
             ? "COALESCE(NULLIF(TRIM(e.nome_evento), ''), 'Evento sem nome')"
             : "'Evento sem nome'";
@@ -356,11 +403,32 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
                )"
             : "NULL";
 
+        $clienteDetalheSelectSql = ($temColunaClienteCadastro && $temTabelaClientesCadastro)
+            ? "
+                COALESCE(e.cliente_cadastro_id, 0) AS cliente_cadastro_id,
+                COALESCE(NULLIF(TRIM(cc.nome_completo), ''), '') AS cliente_nome,
+                COALESCE(NULLIF(TRIM(cc.email), ''), '') AS cliente_email,
+                COALESCE(NULLIF(TRIM(cc.telefone_whatsapp), ''), '') AS cliente_telefone,
+                COALESCE(NULLIF(TRIM(cc.documento_tipo), ''), '') AS cliente_documento_tipo,
+                COALESCE(NULLIF(TRIM(cc.documento_numero), ''), '') AS cliente_documento_numero,
+                COALESCE(NULLIF(TRIM(cc.rg), ''), '') AS cliente_rg,
+            "
+            : "
+                0 AS cliente_cadastro_id,
+                '' AS cliente_nome,
+                '' AS cliente_email,
+                '' AS cliente_telefone,
+                '' AS cliente_documento_tipo,
+                '' AS cliente_documento_numero,
+                '' AS cliente_rg,
+            ";
+
         $sqlDetalhe = "
             SELECT
                 e.id,
                 e.me_event_id,
                 {$meetingIdDetalheSql} AS meeting_id,
+                {$clienteDetalheSelectSql}
                 e.data_evento::text AS data_evento,
                 COALESCE(TO_CHAR(e.hora_inicio, 'HH24:MI'), '') AS hora_inicio,
                 {$horaFimDetalheSql} AS hora_fim,
@@ -372,6 +440,7 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
                 COALESCE(e.idlocalevento, 0) AS id_local_me
             FROM logistica_eventos_espelho e
             {$joinReunioesDetalhe}
+            {$joinClientesDetalhe}
             WHERE COALESCE(e.arquivado, FALSE) = FALSE
               AND e.id = :evento_id
         ";
@@ -912,6 +981,21 @@ includeSidebar('Agenda Geral');
     margin-bottom: 0.35rem;
 }
 
+.event-client-link {
+    color: #2878b8;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.event-client-link:hover {
+    text-decoration: underline;
+}
+
+.event-client-muted {
+    color: #94a3b8;
+    font-size: 0.84rem;
+}
+
 .event-functions-panel {
     min-height: 620px;
     padding: 1.25rem;
@@ -1092,6 +1176,20 @@ a.event-function-card:hover {
         $historicoHref = $meetingId > 0
             ? 'index.php?page=eventos_historico&meeting_id=' . $meetingId
             : 'index.php?page=eventos_historico' . ($meEventId > 0 ? '&me_event_id=' . $meEventId : '');
+        $clienteCadastroId = (int)($eventoSelecionado['cliente_cadastro_id'] ?? 0);
+        $clienteNome = trim((string)($eventoSelecionado['cliente_nome'] ?? ''));
+        if ($clienteNome === '') {
+            $clienteNome = trim((string)($eventoSelecionado['nome_evento'] ?? 'Cliente não identificado'));
+        }
+        $clienteEmail = trim((string)($eventoSelecionado['cliente_email'] ?? ''));
+        $clienteTelefone = trim((string)($eventoSelecionado['cliente_telefone'] ?? ''));
+        $clienteDocumentoTipo = trim((string)($eventoSelecionado['cliente_documento_tipo'] ?? ''));
+        $clienteDocumentoNumero = trim((string)($eventoSelecionado['cliente_documento_numero'] ?? ''));
+        $clienteRg = trim((string)($eventoSelecionado['cliente_rg'] ?? ''));
+        $clienteCadastroHref = 'index.php?page=comercial_cadastro_cliente';
+        if ($clienteNome !== '') {
+            $clienteCadastroHref .= '&search=' . urlencode($clienteNome);
+        }
 
         $cards = [
             ['icon' => '☑️', 'title' => 'Checklist', 'pill' => '10% / 90%'],
@@ -1138,9 +1236,24 @@ a.event-function-card:hover {
 
                 <div class="event-info-block">
                     <span class="event-info-label">ℹ️ Dados do Cliente</span>
-                    <div><?= h((string)($eventoSelecionado['nome_evento'] ?? 'Cliente não identificado')) ?></div>
-                    <div>Evento ME #<?= h((string)($eventoSelecionado['me_event_id'] ?? '-')) ?></div>
-                    <div>Status: <?= h((string)($eventoSelecionado['status_mapeamento'] ?? '-')) ?></div>
+                    <div>
+                        👤 <a class="event-client-link" href="<?= h($clienteCadastroHref) ?>"><?= h($clienteNome) ?></a>
+                    </div>
+                    <?php if ($clienteEmail !== ''): ?>
+                        <div>✉️ <?= h($clienteEmail) ?></div>
+                    <?php endif; ?>
+                    <?php if ($clienteTelefone !== ''): ?>
+                        <div>☎ <?= h($clienteTelefone) ?></div>
+                    <?php endif; ?>
+                    <?php if ($clienteDocumentoNumero !== ''): ?>
+                        <div><?= h($clienteDocumentoTipo !== '' ? $clienteDocumentoTipo : 'Documento') ?>: <?= h($clienteDocumentoNumero) ?></div>
+                    <?php endif; ?>
+                    <?php if ($clienteRg !== ''): ?>
+                        <div>RG: <?= h($clienteRg) ?></div>
+                    <?php endif; ?>
+                    <?php if ($clienteCadastroId <= 0): ?>
+                        <div class="event-client-muted">Cadastro local pendente de sincronização.</div>
+                    <?php endif; ?>
                 </div>
             </aside>
 

@@ -151,6 +151,24 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <a href="index.php?page=cadastros_contratos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header">
+                <span class="funcionalidade-card-icon">📄</span>
+                <div class="funcionalidade-card-title">Contratos</div>
+                <div class="funcionalidade-card-subtitle">Criar modelos com texto padrão e tags automáticas</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
+        <a href="index.php?page=cadastros_tags" class="funcionalidade-card">
+            <div class="funcionalidade-card-header">
+                <span class="funcionalidade-card-icon">🏷️</span>
+                <div class="funcionalidade-card-title">Tags</div>
+                <div class="funcionalidade-card-subtitle">Cadastrar variáveis como #NOME#, #CPF# e #BAIRRO#</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         
         <!-- REMOVIDO: Insumos (módulo desativado) -->
         <!-- REMOVIDO: Categorias (módulo desativado) -->

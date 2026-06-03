@@ -142,6 +142,18 @@ function processarWebhook($data) {
             logWebhook("Aviso: falha ao atualizar Agenda Geral pelo webhook: " . $e->getMessage());
         }
 
+        try {
+            require_once __DIR__ . '/comercial_cliente_sync_helper.php';
+            $clienteSync = comercial_cliente_sync_upsert_from_event(
+                $pdo,
+                is_array($evento_data) ? $evento_data : [],
+                'me_webhook'
+            );
+            logWebhook("Cliente Comercial sync: " . json_encode($clienteSync, JSON_UNESCAPED_UNICODE));
+        } catch (Throwable $e) {
+            logWebhook("Aviso: falha ao sincronizar cliente comercial pelo webhook: " . $e->getMessage());
+        }
+
         // Aplicar atualização na reunião (snapshot) e invalidar cache ME local.
         // Isso garante que o Portal/Calendários não fiquem com dados desatualizados (data/hora/local).
         try {
