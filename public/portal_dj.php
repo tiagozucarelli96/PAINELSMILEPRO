@@ -256,6 +256,28 @@ function portal_dj_schema_file_field_ids(?array $secao): array
     return $ids;
 }
 
+function portal_dj_filtrar_schema_dj_sem_texto_livre(array $schema): array
+{
+    return array_values(array_filter($schema, static function ($field): bool {
+        if (!is_array($field)) {
+            return false;
+        }
+        $field_id = trim((string)($field['id'] ?? ''));
+        return strpos($field_id, 'legacy_portal_text_') !== 0;
+    }));
+}
+
+function portal_dj_remover_texto_livre_legacy(string $content_html): string
+{
+    $content_html = preg_replace(
+        '#<p\b[^>]*>\s*<strong>\s*Texto livre \(opcional\)\s*</strong>\s*<br\s*/?>.*?</p>#isu',
+        '',
+        $content_html
+    ) ?? $content_html;
+
+    return trim($content_html);
+}
+
 function portal_dj_render_inline_anexo_link(array $anexo): string
 {
     $name = trim((string)($anexo['original_name'] ?? 'arquivo'));
@@ -333,10 +355,21 @@ function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array
     }
 
     $file_field_ids = portal_dj_schema_file_field_ids($secao);
+    $file_field_id_lookup = array_fill_keys($file_field_ids, true);
+    $mapped_to_unknown_field = [];
+    foreach ($attachments_by_field as $mapped_field_id => $mapped_entries) {
+        if (isset($file_field_id_lookup[$mapped_field_id])) {
+            continue;
+        }
+        foreach ((array)$mapped_entries as $mapped_entry) {
+            $mapped_to_unknown_field[] = $mapped_entry;
+        }
+    }
     $has_field_mapping = !empty($attachments_by_field);
     $rendered_keys = [];
     $file_field_cursor = 0;
     $unlinked_fallback_used = false;
+    $unknown_field_cursor = 0;
     $placeholder_hits = 0;
 
     $rendered_html = preg_replace_callback(
@@ -344,12 +377,14 @@ function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array
         static function (array $matches) use (
             &$file_field_cursor,
             &$unlinked_fallback_used,
+            &$unknown_field_cursor,
             &$placeholder_hits,
             &$rendered_keys,
             $file_field_ids,
             $attachments_by_field,
             $has_field_mapping,
-            $unlinked
+            $unlinked,
+            $mapped_to_unknown_field
         ): string {
             $line_attachments = [];
 
@@ -359,6 +394,9 @@ function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array
             }
             if ($field_id !== '' && !empty($attachments_by_field[$field_id])) {
                 $line_attachments = $attachments_by_field[$field_id];
+            } elseif (isset($mapped_to_unknown_field[$unknown_field_cursor])) {
+                $line_attachments = [$mapped_to_unknown_field[$unknown_field_cursor]];
+                $unknown_field_cursor++;
             } elseif (!$has_field_mapping && !$unlinked_fallback_used && !empty($unlinked)) {
                 $line_attachments = $unlinked;
                 $unlinked_fallback_used = true;
@@ -484,7 +522,7 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
 
     $principal = $links_filtrados[0];
     $principal_id = (int)($principal['id'] ?? 0);
-    $snapshot_html = (string)($principal['content_html_snapshot'] ?? '');
+    $snapshot_html = portal_dj_remover_texto_livre_legacy((string)($principal['content_html_snapshot'] ?? ''));
 
     $secao_resolvida = is_array($secao_fallback) ? $secao_fallback : [];
     $secao_resolvida['section'] = 'dj_protocolo';
@@ -492,7 +530,7 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
     $secao_resolvida['content_text'] = trim(strip_tags($snapshot_html));
     if (array_key_exists('form_schema', $principal) && is_array($principal['form_schema'])) {
         $secao_resolvida['form_schema_json'] = json_encode(
-            $principal['form_schema'],
+            portal_dj_filtrar_schema_dj_sem_texto_livre($principal['form_schema']),
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
         ) ?: '[]';
     }

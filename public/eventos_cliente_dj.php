@@ -1058,7 +1058,11 @@ function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, strin
         $legacy_text_portal_visible = !empty($secao['legacy_text_portal_visible']);
     }
 
-    if (!empty($form_schema) && !$legacy_text_portal_visible) {
+    if ($section === 'dj_protocolo') {
+        $legacy_text_portal_visible = false;
+    }
+
+    if (!empty($form_schema) && (!$legacy_text_portal_visible || $section === 'dj_protocolo')) {
         $form_schema = array_values(array_filter($form_schema, static function ($field): bool {
             $field_id = trim((string)($field['id'] ?? ''));
             return strpos($field_id, 'legacy_portal_text_') !== 0;

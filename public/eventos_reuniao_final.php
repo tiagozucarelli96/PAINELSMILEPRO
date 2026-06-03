@@ -5961,6 +5961,12 @@ function isLegacyPortalVisible(section) {
 
 function buildPortalSchemaWithLegacyText(section, schema) {
     const normalized = normalizeFormSchema(Array.isArray(schema) ? schema : []);
+    if (section === 'dj_protocolo') {
+        return normalized.filter((field) => {
+            const fieldId = String(field && field.id ? field.id : '').trim();
+            return fieldId !== `legacy_portal_text_${section}`;
+        });
+    }
     if (!isLegacyPortalVisible(section)) {
         return normalized;
     }
@@ -7996,9 +8002,18 @@ function renderPreviewTextWithInlineAttachments(previewText, attachments, schema
         : [];
 
     const hasFieldMapping = Object.keys(attachmentsByField).length > 0;
+    const fileFieldIdSet = new Set(fileFieldIds);
+    const mappedToUnknownField = [];
+    Object.keys(attachmentsByField).forEach((fieldId) => {
+        if (fileFieldIdSet.has(fieldId)) {
+            return;
+        }
+        attachmentsByField[fieldId].forEach((entry) => mappedToUnknownField.push(entry));
+    });
     const renderedKeys = new Set();
     let fileFieldCursor = 0;
     let unlinkedFallbackUsed = false;
+    let unknownFieldCursor = 0;
 
     const linesHtml = text.split('\n').map((rawLine) => {
         const line = String(rawLine || '');
@@ -8015,6 +8030,11 @@ function renderPreviewTextWithInlineAttachments(previewText, attachments, schema
         let lineAttachments = currentFieldId !== '' && Array.isArray(attachmentsByField[currentFieldId])
             ? attachmentsByField[currentFieldId]
             : [];
+
+        if (lineAttachments.length === 0 && mappedToUnknownField[unknownFieldCursor]) {
+            lineAttachments = [mappedToUnknownField[unknownFieldCursor]];
+            unknownFieldCursor += 1;
+        }
 
         if (lineAttachments.length === 0 && !hasFieldMapping && !unlinkedFallbackUsed && unlinkedAttachments.length > 0) {
             lineAttachments = unlinkedAttachments;
