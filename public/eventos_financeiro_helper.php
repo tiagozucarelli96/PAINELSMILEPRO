@@ -54,6 +54,10 @@ function eventos_financeiro_ensure_schema(PDO $pdo): void
             asaas_payment_id VARCHAR(120) NULL,
             asaas_invoice_url TEXT NULL,
             asaas_payload JSONB NULL,
+            carteira VARCHAR(20) NOT NULL DEFAULT 'manual',
+            modo_pagamento VARCHAR(30) NULL,
+            unidade VARCHAR(120) NULL,
+            parcelamento_grupo VARCHAR(80) NULL,
             pago_em TIMESTAMP NULL,
             created_by INTEGER NULL,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -62,8 +66,14 @@ function eventos_financeiro_ensure_schema(PDO $pdo): void
     ");
 
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_pedidos_evento ON eventos_financeiro_pedidos(evento_id)");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS carteira VARCHAR(20) NOT NULL DEFAULT 'manual'");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS modo_pagamento VARCHAR(30) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS unidade VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS parcelamento_grupo VARCHAR(80) NULL");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_evento ON eventos_financeiro_receitas(evento_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_asaas ON eventos_financeiro_receitas(asaas_payment_id)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_unidade ON eventos_financeiro_receitas(unidade, status)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_grupo ON eventos_financeiro_receitas(parcelamento_grupo)");
     $done = true;
 }
 
@@ -100,7 +110,8 @@ function eventos_financeiro_evento(PDO $pdo, int $eventoId): ?array
     $stmt = $pdo->prepare("
         SELECT id, me_event_id, data_evento::text AS data_evento, COALESCE(TO_CHAR(hora_inicio, 'HH24:MI'), '') AS hora_inicio,
                COALESCE(nome_evento, 'Evento') AS nome_evento, COALESCE(localevento, 'Local não informado') AS local_evento,
-               COALESCE(space_visivel, 'Não mapeado') AS space_visivel, COALESCE(convidados, 0) AS convidados
+               COALESCE(space_visivel, 'Não mapeado') AS space_visivel, COALESCE(unidade_interna_id, 0) AS unidade_interna_id,
+               COALESCE(convidados, 0) AS convidados
         FROM logistica_eventos_espelho
         WHERE id = :id
         LIMIT 1
@@ -168,10 +179,22 @@ function eventos_financeiro_salvar_pedido(PDO $pdo, int $eventoId, int $pacoteId
 {
     eventos_financeiro_ensure_schema($pdo);
     $descricao = trim($descricao);
-    if ($descricao === '' && $pacoteId > 0) {
-        $stmt = $pdo->prepare("SELECT nome FROM logistica_pacotes_evento WHERE id = :id LIMIT 1");
+    if ($pacoteId > 0) {
+        $stmt = $pdo->prepare("
+            SELECT nome,
+                   COALESCE(valor_pacote, valor_venda, 0) AS valor_padrao
+            FROM logistica_pacotes_evento
+            WHERE id = :id
+            LIMIT 1
+        ");
         $stmt->execute([':id' => $pacoteId]);
-        $descricao = trim((string)$stmt->fetchColumn());
+        $pacote = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        if ($descricao === '') {
+            $descricao = trim((string)($pacote['nome'] ?? ''));
+        }
+        if ($valor <= 0 && isset($pacote['valor_padrao'])) {
+            $valor = (float)$pacote['valor_padrao'];
+        }
     }
     if ($descricao === '') {
         return ['ok' => false, 'error' => 'Informe a descrição ou selecione um pacote.'];
@@ -229,6 +252,77 @@ function eventos_financeiro_salvar_receita_manual(PDO $pdo, int $eventoId, strin
     return ['ok' => true];
 }
 
+function eventos_financeiro_normalizar_modo(string $modo, string $carteira): string
+{
+    $modo = trim($modo);
+    $validosManual = ['pix', 'cartao_credito', 'dinheiro', 'cartao_debito', 'nao_informado'];
+    if ($carteira === 'asaas') {
+        return 'pix';
+    }
+    return in_array($modo, $validosManual, true) ? $modo : 'nao_informado';
+}
+
+function eventos_financeiro_salvar_receitas_manual_lote(PDO $pdo, int $eventoId, array $dados, int $userId): array
+{
+    eventos_financeiro_ensure_schema($pdo);
+    $descricaoBase = trim((string)($dados['descricao'] ?? 'Receita do evento')) ?: 'Receita do evento';
+    $unidade = trim((string)($dados['unidade'] ?? ''));
+    $modo = eventos_financeiro_normalizar_modo((string)($dados['modo_pagamento'] ?? ''), 'manual');
+    $status = (string)($dados['status_pagamento'] ?? 'pendente');
+    $status = in_array($status, ['pendente', 'pago'], true) ? $status : 'pendente';
+    $vencimentos = is_array($dados['parcela_vencimento'] ?? null) ? $dados['parcela_vencimento'] : [];
+    $valores = is_array($dados['parcela_valor'] ?? null) ? $dados['parcela_valor'] : [];
+    $totalParcelas = max(1, count($valores));
+    $grupo = 'manual_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+
+    if (empty($valores)) {
+        return ['ok' => false, 'error' => 'Informe pelo menos uma parcela.'];
+    }
+
+    $pdo->beginTransaction();
+    try {
+        foreach ($valores as $index => $valorRaw) {
+            $valor = eventos_financeiro_money($valorRaw);
+            if ($valor <= 0) {
+                throw new RuntimeException('Todas as parcelas precisam ter valor maior que zero.');
+            }
+            $numero = $index + 1;
+            $descricao = $totalParcelas > 1 ? $descricaoBase . " ({$numero}/{$totalParcelas})" : $descricaoBase;
+            $vencimento = trim((string)($vencimentos[$index] ?? ''));
+            $stmt = $pdo->prepare("
+                INSERT INTO eventos_financeiro_receitas
+                    (evento_id, descricao, forma_pagamento, carteira, modo_pagamento, unidade, parcelamento_grupo,
+                     valor, parcela_numero, parcelas_total, vencimento, status, pago_em, created_by)
+                VALUES
+                    (:evento_id, :descricao, :forma_pagamento, 'manual', :modo_pagamento, :unidade, :parcelamento_grupo,
+                     :valor, :parcela_numero, :parcelas_total, CAST(NULLIF(:vencimento, '') AS DATE), :status,
+                     CASE WHEN :status = 'pago' THEN NOW() ELSE NULL END, :created_by)
+            ");
+            $stmt->execute([
+                ':evento_id' => $eventoId,
+                ':descricao' => $descricao,
+                ':forma_pagamento' => $modo,
+                ':modo_pagamento' => $modo,
+                ':unidade' => $unidade !== '' ? $unidade : null,
+                ':parcelamento_grupo' => $grupo,
+                ':valor' => $valor,
+                ':parcela_numero' => $numero,
+                ':parcelas_total' => $totalParcelas,
+                ':vencimento' => $vencimento,
+                ':status' => $status,
+                ':created_by' => $userId > 0 ? $userId : null,
+            ]);
+        }
+        $pdo->commit();
+        return ['ok' => true, 'created' => $totalParcelas];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
 function eventos_financeiro_status_from_asaas(string $status): string
 {
     $status = strtoupper(trim($status));
@@ -249,10 +343,20 @@ function eventos_financeiro_criar_pix_asaas(PDO $pdo, int $eventoId, array $even
     eventos_financeiro_ensure_schema($pdo);
     require_once __DIR__ . '/asaas_helper.php';
 
+    $valoresPost = is_array($dados['parcela_valor'] ?? null) ? $dados['parcela_valor'] : [];
+    $vencimentosPost = is_array($dados['parcela_vencimento'] ?? null) ? $dados['parcela_vencimento'] : [];
     $valorTotal = eventos_financeiro_money($dados['valor_total'] ?? 0);
-    $parcelas = max(1, min(24, (int)($dados['parcelas'] ?? 1)));
+    $parcelas = max(1, min(24, (int)($dados['parcelas'] ?? count($valoresPost) ?: 1)));
     $primeiroVencimento = trim((string)($dados['primeiro_vencimento'] ?? date('Y-m-d')));
     $descricaoBase = trim((string)($dados['descricao'] ?? 'Receita do evento')) ?: 'Receita do evento';
+    $unidade = trim((string)($dados['unidade'] ?? ($evento['space_visivel'] ?? '')));
+    if (!empty($valoresPost)) {
+        $valores = array_map('eventos_financeiro_money', $valoresPost);
+        $parcelas = count($valores);
+        $valorTotal = array_sum($valores);
+    } else {
+        $valores = eventos_financeiro_split_parcelas($valorTotal, $parcelas);
+    }
     if ($valorTotal <= 0) {
         return ['ok' => false, 'error' => 'Informe um valor maior que zero.'];
     }
@@ -263,8 +367,8 @@ function eventos_financeiro_criar_pix_asaas(PDO $pdo, int $eventoId, array $even
     $customerCpf = preg_replace('/\D+/', '', (string)($dados['cliente_cpf_cnpj'] ?? ''));
 
     $asaas = new AsaasHelper();
-    $valores = eventos_financeiro_split_parcelas($valorTotal, $parcelas);
     $created = 0;
+    $grupo = 'asaas_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
     try {
         $customer = $asaas->createCustomer([
             'name' => $customerName,
@@ -278,22 +382,28 @@ function eventos_financeiro_criar_pix_asaas(PDO $pdo, int $eventoId, array $even
             return ['ok' => false, 'error' => 'Não foi possível criar o cliente no Asaas.'];
         }
 
-        $pdo->beginTransaction();
         foreach ($valores as $index => $valorParcela) {
             $numero = $index + 1;
-            $vencimento = date('Y-m-d', strtotime($primeiroVencimento . ' +' . $index . ' month'));
+            $vencimento = trim((string)($vencimentosPost[$index] ?? ''));
+            if ($vencimento === '') {
+                $vencimento = date('Y-m-d', strtotime($primeiroVencimento . ' +' . ($index * 30) . ' days'));
+            }
             $descricao = $parcelas > 1 ? $descricaoBase . " ({$numero}/{$parcelas})" : $descricaoBase;
 
             $stmt = $pdo->prepare("
                 INSERT INTO eventos_financeiro_receitas
-                    (evento_id, descricao, forma_pagamento, valor, parcela_numero, parcelas_total, vencimento, status, created_by)
+                    (evento_id, descricao, forma_pagamento, carteira, modo_pagamento, unidade, parcelamento_grupo,
+                     valor, parcela_numero, parcelas_total, vencimento, status, created_by)
                 VALUES
-                    (:evento_id, :descricao, 'pix_asaas', :valor, :parcela_numero, :parcelas_total, :vencimento, 'pendente', :created_by)
+                    (:evento_id, :descricao, 'pix_asaas', 'asaas', 'pix', :unidade, :parcelamento_grupo,
+                     :valor, :parcela_numero, :parcelas_total, :vencimento, 'pendente', :created_by)
                 RETURNING id
             ");
             $stmt->execute([
                 ':evento_id' => $eventoId,
                 ':descricao' => $descricao,
+                ':unidade' => $unidade !== '' ? $unidade : null,
+                ':parcelamento_grupo' => $grupo,
                 ':valor' => $valorParcela,
                 ':parcela_numero' => $numero,
                 ':parcelas_total' => $parcelas,
@@ -330,11 +440,14 @@ function eventos_financeiro_criar_pix_asaas(PDO $pdo, int $eventoId, array $even
             ]);
             $created++;
         }
-        $pdo->commit();
         return ['ok' => true, 'created' => $created];
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+        if ($created > 0) {
+            return [
+                'ok' => true,
+                'created' => $created,
+                'warning' => 'Parte das cobranças foi criada, mas houve falha na sequência: ' . $e->getMessage(),
+            ];
         }
         return ['ok' => false, 'error' => $e->getMessage()];
     }
