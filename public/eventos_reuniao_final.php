@@ -857,6 +857,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = eventos_reuniao_restaurar_versao($pdo, $version_id, $user_id);
             echo json_encode($result);
             exit;
+
+        case 'revisar_decoracao_pendente':
+            $pending_id = (int)($_POST['pending_id'] ?? 0);
+            $decision = strtolower(trim((string)($_POST['decision'] ?? '')));
+            if ($meeting_id <= 0 || $pending_id <= 0 || !in_array($decision, ['aprovar', 'rejeitar'], true)) {
+                echo json_encode(['ok' => false, 'error' => 'Dados inválidos para revisar a alteração.']);
+                exit;
+            }
+            $result = eventos_decoracao_alteracao_pendente_revisar($pdo, $pending_id, (int)$user_id, $decision);
+            echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            exit;
             
         case 'destravar_secao':
             $section = $_POST['section'] ?? '';
@@ -1307,6 +1318,7 @@ $decoracao_adicionais_html = trim((string)($decoracao_payload['decoracao_adicion
 if ($decoracao_adicionais_html === '' && isset($decoracao_values['legacy_portal_text_decoracao_adicionais'])) {
     $decoracao_adicionais_html = nl2br(htmlspecialchars(trim((string)$decoracao_values['legacy_portal_text_decoracao_adicionais']), ENT_QUOTES, 'UTF-8'));
 }
+$decoracao_pendencias = $meeting_id > 0 ? eventos_decoracao_alteracoes_pendentes_listar($pdo, $meeting_id, 'pendente') : [];
 $tiny_reuniao_gallery_items = [];
 try {
     $tinyThumbSelect = eventosGaleriaThumbColumns($pdo)['thumb_public_url']
@@ -1480,6 +1492,51 @@ includeSidebar($sidebar_title);
         margin: 0 0 0.65rem 0;
         font-size: 1rem;
         color: #1f2937;
+    }
+
+    .pending-review-box {
+        border: 1px solid #f59e0b;
+        background: #fffbeb;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .pending-review-title {
+        margin: 0 0 0.35rem 0;
+        color: #92400e;
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+    .pending-review-item {
+        border-top: 1px solid #fde68a;
+        padding-top: 0.85rem;
+        margin-top: 0.85rem;
+    }
+
+    .pending-review-meta {
+        color: #92400e;
+        font-size: 0.82rem;
+        margin-bottom: 0.55rem;
+    }
+
+    .pending-review-preview {
+        background: #fff;
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        padding: 0.85rem;
+        color: #334155;
+        max-height: 260px;
+        overflow: auto;
+        overflow-wrap: anywhere;
+    }
+
+    .pending-review-actions {
+        display: flex;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        margin-top: 0.8rem;
     }
 
     .readonly-section-title {
@@ -3378,6 +3435,39 @@ includeSidebar($sidebar_title);
             <?php endif; ?>
 
             <?php if ($key === 'decoracao'): ?>
+            <?php if (!empty($decoracao_pendencias)): ?>
+            <div class="pending-review-box">
+                <h4 class="pending-review-title">Alterações de decoração pendentes</h4>
+                <div class="builder-field-meta">O cliente enviou alteração pelo portal. A informação oficial continua sendo a versão interna até aprovação.</div>
+                <?php foreach ($decoracao_pendencias as $pendencia): ?>
+                <?php
+                    $pendencia_id = (int)($pendencia['id'] ?? 0);
+                    $pendencia_data_raw = trim((string)($pendencia['submitted_at'] ?? ''));
+                    $pendencia_data_fmt = '-';
+                    if ($pendencia_data_raw !== '') {
+                        try {
+                            $pendencia_data_fmt = (new DateTimeImmutable($pendencia_data_raw, new DateTimeZone('UTC')))
+                                ->setTimezone(new DateTimeZone('America/Sao_Paulo'))
+                                ->format('d/m/Y H:i');
+                        } catch (Throwable $e) {
+                            $pendencia_data_fmt = $pendencia_data_raw;
+                        }
+                    }
+                    $pendencia_html = (string)($pendencia['content_html'] ?? '');
+                ?>
+                <div class="pending-review-item" data-pending-decoracao="<?= $pendencia_id ?>">
+                    <div class="pending-review-meta">Enviado pelo cliente em <?= htmlspecialchars($pendencia_data_fmt) ?></div>
+                    <div class="pending-review-preview"><?= eventos_reuniao_sanitizar_html_visualizacao($pendencia_html) ?></div>
+                    <?php if (!$readonly_mode): ?>
+                    <div class="pending-review-actions">
+                        <button type="button" class="btn btn-success" onclick="revisarDecoracaoPendente(<?= $pendencia_id ?>, 'aprovar')">Aprovar e aplicar no interno</button>
+                        <button type="button" class="btn btn-secondary" onclick="revisarDecoracaoPendente(<?= $pendencia_id ?>, 'rejeitar')">Rejeitar alteração</button>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
             <div class="dj-builder-shell">
                 <div class="dj-builder-head">
                     <div>
@@ -8270,6 +8360,34 @@ async function restaurarVersao(versionId) {
     }
 }
 
+async function revisarDecoracaoPendente(pendingId, decision) {
+    const id = Number(pendingId || 0);
+    const normalizedDecision = String(decision || '').trim();
+    if (!id || !['aprovar', 'rejeitar'].includes(normalizedDecision)) return;
+    const message = normalizedDecision === 'aprovar'
+        ? 'Aprovar esta alteração e aplicar como informação oficial interna?'
+        : 'Rejeitar esta alteração e manter a informação interna atual?';
+    if (!confirm(message)) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'revisar_decoracao_pendente');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('pending_id', String(id));
+        formData.append('decision', normalizedDecision);
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await parseJsonResponse(resp, 'a revisão da alteração de decoração');
+        if (!data.ok) {
+            alert(data.error || 'Não foi possível revisar a alteração.');
+            return;
+        }
+        alert(normalizedDecision === 'aprovar' ? 'Alteração aprovada e aplicada.' : 'Alteração rejeitada.');
+        window.location.href = 'index.php?page=eventos_reuniao_final&id=' + encodeURIComponent(String(meetingId)) + '&tab=decoracao';
+    } catch (err) {
+        alert('Erro: ' + err.message);
+    }
+}
+
 // Destravar seção
 async function destravarSecao(section) {
     if (pageReadonly) {
@@ -8544,6 +8662,7 @@ function exposeInlineHandlersToWindow() {
     if (typeof verVersoes === 'function') window.verVersoes = verVersoes;
     if (typeof fecharModal === 'function') window.fecharModal = fecharModal;
     if (typeof restaurarVersao === 'function') window.restaurarVersao = restaurarVersao;
+    if (typeof revisarDecoracaoPendente === 'function') window.revisarDecoracaoPendente = revisarDecoracaoPendente;
     if (typeof destravarSecao === 'function') window.destravarSecao = destravarSecao;
 
     if (typeof addDjUploadCard === 'function') window.addDjUploadCard = addDjUploadCard;

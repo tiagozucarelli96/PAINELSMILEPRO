@@ -1049,8 +1049,9 @@ function eventos_cliente_filtrar_observacoes_publicas(string $html): string {
 
 function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, string $section, ?array $link = null, bool $prefer_link_snapshot = false): array {
     $secao = eventos_reuniao_get_secao($pdo, $meeting_id, $section);
+    $use_link_snapshot = $prefer_link_snapshot && $section !== 'decoracao';
     $link_id = (int)($link['id'] ?? 0);
-    if ($prefer_link_snapshot && $link_id > 0) {
+    if ($use_link_snapshot && $link_id > 0) {
         $anexos_finais = eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, $section, $link_id);
         if (!empty($link['submitted_at'])) {
             $anexos = $anexos_finais;
@@ -1063,7 +1064,7 @@ function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, strin
     }
 
     $content_from_link_snapshot = '';
-    if ($prefer_link_snapshot) {
+    if ($use_link_snapshot) {
         $content_from_final_snapshot = trim((string)($link['content_html_snapshot'] ?? ''));
         $content_from_draft_snapshot = empty($link['submitted_at'])
             ? trim((string)($link['draft_content_html_snapshot'] ?? ''))
@@ -1080,7 +1081,7 @@ function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, strin
     $content = $content_from_link_snapshot !== '' ? $content_from_link_snapshot : $content_from_secao;
 
     $form_schema = [];
-    if ($prefer_link_snapshot && !empty($link['form_schema']) && is_array($link['form_schema'])) {
+    if ($use_link_snapshot && !empty($link['form_schema']) && is_array($link['form_schema'])) {
         $form_schema = eventos_cliente_normalizar_schema($link['form_schema']);
     } elseif (!empty($secao['form_schema_json'])) {
         $decoded = json_decode((string)$secao['form_schema_json'], true);
@@ -1107,7 +1108,7 @@ function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, strin
     }
 
     $form_values = eventos_cliente_extract_payload_from_html($content, $section);
-    if ($prefer_link_snapshot && $content_from_link_snapshot !== '' && $content_from_secao !== '' && $content_from_link_snapshot !== $content_from_secao) {
+    if ($use_link_snapshot && $content_from_link_snapshot !== '' && $content_from_secao !== '' && $content_from_link_snapshot !== $content_from_secao) {
         $fallback_values = eventos_cliente_extract_payload_from_html($content_from_secao, $section);
         $form_values = eventos_cliente_merge_payload_values($form_values, $fallback_values);
     }
@@ -1128,8 +1129,8 @@ function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, strin
         'form_schema' => $form_schema,
         'form_values' => $form_values,
         'legacy_text_portal_visible' => $legacy_text_portal_visible,
-        'uses_link_snapshot' => $prefer_link_snapshot,
-        'uses_draft_snapshot' => $prefer_link_snapshot && empty($link['submitted_at']) && trim((string)($link['draft_content_html_snapshot'] ?? '')) !== '',
+        'uses_link_snapshot' => $use_link_snapshot,
+        'uses_draft_snapshot' => $use_link_snapshot && empty($link['submitted_at']) && trim((string)($link['draft_content_html_snapshot'] ?? '')) !== '',
     ];
 }
 
@@ -1473,16 +1474,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                     $saved_contents[$section_key] = (string)$pending['content'];
 
                     if (!$is_draft_action) {
-                        $result = eventos_reuniao_salvar_secao(
-                            $pdo,
-                            (int)$link['meeting_id'],
-                            $section_key,
-                            (string)$pending['content'],
-                            0,
-                            'Envio do cliente',
-                            'cliente',
-                            !empty($pending['schema_submit']) ? json_encode($pending['schema_submit'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null
-                        );
+                        if ($section_key === 'decoracao') {
+                            $compiled_values = eventos_cliente_extract_payload_from_html((string)$pending['content'], $section_key);
+                            $result = eventos_decoracao_alteracao_pendente_registrar(
+                                $pdo,
+                                (int)$link['meeting_id'],
+                                (int)$link['id'],
+                                (string)$pending['content'],
+                                !empty($pending['schema_submit']) ? (array)$pending['schema_submit'] : null,
+                                $compiled_values
+                            );
+                            if (!empty($result['ok'])) {
+                                eventos_cliente_portal_atualizar_secao_config($pdo, (int)$link['meeting_id'], 'decoracao', true, false, 0);
+                            }
+                        } else {
+                            $result = eventos_reuniao_salvar_secao(
+                                $pdo,
+                                (int)$link['meeting_id'],
+                                $section_key,
+                                (string)$pending['content'],
+                                0,
+                                'Envio do cliente',
+                                'cliente',
+                                !empty($pending['schema_submit']) ? json_encode($pending['schema_submit'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null
+                            );
+                        }
 
                         if (empty($result['ok'])) {
                             $error = $result['error'] ?? 'Erro ao salvar';

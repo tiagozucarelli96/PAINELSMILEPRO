@@ -127,6 +127,36 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
 
     try {
         $pdo->exec("
+            CREATE TABLE IF NOT EXISTS eventos_decoracao_alteracoes_pendentes (
+                id BIGSERIAL PRIMARY KEY,
+                meeting_id BIGINT NOT NULL,
+                public_link_id BIGINT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+                content_html TEXT NOT NULL,
+                form_schema_json JSONB NULL,
+                payload_values JSONB NULL,
+                submitted_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                reviewed_at TIMESTAMP NULL,
+                reviewed_by_user_id INTEGER NULL,
+                review_note TEXT NULL
+            )
+        ");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS public_link_id BIGINT NULL");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'pendente'");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS content_html TEXT");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS form_schema_json JSONB NULL");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS payload_values JSONB NULL");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP NOT NULL DEFAULT NOW()");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP NULL");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS reviewed_by_user_id INTEGER NULL");
+        $pdo->exec("ALTER TABLE eventos_decoracao_alteracoes_pendentes ADD COLUMN IF NOT EXISTS review_note TEXT NULL");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_decoracao_pendentes_meeting ON eventos_decoracao_alteracoes_pendentes(meeting_id, status, submitted_at DESC)");
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao criar tabela de pendencias de decoracao: ' . $e->getMessage());
+    }
+
+    try {
+        $pdo->exec("
             CREATE TABLE IF NOT EXISTS eventos_form_templates (
                 id BIGSERIAL PRIMARY KEY,
                 nome VARCHAR(120) NOT NULL,
@@ -2070,6 +2100,190 @@ function eventos_reuniao_get_secao(PDO $pdo, int $meeting_id, string $section): 
     ");
     $stmt->execute([':meeting_id' => $meeting_id, ':section' => $section]);
     return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+function eventos_decoracao_pendente_resumir_texto(string $html, int $max_chars = 900): string {
+    $text = eventos_reuniao_html_para_texto($html);
+    if ($max_chars > 0 && function_exists('mb_strlen') && function_exists('mb_substr') && mb_strlen($text, 'UTF-8') > $max_chars) {
+        return rtrim(mb_substr($text, 0, $max_chars - 1, 'UTF-8')) . '...';
+    }
+    if ($max_chars > 0 && !function_exists('mb_strlen') && strlen($text) > $max_chars) {
+        return rtrim(substr($text, 0, $max_chars - 1)) . '...';
+    }
+    return $text;
+}
+
+function eventos_decoracao_alteracao_pendente_registrar(
+    PDO $pdo,
+    int $meeting_id,
+    int $public_link_id,
+    string $content_html,
+    ?array $schema = null,
+    ?array $values = null
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0 || trim(strip_tags($content_html)) === '') {
+        return ['ok' => false, 'error' => 'Alteração de decoração vazia ou inválida.'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_decoracao_alteracoes_pendentes
+                (meeting_id, public_link_id, status, content_html, form_schema_json, payload_values, submitted_at)
+            VALUES
+                (:meeting_id, :public_link_id, 'pendente', :content_html, CAST(:form_schema_json AS jsonb), CAST(:payload_values AS jsonb), NOW())
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':public_link_id' => $public_link_id > 0 ? $public_link_id : null,
+            ':content_html' => $content_html,
+            ':form_schema_json' => is_array($schema) ? json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
+            ':payload_values' => is_array($values) ? json_encode($values, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
+        ]);
+        $pending = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $pending_id = (int)($pending['id'] ?? 0);
+
+        eventos_historico_registrar(
+            $pdo,
+            $meeting_id,
+            'decoracao_alteracao_pendente',
+            'Cliente solicitou alteração na decoração',
+            'A alteração enviada pelo portal do cliente ficou pendente de aprovação interna.',
+            null,
+            [
+                'pendencia_id' => $pending_id,
+                'resumo' => eventos_decoracao_pendente_resumir_texto($content_html, 600),
+            ],
+            0,
+            'cliente'
+        );
+
+        try {
+            eventosNotificacoesCentralCriar(
+                $pdo,
+                $meeting_id,
+                'decoracao_pendente',
+                'Alteração de decoração pendente',
+                'index.php?page=eventos_reuniao_final&id=' . $meeting_id . '&tab=decoracao',
+                'decoracao_pendente:' . $meeting_id . ':' . $pending_id,
+                'O cliente enviou uma alteração de decoração. Revise e aprove ou rejeite no portal interno.'
+            );
+        } catch (Throwable $e) {
+            error_log('eventos_decoracao_alteracao_pendente_registrar notificacao: ' . $e->getMessage());
+        }
+
+        return ['ok' => true, 'pendencia' => $pending];
+    } catch (Throwable $e) {
+        error_log('eventos_decoracao_alteracao_pendente_registrar: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Não foi possível registrar a alteração pendente.'];
+    }
+}
+
+function eventos_decoracao_alteracoes_pendentes_listar(PDO $pdo, int $meeting_id, string $status = 'pendente'): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return [];
+    }
+    try {
+        $sql = "
+            SELECT p.*, u.nome AS reviewed_by_nome
+            FROM eventos_decoracao_alteracoes_pendentes p
+            LEFT JOIN usuarios u ON u.id = p.reviewed_by_user_id
+            WHERE p.meeting_id = :meeting_id
+        ";
+        $params = [':meeting_id' => $meeting_id];
+        if ($status !== 'todos') {
+            $sql .= " AND p.status = :status";
+            $params[':status'] = $status;
+        }
+        $sql .= " ORDER BY p.submitted_at DESC, p.id DESC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        error_log('eventos_decoracao_alteracoes_pendentes_listar: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function eventos_decoracao_alteracao_pendente_revisar(PDO $pdo, int $pending_id, int $user_id, string $decision): array {
+    eventos_reuniao_ensure_schema($pdo);
+    $decision = strtolower(trim($decision));
+    if ($pending_id <= 0 || !in_array($decision, ['aprovar', 'rejeitar'], true)) {
+        return ['ok' => false, 'error' => 'Revisão inválida.'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM eventos_decoracao_alteracoes_pendentes WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $pending_id]);
+        $pending = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$pending) {
+            return ['ok' => false, 'error' => 'Pendência não encontrada.'];
+        }
+        if ((string)($pending['status'] ?? '') !== 'pendente') {
+            return ['ok' => false, 'error' => 'Esta pendência já foi revisada.'];
+        }
+
+        $meeting_id = (int)($pending['meeting_id'] ?? 0);
+        $status = $decision === 'aprovar' ? 'aprovada' : 'rejeitada';
+        if ($decision === 'aprovar') {
+            $schema_json = null;
+            $schema_decoded = json_decode((string)($pending['form_schema_json'] ?? ''), true);
+            if (is_array($schema_decoded)) {
+                $schema_json = json_encode($schema_decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            }
+            $saved = eventos_reuniao_salvar_secao(
+                $pdo,
+                $meeting_id,
+                'decoracao',
+                (string)($pending['content_html'] ?? ''),
+                $user_id,
+                'Alteração do cliente aprovada',
+                'interno',
+                $schema_json
+            );
+            if (empty($saved['ok'])) {
+                return ['ok' => false, 'error' => (string)($saved['error'] ?? 'Não foi possível aprovar a alteração.')];
+            }
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE eventos_decoracao_alteracoes_pendentes
+            SET status = :status,
+                reviewed_at = NOW(),
+                reviewed_by_user_id = :user_id,
+                review_note = :review_note
+            WHERE id = :id
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':id' => $pending_id,
+            ':status' => $status,
+            ':user_id' => $user_id > 0 ? $user_id : null,
+            ':review_note' => $decision === 'aprovar' ? 'Aprovada no portal interno.' : 'Rejeitada no portal interno.',
+        ]);
+        $updated = $stmt->fetch(PDO::FETCH_ASSOC) ?: $pending;
+
+        eventos_historico_registrar(
+            $pdo,
+            $meeting_id,
+            $decision === 'aprovar' ? 'decoracao_alteracao_aprovada' : 'decoracao_alteracao_rejeitada',
+            $decision === 'aprovar' ? 'Alteração de decoração aprovada' : 'Alteração de decoração rejeitada',
+            $decision === 'aprovar'
+                ? 'A alteração enviada pelo cliente passou a ser a informação oficial interna.'
+                : 'A alteração enviada pelo cliente foi rejeitada. A informação interna foi mantida.',
+            ['pendencia_id' => $pending_id],
+            ['status' => $status],
+            $user_id,
+            'painel'
+        );
+
+        return ['ok' => true, 'pendencia' => $updated];
+    } catch (Throwable $e) {
+        error_log('eventos_decoracao_alteracao_pendente_revisar: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Não foi possível revisar a pendência.'];
+    }
 }
 
 /**
@@ -4149,6 +4363,9 @@ function eventos_cliente_portal_obter_config_secoes(?array $portal): array {
         $fallback_editavel = is_array($portal)
             ? !empty($portal[(string)($meta['fallback_editavel_col'] ?? '')])
             : false;
+        if ($section === 'decoracao') {
+            $fallback_editavel = false;
+        }
 
         $visivel_raw = eventos_cliente_portal_bool_nullable($portal, (string)($meta['visivel_col'] ?? ''));
         $editavel_raw = eventos_cliente_portal_bool_nullable($portal, (string)($meta['editavel_col'] ?? ''));
@@ -5361,6 +5578,30 @@ function eventos_cliente_portal_atualizar_secao_config(
             error_log('eventos_cliente_portal_atualizar_secao_config padrão 15 anos: ' . (string)($padrao_15anos['error'] ?? 'erro desconhecido'));
         } elseif (!empty($padrao_15anos['applied'])) {
             $portal = eventos_cliente_portal_get($pdo, $meeting_id) ?: $portal;
+        }
+
+        if (in_array($section, ['decoracao', 'observacoes_gerais'], true)) {
+            $portal_secoes = eventos_cliente_portal_obter_config_secoes($portal);
+            $sync_visivel = !empty($portal['visivel_reuniao'])
+                && (
+                    !empty($portal_secoes['decoracao']['visivel'])
+                    || !empty($portal_secoes['observacoes_gerais']['visivel'])
+                );
+            $sync_editavel = !empty($portal_secoes['decoracao']['editavel'])
+                || !empty($portal_secoes['observacoes_gerais']['editavel']);
+            if ($sync_editavel) {
+                $sync_visivel = true;
+            }
+            $sync_reuniao = eventos_cliente_portal_sincronizar_link_reuniao(
+                $pdo,
+                $meeting_id,
+                $sync_visivel,
+                $sync_editavel,
+                $user_id
+            );
+            if (empty($sync_reuniao['ok'])) {
+                error_log('eventos_cliente_portal_atualizar_secao_config sync reuniao: ' . (string)($sync_reuniao['error'] ?? 'erro desconhecido'));
+            }
         }
 
         return [

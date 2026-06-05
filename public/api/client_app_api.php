@@ -1144,7 +1144,9 @@ function client_app_api_portal_sections(?array $portal): array
     $sections = [];
     foreach ($map as $section => $meta) {
         $fallbackVisible = is_array($portal) ? !empty($portal[$meta['fallback_visivel_col']]) : false;
-        $fallbackEditable = is_array($portal) ? !empty($portal[$meta['fallback_editavel_col']]) : false;
+        $fallbackEditable = $section === 'decoracao'
+            ? false
+            : (is_array($portal) ? !empty($portal[$meta['fallback_editavel_col']]) : false);
         $visible = is_array($portal) && array_key_exists($meta['visivel_col'], $portal) && $portal[$meta['visivel_col']] !== null
             ? !empty($portal[$meta['visivel_col']])
             : $fallbackVisible;
@@ -2060,11 +2062,29 @@ function client_app_api_module_form_response_salvar(PDO $pdo, int $meetingId, ar
         $meta['section'],
         trim((string)($link['form_title'] ?? ''))
     );
-    $saved = $submit
-        ? eventos_link_publico_registrar_envio($pdo, $linkId, $snapshotHtml)
-        : eventos_link_publico_salvar_rascunho($pdo, $linkId, $snapshotHtml);
+    $saved = false;
+    $savedOk = false;
+    if ($submit && $meta['section'] === 'decoracao') {
+        $saved = eventos_decoracao_alteracao_pendente_registrar(
+            $pdo,
+            $meetingId,
+            $linkId,
+            $snapshotHtml,
+            $schema,
+            $normalizedValues
+        );
+        if (!empty($saved['ok'])) {
+            eventos_cliente_portal_atualizar_secao_config($pdo, $meetingId, 'decoracao', true, false, 0);
+        }
+        $savedOk = !empty($saved['ok']);
+    } else {
+        $saved = $submit
+            ? eventos_link_publico_registrar_envio($pdo, $linkId, $snapshotHtml)
+            : eventos_link_publico_salvar_rascunho($pdo, $linkId, $snapshotHtml);
+        $savedOk = !empty($saved);
+    }
 
-    if (!$saved) {
+    if (!$savedOk) {
         client_app_api_log('form_save_failed', ['meeting_id' => $meetingId, 'link_id' => $linkId, 'module' => $moduleKey]);
         client_app_api_error(500, 'Não foi possível salvar o formulário agora.');
     }
