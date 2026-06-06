@@ -338,18 +338,31 @@ includeSidebar('Catálogo Logístico');
 ?>
 
 <style>
+:root {
+    --catalog-bg: #f6f8fb;
+    --catalog-surface: #ffffff;
+    --catalog-text: #1e293b;
+    --catalog-strong: #0f172a;
+    --catalog-muted: #64748b;
+    --catalog-border: #d8e0ee;
+    --catalog-primary: #2563eb;
+    --catalog-primary-hover: #1d4ed8;
+    --catalog-radius: 8px;
+}
 .catalogo-container {
     max-width: 1400px;
     margin: 0 auto;
     padding: 1.5rem;
+    color: var(--catalog-text);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 .section-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
+    background: var(--catalog-surface);
+    border: 1px solid #e6edf7;
+    border-radius: var(--catalog-radius);
     padding: 1.5rem;
     margin-bottom: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
 }
 .form-row {
     display: flex;
@@ -358,26 +371,47 @@ includeSidebar('Catálogo Logístico');
     align-items: center;
 }
 .form-input {
+    min-height: 42px;
     padding: 0.6rem 0.75rem;
-    border: 1px solid #cbd5f5;
-    border-radius: 8px;
+    border: 1px solid var(--catalog-border);
+    border-radius: var(--catalog-radius);
+    color: var(--catalog-strong);
+    font: inherit;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.form-input:focus {
+    outline: none;
+    border-color: var(--catalog-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 .btn-primary {
-    background: #2563eb;
+    background: var(--catalog-primary);
     color: #fff;
-    border: none;
-    padding: 0.6rem 1rem;
-    border-radius: 8px;
+    border: 1px solid transparent;
+    min-height: 42px;
+    padding: 0.62rem 1rem;
+    border-radius: var(--catalog-radius);
     cursor: pointer;
-    font-weight: 600;
+    font: inherit;
+    font-weight: 700;
+}
+.btn-primary:hover {
+    background: var(--catalog-primary-hover);
 }
 .btn-secondary {
-    background: #e2e8f0;
+    background: #eef2f7;
     color: #1f2937;
-    border: none;
-    padding: 0.5rem 0.9rem;
-    border-radius: 8px;
+    border: 1px solid var(--catalog-border);
+    min-height: 38px;
+    padding: 0.52rem 0.9rem;
+    border-radius: var(--catalog-radius);
     cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+.btn-secondary:hover {
+    background: #e2e8f0;
 }
 .table {
     width: 100%;
@@ -385,9 +419,14 @@ includeSidebar('Catálogo Logístico');
 }
 .table th, .table td {
     text-align: left;
-    padding: 0.6rem;
+    padding: 0.68rem 0.6rem;
     border-bottom: 1px solid #e5e7eb;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
+}
+.table th {
+    color: #475569;
+    font-weight: 700;
+    background: #f8fafc;
 }
 .status-pill {
     display: inline-block;
@@ -402,8 +441,8 @@ includeSidebar('Catálogo Logístico');
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.65);
-    backdrop-filter: blur(2px);
+    background: rgba(15, 23, 42, 0.58);
+    backdrop-filter: blur(3px);
     display: none;
     align-items: center;
     justify-content: center;
@@ -412,12 +451,12 @@ includeSidebar('Catálogo Logístico');
 }
 .modal {
     background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
+    border: 1px solid #e6edf7;
+    border-radius: 12px;
     width: min(1200px, 95vw);
     height: min(90vh, 860px);
     overflow: hidden;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
     display: flex;
     flex-direction: column;
 }
@@ -426,21 +465,22 @@ includeSidebar('Catálogo Logístico');
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+    min-height: 60px;
     padding: 0.85rem 1.15rem;
-    border-bottom: 1px solid #e5e7eb;
-    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    border-bottom: 1px solid #e6edf7;
+    background: #f8fafc;
 }
 .modal-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #0f172a;
-    letter-spacing: 0.01em;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--catalog-strong);
+    letter-spacing: 0;
 }
 .modal-close {
     border: none;
-    background: #e2e8f0;
-    color: #0f172a;
-    border-radius: 8px;
+    background: #eef2f7;
+    color: var(--catalog-strong);
+    border-radius: var(--catalog-radius);
     width: 32px;
     height: 32px;
     display: inline-flex;
@@ -455,13 +495,13 @@ includeSidebar('Catálogo Logístico');
 .modal-body {
     position: relative;
     flex: 1;
-    background: #f8fafc;
+    background: var(--catalog-bg);
 }
 .modal-iframe {
     width: 100%;
     height: 100%;
     border: none;
-    background: #f8fafc;
+    background: var(--catalog-bg);
     transition: opacity 0.18s ease;
 }
 .modal-body.is-loading .modal-iframe {

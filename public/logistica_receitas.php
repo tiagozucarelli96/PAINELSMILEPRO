@@ -200,6 +200,83 @@ function calcular_custo_receita_total(int $receita_id, array $componentes_by_rec
     return $total;
 }
 
+function logistica_receitas_item_options_payload(PDO $pdo): array {
+    $insumos_all = $pdo->query("
+        SELECT id, nome_oficial, custo_padrao, ativo, unidade_medida_padrao_id, sinonimos
+        FROM logistica_insumos
+        ORDER BY nome_oficial
+    ")->fetchAll(PDO::FETCH_ASSOC);
+    $receitas_all = $pdo->query("
+        SELECT id, nome, rendimento_base_pessoas, ativo, unidade_medida_padrao_id
+        FROM logistica_receitas
+        ORDER BY nome
+    ")->fetchAll(PDO::FETCH_ASSOC);
+    $componentes_all = $pdo->query("SELECT * FROM logistica_receita_componentes ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+
+    $insumo_cost = [];
+    foreach ($insumos_all as $ins) {
+        if ($ins['custo_padrao'] !== null) {
+            $insumo_cost[(int)$ins['id']] = (float)$ins['custo_padrao'];
+        }
+    }
+
+    $receita_yield = [];
+    foreach ($receitas_all as $rec) {
+        $receita_yield[(int)$rec['id']] = (int)($rec['rendimento_base_pessoas'] ?? 1);
+    }
+
+    $componentes_by_receita = [];
+    foreach ($componentes_all as $comp) {
+        $rid = (int)$comp['receita_id'];
+        if (!isset($componentes_by_receita[$rid])) {
+            $componentes_by_receita[$rid] = [];
+        }
+        $componentes_by_receita[$rid][] = $comp;
+    }
+
+    $memo_cost = [];
+    $stack_cost = [];
+    $receita_cost_total = [];
+    foreach (array_keys($receita_yield) as $rid) {
+        $receita_cost_total[$rid] = calcular_custo_receita_total((int)$rid, $componentes_by_receita, $insumo_cost, $receita_yield, $memo_cost, $stack_cost);
+    }
+
+    $insumos_select = array_values(array_filter($insumos_all, static fn($i) => !isset($i['ativo']) || $i['ativo']));
+    $receitas_select = array_values(array_filter($receitas_all, static fn($r) => !isset($r['ativo']) || $r['ativo']));
+
+    return [
+        'ok' => true,
+        'insumos' => array_map(static fn($i) => [
+            'id' => (int)$i['id'],
+            'nome' => (string)$i['nome_oficial'],
+            'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0),
+            'sinonimos' => (string)($i['sinonimos'] ?? ''),
+        ], $insumos_select),
+        'receitas' => array_map(static fn($r) => [
+            'id' => (int)$r['id'],
+            'nome' => (string)$r['nome'],
+            'unidade_padrao' => (int)($r['unidade_medida_padrao_id'] ?? 0),
+        ], $receitas_select),
+        'cost_insumo' => $insumo_cost,
+        'cost_receita' => $receita_cost_total,
+        'yield_receita' => $receita_yield,
+    ];
+}
+
+if (($_GET['ajax'] ?? '') === 'item_options') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        echo json_encode(logistica_receitas_item_options_payload($pdo), JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Falha ao carregar itens atualizados.'
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'save') {
@@ -469,7 +546,7 @@ foreach ($unidades_medida as $un) {
     $unidades_medida_map[(int)$un['id']] = $un['nome'];
 }
 
-$insumos_all = $pdo->query("SELECT id, nome_oficial, custo_padrao, ativo, unidade_medida_padrao_id FROM logistica_insumos ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
+$insumos_all = $pdo->query("SELECT id, nome_oficial, custo_padrao, ativo, unidade_medida_padrao_id, sinonimos FROM logistica_insumos ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
 $receitas_all = $pdo->query("SELECT id, nome, rendimento_base_pessoas, ativo, unidade_medida_padrao_id FROM logistica_receitas ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $componentes_all = $pdo->query("SELECT * FROM logistica_receita_componentes ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -1170,15 +1247,17 @@ body {
 <script>
 const CAN_SEE_COST = <?= $can_see_cost ? 'true' : 'false' ?>;
 const CURRENT_RECIPE_ID = <?= (int)$form_item_id ?>;
-const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome'], 'unidade_padrao' => (int)($r['unidade_medida_padrao_id'] ?? 0)], $receitas_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+let INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+let RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome'], 'unidade_padrao' => (int)($r['unidade_medida_padrao_id'] ?? 0)], $receitas_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 const UNIDADES = <?= json_encode($unidades_medida, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const COST_INSUMO = <?= json_encode($insumo_cost, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const COST_RECEITA = <?= json_encode(array_map(function($total) use ($receita_yield) {
+let COST_INSUMO = <?= json_encode($insumo_cost, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+let COST_RECEITA = <?= json_encode(array_map(function($total) use ($receita_yield) {
     if ($total === null) { return null; }
     return $total;
 }, $receita_cost_total), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const YIELD_RECEITA = <?= json_encode($receita_yield, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+let YIELD_RECEITA = <?= json_encode($receita_yield, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+let itemOptionsLoading = false;
+let itemOptionsError = '';
 
 function parseNumber(value) {
     if (value === null || value === undefined) return 0;
@@ -1424,13 +1503,58 @@ let modalTargetRow = null;
 let modalTab = 'insumos';
 let modalSelected = null;
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+async function refreshItemOptions() {
+    if (itemOptionsLoading) return;
+    itemOptionsLoading = true;
+    itemOptionsError = '';
+    const listEl = document.getElementById('item-list');
+    if (listEl) {
+        listEl.innerHTML = '<div class="link-muted" style="padding:0.5rem;">Carregando itens atualizados...</div>';
+    }
+
+    try {
+        const url = 'index.php?page=logistica_receitas&ajax=item_options&_=' + encodeURIComponent(String(Date.now()));
+        const response = await fetch(url, {
+            headers: { 'Accept': 'application/json' },
+            cache: 'no-store',
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!response.ok || !data || data.ok === false) {
+            throw new Error(data?.error || 'Falha ao carregar itens.');
+        }
+
+        INSUMOS = Array.isArray(data.insumos) ? data.insumos : [];
+        RECEITAS = Array.isArray(data.receitas) ? data.receitas : [];
+        COST_INSUMO = data.cost_insumo || {};
+        COST_RECEITA = data.cost_receita || {};
+        YIELD_RECEITA = data.yield_receita || {};
+    } catch (error) {
+        console.error('Falha ao atualizar itens da ficha técnica:', error);
+        itemOptionsError = 'Não foi possível atualizar agora. Mostrando a lista carregada ao abrir a tela.';
+    } finally {
+        itemOptionsLoading = false;
+    }
+
+    renderItemList();
+}
+
 function openItemModal(row) {
     modalTargetRow = row;
     modalTab = 'insumos';
     modalSelected = null;
     document.getElementById('item-search').value = '';
-    renderItemList();
     document.getElementById('modal-item').style.display = 'flex';
+    refreshItemOptions();
 }
 
 function closeItemModal() {
@@ -1442,6 +1566,7 @@ function closeItemModal() {
 function renderItemList() {
     const listEl = document.getElementById('item-list');
     if (!listEl) return;
+    if (itemOptionsLoading) return;
     const query = (document.getElementById('item-search').value || '').toLowerCase();
     const source = modalTab === 'receitas' ? RECEITAS : INSUMOS;
     const items = source.filter(item => {
@@ -1455,15 +1580,19 @@ function renderItemList() {
         }
         return query === '';
     });
-    listEl.innerHTML = items.map(item => {
+    const errorHtml = itemOptionsError
+        ? `<div class="alert alert-error" style="margin:0 0 0.5rem;">${escapeHtml(itemOptionsError)}</div>`
+        : '';
+    const itemsHtml = items.map(item => {
         const selected = modalSelected && modalSelected.id === item.id ? ' selected' : '';
-        return `<button type=\"button\" class=\"item-option${selected}\" data-id=\"${item.id}\" data-nome=\"${item.nome}\">${item.nome}</button>`;
-    }).join('');
+        return `<button type=\"button\" class=\"item-option${selected}\" data-id=\"${item.id}\">${escapeHtml(item.nome)}</button>`;
+    }).join('') || '<div class="link-muted" style="padding:0.5rem;">Nenhum item encontrado.</div>';
+    listEl.innerHTML = errorHtml + itemsHtml;
     listEl.querySelectorAll('.item-option').forEach(btn => {
         btn.addEventListener('click', () => {
             const id = parseInt(btn.dataset.id || '0', 10);
-            const nome = btn.dataset.nome || '';
             const item = source.find(i => i.id === id);
+            const nome = item ? (item.nome || '') : '';
             modalSelected = {
                 id,
                 nome,
