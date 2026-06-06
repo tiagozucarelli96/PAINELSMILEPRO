@@ -443,6 +443,28 @@ if ($form_item && $is_clone) {
     $form_item['id'] = null;
     $form_item['nome_oficial'] = clone_label((string)($form_item['nome_oficial'] ?? ''));
 }
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save' && ($duplicate_warning || $errors)) {
+    $posted_id = (int)($_POST['id'] ?? 0);
+    $form_item_id = $posted_id;
+    $form_item = array_merge(is_array($edit_item) ? $edit_item : [], [
+        'id' => $posted_id > 0 ? $posted_id : null,
+        'nome_oficial' => trim((string)($_POST['nome_oficial'] ?? '')),
+        'tipologia_insumo_id' => !empty($_POST['tipologia_insumo_id']) ? (int)$_POST['tipologia_insumo_id'] : null,
+        'unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
+        'barcode' => trim((string)($_POST['barcode'] ?? '')),
+        'fracionavel' => $no_checks ? true : !empty($_POST['fracionavel']),
+        'tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 4),
+        'unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')),
+        'visivel_na_lista' => $no_checks ? true : !empty($_POST['visivel_na_lista']),
+        'ativo' => $no_checks ? true : !empty($_POST['ativo']),
+        'sinonimos' => trim((string)($_POST['sinonimos'] ?? '')),
+        'observacoes' => trim((string)($_POST['observacoes'] ?? '')),
+    ]);
+
+    if ($can_see_cost) {
+        $form_item['custo_padrao'] = parse_decimal_input((string)($_POST['custo_padrao'] ?? ''), 2);
+    }
+}
 $prefill_barcode = trim((string)($_GET['barcode'] ?? ''));
 $edit_foto_url = null;
 if ($form_item) {
@@ -1121,11 +1143,11 @@ body {
             </div>
             <div class="form-block">
                 <label class="field-label">Sinônimos (1 por linha)</label>
-                <textarea class="form-input" name="sinonimos" rows="4"><?= h($edit_item['sinonimos'] ?? '') ?></textarea>
+                <textarea class="form-input" name="sinonimos" rows="4"><?= h($form_item['sinonimos'] ?? '') ?></textarea>
             </div>
             <div class="form-block">
                 <label class="field-label">Observações</label>
-                <textarea class="form-input" name="observacoes" rows="3"><?= h($edit_item['observacoes'] ?? '') ?></textarea>
+                <textarea class="form-input" name="observacoes" rows="3"><?= h($form_item['observacoes'] ?? '') ?></textarea>
             </div>
             <div class="form-actions">
                 <button class="btn-primary" type="submit">Salvar</button>
