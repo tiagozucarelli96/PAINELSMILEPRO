@@ -523,6 +523,9 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
     $principal = $links_filtrados[0];
     $principal_id = (int)($principal['id'] ?? 0);
     $snapshot_html = portal_dj_remover_texto_livre_legacy((string)($principal['content_html_snapshot'] ?? ''));
+    if (trim($snapshot_html) === '' || empty($principal['submitted_at'])) {
+        return ['resolved' => false];
+    }
 
     $secao_resolvida = is_array($secao_fallback) ? $secao_fallback : [];
     $secao_resolvida['section'] = 'dj_protocolo';
@@ -599,8 +602,7 @@ function portal_dj_link_contem_secao(?array $link, string $section): bool
     }
 
     $snapshot = trim((string)($link['content_html_snapshot'] ?? ''));
-    $draft = trim((string)($link['draft_content_html_snapshot'] ?? ''));
-    $haystack = strtolower($snapshot . "\n" . $draft);
+    $haystack = strtolower($snapshot);
     if ($haystack !== '') {
         if (str_contains($haystack, 'data-smile-public-section="decoracao"')
             || str_contains($haystack, "data-smile-public-section='decoracao'")
@@ -848,16 +850,10 @@ function portal_dj_resolver_quadros_observacoes(PDO $pdo, int $meeting_id): arra
             continue;
         }
 
-        $submitted_snapshot = trim((string)($link['content_html_snapshot'] ?? ''));
-        $draft_snapshot = trim((string)($link['draft_content_html_snapshot'] ?? ''));
-
-        $content_html = $submitted_snapshot;
-        $snapshot_status = 'submitted';
-        if ($content_html === '' && $draft_snapshot !== '') {
-            $content_html = $draft_snapshot;
-            $snapshot_status = 'draft';
-        } elseif ($content_html === '') {
-            $snapshot_status = 'empty';
+        $content_html = trim((string)($link['content_html_snapshot'] ?? ''));
+        $snapshot_status = $content_html !== '' && !empty($link['submitted_at']) ? 'submitted' : 'empty';
+        if ($snapshot_status !== 'submitted') {
+            $content_html = '';
         }
         if ($content_html !== '') {
             $content_html = portal_dj_extrair_secao_publica_snapshot($content_html, 'observacoes_gerais');
