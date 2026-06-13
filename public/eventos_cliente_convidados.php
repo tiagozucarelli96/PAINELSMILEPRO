@@ -179,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                         'lista_convidados_concluida',
                         'Cliente concluiu lista de convidados',
                         'index.php?page=eventos_lista_convidados&id=' . $meeting_id,
-                        'lista_convidados_concluida:' . $meeting_id . ':' . date('YmdHis'),
+                        'lista_convidados_concluida:' . $meeting_id,
                         (int)($saved['updated'] ?? 0) . ' convidado(s) publicado(s) pelo cliente.'
                     );
                 } catch (Throwable $e) {

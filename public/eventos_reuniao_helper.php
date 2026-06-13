@@ -4250,7 +4250,7 @@ function eventos_link_publico_registrar_envio(PDO $pdo, int $link_id, string $co
                 'formulario_cliente',
                 $titulo,
                 'index.php?page=eventos_reuniao_final&id=' . $meetingId,
-                'formulario_cliente:' . $meetingId . ':' . $link_id . ':' . date('YmdHis'),
+                'formulario_cliente:' . $meetingId . ':' . $link_id,
                 'Quadro ' . $slot . ' enviado pelo cliente.'
             );
         } catch (Throwable $e) {

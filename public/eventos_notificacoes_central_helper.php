@@ -127,12 +127,23 @@ function eventosNotificacoesCentralBuscarDashboard(PDO $pdo, int $usuarioId, int
             SELECT 1
             FROM eventos_notificacoes_central_ignorados i
             WHERE i.notificacao_id = n.id
-              AND i.usuario_id = :usuario_id
+              AND i.usuario_id = :usuario_id_id
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM eventos_notificacoes_central_ignorados i
+            JOIN eventos_notificacoes_central ni ON ni.id = i.notificacao_id
+            WHERE i.usuario_id = :usuario_id_tipo
+              AND ni.meeting_id = n.meeting_id
+              AND ni.tipo = n.tipo
         )
         ORDER BY n.created_at DESC, n.id DESC
         LIMIT {$limit}
     ");
-    $stmt->execute([':usuario_id' => $usuarioId]);
+    $stmt->execute([
+        ':usuario_id_id' => $usuarioId,
+        ':usuario_id_tipo' => $usuarioId,
+    ]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     foreach ($rows as &$row) {
@@ -155,6 +166,34 @@ function eventosNotificacoesCentralIgnorar(PDO $pdo, int $notificationId, int $u
     }
 
     eventosNotificacoesCentralEnsureSchema($pdo);
+
+    $stmtInfo = $pdo->prepare("
+        SELECT meeting_id, tipo
+        FROM eventos_notificacoes_central
+        WHERE id = :id
+        LIMIT 1
+    ");
+    $stmtInfo->execute([':id' => $notificationId]);
+    $info = $stmtInfo->fetch(PDO::FETCH_ASSOC) ?: [];
+    $meetingId = (int)($info['meeting_id'] ?? 0);
+    $tipo = trim((string)($info['tipo'] ?? ''));
+
+    if ($meetingId > 0 && $tipo !== '') {
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_notificacoes_central_ignorados (notificacao_id, usuario_id, ignored_at)
+            SELECT id, :usuario_id, NOW()
+            FROM eventos_notificacoes_central
+            WHERE meeting_id = :meeting_id
+              AND tipo = :tipo
+            ON CONFLICT (notificacao_id, usuario_id) DO NOTHING
+        ");
+        return $stmt->execute([
+            ':usuario_id' => $usuarioId,
+            ':meeting_id' => $meetingId,
+            ':tipo' => $tipo,
+        ]);
+    }
+
     $stmt = $pdo->prepare("
         INSERT INTO eventos_notificacoes_central_ignorados (notificacao_id, usuario_id, ignored_at)
         VALUES (:notificacao_id, :usuario_id, NOW())
@@ -165,4 +204,3 @@ function eventosNotificacoesCentralIgnorar(PDO $pdo, int $notificationId, int $u
         ':usuario_id' => $usuarioId,
     ]);
 }
-
