@@ -2286,10 +2286,10 @@ function openModal(userId = 0) {
         if (senhaLabel) senhaLabel.textContent = 'Nova senha';
         if (senhaInput) {
             senhaInput.value = '';
-            senhaInput.disabled = true;
             senhaInput.removeAttribute('required');
         }
         if (senhaHint) senhaHint.style.display = 'block';
+        initSenhaUsuarioControls(true);
         
         // Mostrar modal PRIMEIRO (antes de carregar dados)
         modal.classList.add('active');
@@ -2311,6 +2311,7 @@ function openModal(userId = 0) {
             senhaInput.setAttribute('required', 'required');
         }
         if (senhaHint) senhaHint.style.display = 'none';
+        initSenhaUsuarioControls(true);
 
         refreshCargoOptions('');
         renderUnidadesCheckboxes([]);
@@ -2451,38 +2452,90 @@ function updateFotoPreview(fotoPath) {
     }
 }
 
-(() => {
+function initSenhaUsuarioControls(reset = false) {
     const form = document.getElementById('userForm');
     const senhaInput = document.getElementById('senhaInput');
     const alterarSenhaInput = document.getElementById('alterarSenhaInput');
     const alterarSenhaToggle = document.getElementById('alterarSenhaToggle');
+    const alterarSenhaToggleWrap = document.getElementById('alterarSenhaToggleWrap');
+    const senhaLabel = document.getElementById('senhaLabel');
+    const senhaHint = document.getElementById('senhaHint');
 
     if (!form || !senhaInput || !alterarSenhaInput || !alterarSenhaToggle) {
         return;
     }
 
-    alterarSenhaToggle.addEventListener('change', () => {
+    const applyState = () => {
         const enabled = alterarSenhaToggle.checked;
-        alterarSenhaInput.value = enabled ? '1' : '0';
-        senhaInput.value = '';
 
         if (form.dataset.mode === 'edit') {
-            senhaInput.disabled = !enabled;
+            alterarSenhaInput.value = (enabled || senhaInput.value.trim() !== '') ? '1' : '0';
+            if (alterarSenhaToggleWrap) alterarSenhaToggleWrap.style.display = 'inline-flex';
+            if (senhaLabel) senhaLabel.textContent = 'Nova senha';
+            if (senhaHint) senhaHint.style.display = 'block';
+            senhaInput.disabled = false;
             if (enabled) {
                 senhaInput.setAttribute('required', 'required');
-                senhaInput.focus();
             } else {
                 senhaInput.removeAttribute('required');
             }
+        } else {
+            alterarSenhaInput.value = '1';
+            if (alterarSenhaToggleWrap) alterarSenhaToggleWrap.style.display = 'none';
+            if (senhaLabel) senhaLabel.textContent = 'Senha *';
+            if (senhaHint) senhaHint.style.display = 'none';
+            senhaInput.disabled = false;
+            senhaInput.setAttribute('required', 'required');
         }
-    });
+    };
 
-    form.addEventListener('submit', () => {
-        if (form.dataset.mode === 'edit' && alterarSenhaInput.value !== '1') {
-            senhaInput.value = '';
-            senhaInput.disabled = true;
-        }
-    });
+    if (reset) {
+        alterarSenhaToggle.checked = false;
+        senhaInput.value = '';
+    }
+
+    if (alterarSenhaToggle.dataset.listenerAttached !== '1') {
+        alterarSenhaToggle.addEventListener('change', () => {
+            applyState();
+            if (form.dataset.mode === 'edit' && alterarSenhaToggle.checked) {
+                senhaInput.focus();
+            }
+        });
+        alterarSenhaToggle.dataset.listenerAttached = '1';
+    }
+
+    if (senhaInput.dataset.listenerAttached !== '1') {
+        senhaInput.addEventListener('input', applyState);
+        senhaInput.dataset.listenerAttached = '1';
+    }
+
+    if (form.dataset.senhaSubmitListenerAttached !== '1') {
+        form.addEventListener('submit', () => {
+            const currentSenhaInput = document.getElementById('senhaInput');
+            const currentAlterarSenhaInput = document.getElementById('alterarSenhaInput');
+            const currentAlterarSenhaToggle = document.getElementById('alterarSenhaToggle');
+
+            if (!currentSenhaInput || !currentAlterarSenhaInput || !currentAlterarSenhaToggle) {
+                return;
+            }
+
+            if (form.dataset.mode === 'edit') {
+                currentAlterarSenhaInput.value = (currentAlterarSenhaToggle.checked || currentSenhaInput.value.trim() !== '') ? '1' : '0';
+                if (currentAlterarSenhaInput.value !== '1') {
+                    currentSenhaInput.value = '';
+                } else {
+                    currentSenhaInput.disabled = false;
+                }
+            }
+        });
+        form.dataset.senhaSubmitListenerAttached = '1';
+    }
+
+    applyState();
+}
+
+(() => {
+    initSenhaUsuarioControls(false);
 })();
 
 function closeModal() {
@@ -2564,6 +2617,7 @@ function loadUserData(userId) {
         
         modalBody.innerHTML = originalBody;
         console.log('[EDITAR] ✅ HTML restaurado, tamanho:', originalBody.length, 'caracteres');
+        initSenhaUsuarioControls(true);
         
         // Verificar imediatamente se elementos foram criados
         setTimeout(() => {

@@ -215,6 +215,7 @@ function demandasInternasNotificarCriacao(
         ], [
             'internal' => true,
             'email' => true,
+            'whatsapp' => true,
         ]);
     } catch (Throwable $e) {
         error_log('[DEMANDAS INTERNAS] Falha ao notificar criação da demanda #' . $demandaId . ': ' . $e->getMessage());

@@ -80,10 +80,13 @@ class NotificationDispatcher {
             'enviados_interno' => 0,
             'enviados_push' => 0,
             'enviados_email' => 0,
+            'enviados_whatsapp' => 0,
             'falhas_interno' => 0,
             'falhas_push' => 0,
             'falhas_email' => 0,
+            'falhas_whatsapp' => 0,
             'emails_sem_endereco' => 0,
+            'whatsapps_sem_numero' => 0,
         ];
 
         if (empty($normalizedRecipients)) {
@@ -93,7 +96,8 @@ class NotificationDispatcher {
         $sendInternal = !empty($channels['internal']);
         $sendPush = !empty($channels['push']);
         $sendEmail = !empty($channels['email']);
-        if (!$sendInternal && !$sendPush && !$sendEmail) {
+        $sendWhatsapp = !empty($channels['whatsapp']);
+        if (!$sendInternal && !$sendPush && !$sendEmail && !$sendWhatsapp) {
             return $result;
         }
 
@@ -136,9 +140,20 @@ class NotificationDispatcher {
             $emailAssunto = $titulo;
         }
         $emailHtml = (string)($payload['email_html'] ?? $this->buildDefaultEmailBody($titulo, $mensagem, $urlDestino));
+        $whatsappMensagem = trim((string)($payload['whatsapp_mensagem'] ?? ''));
+        if ($whatsappMensagem === '') {
+            $whatsappMensagem = $this->buildDefaultWhatsappBody($titulo, $mensagem, $urlDestino);
+        }
+        $whatsappSessionKey = trim((string)($payload['whatsapp_session_key'] ?? ''));
 
         if ($sendEmail) {
             $this->hydrateRecipientEmails($normalizedRecipients);
+        }
+        if ($sendWhatsapp) {
+            $this->hydrateRecipientPhones($normalizedRecipients);
+            if ($whatsappSessionKey === '') {
+                $whatsappSessionKey = $this->getWhatsappSessionKey();
+            }
         }
 
         $pushHelper = $sendPush ? $this->getPushHelper() : null;
@@ -185,6 +200,28 @@ class NotificationDispatcher {
                     $result['falhas_email']++;
                 }
             }
+
+            if ($sendWhatsapp) {
+                $phoneE164 = $this->normalizePhoneE164((string)($recipient['phone'] ?? ''));
+                if ($phoneE164 === '') {
+                    $result['whatsapps_sem_numero']++;
+                    $result['falhas_whatsapp']++;
+                } elseif ($whatsappSessionKey === '') {
+                    $result['falhas_whatsapp']++;
+                } else {
+                    $okWhatsapp = $this->sendWhatsappMessage(
+                        $whatsappSessionKey,
+                        $phoneE164,
+                        $whatsappMensagem,
+                        (string)($recipient['name'] ?? $phoneE164)
+                    );
+                    if ($okWhatsapp) {
+                        $result['enviados_whatsapp']++;
+                    } else {
+                        $result['falhas_whatsapp']++;
+                    }
+                }
+            }
         }
 
         return $result;
@@ -196,9 +233,13 @@ class NotificationDispatcher {
             if (is_array($recipient)) {
                 $id = (int)($recipient['id'] ?? $recipient['usuario_id'] ?? 0);
                 $email = trim((string)($recipient['email'] ?? ''));
+                $phone = trim((string)($recipient['phone'] ?? $recipient['celular'] ?? $recipient['telefone'] ?? ''));
+                $name = trim((string)($recipient['name'] ?? $recipient['nome'] ?? ''));
             } else {
                 $id = (int)$recipient;
                 $email = '';
+                $phone = '';
+                $name = '';
             }
 
             if ($id <= 0) {
@@ -208,6 +249,8 @@ class NotificationDispatcher {
             $buffer[$id] = [
                 'id' => $id,
                 'email' => $email,
+                'phone' => $phone,
+                'name' => $name,
             ];
         }
 
@@ -254,6 +297,153 @@ class NotificationDispatcher {
         } catch (Throwable $e) {
             error_log("[NOTIFICATION_DISPATCHER] Falha ao buscar e-mails de destinatários: " . $e->getMessage());
         }
+    }
+
+    private function hydrateRecipientPhones(array &$recipients): void {
+        if (!($this->pdo instanceof PDO) || empty($recipients)) {
+            return;
+        }
+
+        $missingIds = [];
+        foreach ($recipients as $recipient) {
+            $phone = trim((string)($recipient['phone'] ?? ''));
+            if ($phone === '') {
+                $missingIds[] = (int)$recipient['id'];
+            }
+        }
+
+        $missingIds = array_values(array_unique(array_filter($missingIds)));
+        if (empty($missingIds)) {
+            return;
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($missingIds), '?'));
+            $stmt = $this->pdo->prepare("
+                SELECT id, nome, COALESCE(NULLIF(TRIM(celular), ''), NULLIF(TRIM(telefone), '')) AS phone
+                FROM usuarios
+                WHERE id IN ({$placeholders})
+            ");
+            $stmt->execute($missingIds);
+            $phoneMap = [];
+            $nameMap = [];
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $id = (int)$row['id'];
+                $phoneMap[$id] = trim((string)($row['phone'] ?? ''));
+                $nameMap[$id] = trim((string)($row['nome'] ?? ''));
+            }
+
+            foreach ($recipients as &$recipient) {
+                $id = (int)$recipient['id'];
+                if (trim((string)($recipient['phone'] ?? '')) === '' && !empty($phoneMap[$id])) {
+                    $recipient['phone'] = $phoneMap[$id];
+                }
+                if (trim((string)($recipient['name'] ?? '')) === '' && !empty($nameMap[$id])) {
+                    $recipient['name'] = $nameMap[$id];
+                }
+            }
+            unset($recipient);
+        } catch (Throwable $e) {
+            error_log("[NOTIFICATION_DISPATCHER] Falha ao buscar celulares de destinatários: " . $e->getMessage());
+        }
+    }
+
+    private function normalizePhoneE164(string $phone): string {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        $digits = ltrim($digits, '0');
+        if ($digits === '') {
+            return '';
+        }
+
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $digits = '55' . $digits;
+        }
+
+        if (strlen($digits) < 12) {
+            return '';
+        }
+
+        return '+' . $digits;
+    }
+
+    private function getWhatsappSessionKey(): string {
+        $configured = trim((string)(painel_env('DEMANDAS_WHATSAPP_SESSION_KEY', '') ?: painel_env('NOTIFICATION_WHATSAPP_SESSION_KEY', '')));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $default = 'smile-teste';
+        if ($this->whatsappInboxIsConnected($default)) {
+            return $default;
+        }
+
+        if (!($this->pdo instanceof PDO)) {
+            return $default;
+        }
+
+        try {
+            $stmt = $this->pdo->query("SELECT session_key FROM wa_inboxes WHERE status = 'connected' ORDER BY id LIMIT 1");
+            $sessionKey = trim((string)($stmt->fetchColumn() ?: ''));
+            return $sessionKey !== '' ? $sessionKey : $default;
+        } catch (Throwable $e) {
+            error_log("[NOTIFICATION_DISPATCHER] Falha ao buscar inbox WhatsApp conectado: " . $e->getMessage());
+            return $default;
+        }
+    }
+
+    private function whatsappInboxIsConnected(string $sessionKey): bool {
+        if (!($this->pdo instanceof PDO) || $sessionKey === '') {
+            return false;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare("SELECT 1 FROM wa_inboxes WHERE session_key = :session_key AND status = 'connected' LIMIT 1");
+            $stmt->execute([':session_key' => $sessionKey]);
+            return (bool)$stmt->fetchColumn();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    private function sendWhatsappMessage(string $sessionKey, string $phoneE164, string $body, string $contactName): bool {
+        $baseUrl = rtrim((string)(painel_env('WHATSAPP_GATEWAY_BASE_URL', 'http://127.0.0.1:8787') ?? 'http://127.0.0.1:8787'), '/');
+        if ($baseUrl === '' || $sessionKey === '' || $phoneE164 === '' || trim($body) === '') {
+            return false;
+        }
+
+        $url = $baseUrl . '/api/sessions/' . rawurlencode($sessionKey) . '/messages/send';
+        $payload = json_encode([
+            'phoneE164' => $phoneE164,
+            'body' => $body,
+            'contactName' => $contactName !== '' ? $contactName : $phoneE164,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if (!is_string($payload)) {
+            return false;
+        }
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => "Accept: application/json\r\nContent-Type: application/json\r\n",
+                'content' => $payload,
+                'timeout' => 8,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $response = @file_get_contents($url, false, $context);
+        $headers = $http_response_header ?? [];
+        $statusLine = $headers[0] ?? '';
+        preg_match('/\s(\d{3})\s/', $statusLine, $matches);
+        $statusCode = isset($matches[1]) ? (int)$matches[1] : 0;
+        $ok = $statusCode >= 200 && $statusCode < 300;
+
+        if (!$ok) {
+            error_log("[NOTIFICATION_DISPATCHER] Falha WhatsApp {$phoneE164} via {$sessionKey}: HTTP {$statusCode} " . (is_string($response) ? $response : ''));
+        }
+
+        return $ok;
     }
 
     private function insertInternalNotification(int $usuarioId, string $tipo, string $titulo, string $mensagem, string $urlDestino, ?int $referenciaId): bool {
@@ -418,5 +608,14 @@ class NotificationDispatcher {
                 </div>
             </div>
         ";
+    }
+
+    private function buildDefaultWhatsappBody(string $titulo, string $mensagem, string $urlDestino): string {
+        $body = "*{$titulo}*\n\n{$mensagem}";
+        if ($urlDestino !== '') {
+            $body .= "\n\nAcesse: {$urlDestino}";
+        }
+
+        return $body;
     }
 }
