@@ -20,16 +20,76 @@ export class SessionManager {
     this.sessions = new Map();
   }
 
+  getProviderDiagnostics(sessionKey) {
+    const runtime = this.sessions.get(sessionKey);
+    if (!runtime?.provider || typeof runtime.provider.getDiagnostics !== "function") {
+      return null;
+    }
+
+    try {
+      return runtime.provider.getDiagnostics();
+    } catch (error) {
+      this.logger.warn({ err: error, sessionKey }, "Falha ao ler diagnostico do provider");
+      return null;
+    }
+  }
+
+  async reconcileSessionState(inbox) {
+    const providerDiagnostics = this.getProviderDiagnostics(inbox.session_key);
+    if (!providerDiagnostics?.connected) {
+      return {
+        ...inbox,
+        provider_runtime: providerDiagnostics,
+      };
+    }
+
+    if (inbox.status !== "connected") {
+      const connectedAt = new Date();
+      await updateInboxStatus(inbox.session_key, "connected", {
+        connectedAt,
+        phoneNumber: inbox.phone_number || undefined,
+      });
+      await saveSessionRuntimeMeta(
+        inbox.session_key,
+        inbox.provider,
+        {
+          ...((await getSessionRuntime(inbox.session_key))?.runtime_meta || {}),
+          status: "connected",
+          qrText: null,
+          qrImage: null,
+          lastStatusAt: connectedAt.toISOString(),
+          reconciledAt: connectedAt.toISOString(),
+        }
+      );
+      await storeConnectionEvent(inbox.session_key, "session.status_reconciled", {
+        from: inbox.status,
+        to: "connected",
+      });
+    }
+
+    return {
+      ...inbox,
+      status: "connected",
+      runtime_meta: {
+        ...(inbox.runtime_meta || {}),
+        status: "connected",
+        qrText: null,
+        qrImage: null,
+      },
+      provider_runtime: providerDiagnostics,
+    };
+  }
+
   async listSessions() {
     const inboxes = await listInboxes();
     return Promise.all(
       inboxes.map(async (inbox) => {
         const runtime = await getSessionRuntime(inbox.session_key);
-        return {
+        return this.reconcileSessionState({
           ...inbox,
           runtime_meta: runtime?.runtime_meta || inbox.runtime_meta || null,
           credential_updated_at: runtime?.updated_at || inbox.credential_updated_at || null,
-        };
+        });
       })
     );
   }
@@ -41,11 +101,11 @@ export class SessionManager {
     }
 
     const runtime = await getSessionRuntime(sessionKey);
-    return {
+    return this.reconcileSessionState({
       ...inbox,
       runtime_meta: runtime?.runtime_meta || null,
       credential_updated_at: runtime?.updated_at || null,
-    };
+    });
   }
 
   async connect(sessionKey, options = {}) {
@@ -100,7 +160,11 @@ export class SessionManager {
       this.sessions.set(sessionKey, runtime);
     }
 
-    const providerResponse = await runtime.provider.sendText(payload);
+    const providerResponse = await this.withTimeout(
+      runtime.provider.sendText(payload),
+      Number.parseInt(process.env.WHATSAPP_SEND_TIMEOUT_MS || "25000", 10),
+      "Tempo limite ao enviar mensagem pelo WhatsApp."
+    );
     const persisted = await ingestOutboundMessage({
       sessionKey,
       contactName: payload.contactName || payload.phoneE164,
@@ -139,6 +203,23 @@ export class SessionManager {
       persisted,
       providerResponse,
     };
+  }
+
+  async withTimeout(promise, timeoutMs, message) {
+    const safeTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 25000;
+    let timeoutId;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(message)), safeTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
   }
 
   async ingestInbound(payload) {

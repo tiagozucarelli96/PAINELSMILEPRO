@@ -422,6 +422,36 @@ class NotificationDispatcher {
             return false;
         }
 
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            if ($ch === false) {
+                return false;
+            }
+
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => [
+                    'Accept: application/json',
+                    'Content-Type: application/json',
+                ],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT => 12,
+            ]);
+            $response = curl_exec($ch);
+            $statusCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            $ok = $statusCode >= 200 && $statusCode < 300;
+            if (!$ok) {
+                error_log("[NOTIFICATION_DISPATCHER] Falha WhatsApp {$phoneE164} via {$sessionKey}: HTTP {$statusCode} " . ($curlError !== '' ? $curlError : (is_string($response) ? $response : '')));
+            }
+
+            return $ok;
+        }
+
         $context = stream_context_create([
             'http' => [
                 'method' => 'POST',
