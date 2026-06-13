@@ -82,6 +82,20 @@ class UsuarioSaveManager {
         $columns = $this->getExistingColumns();
         return isset($columns[$columnName]);
     }
+
+    /**
+     * Obter a coluna de senha usada pelo ambiente atual.
+     * Mantem a mesma prioridade usada em public/login.php.
+     */
+    private function getPasswordColumn() {
+        foreach (['senha', 'senha_hash', 'password', 'pass'] as $columnName) {
+            if ($this->columnExists($columnName)) {
+                return $columnName;
+            }
+        }
+
+        return null;
+    }
     
     /**
      * Validar nome de coluna (segurança)
@@ -162,9 +176,20 @@ class UsuarioSaveManager {
                 }
             }
             
+            $passwordColumn = $this->getPasswordColumn();
+
             // Verificar se senha é obrigatória (coluna existe e é novo usuário)
-            if ($this->columnExists('senha') && $userId === 0 && empty($senha)) {
+            if ($passwordColumn !== null && $userId === 0 && empty($senha)) {
                 throw new Exception("Senha é obrigatória para novos usuários");
+            }
+
+            if ($userId > 0 && $alterarSenha) {
+                if ($passwordColumn === null) {
+                    throw new Exception("Não encontrei a coluna de senha na tabela usuarios");
+                }
+                if (empty($senha)) {
+                    throw new Exception("Informe a nova senha para alterar a senha do usuário");
+                }
             }
             
             // Campos opcionais com verificações (login é tratado separadamente acima)
@@ -192,7 +217,7 @@ class UsuarioSaveManager {
                     WHERE table_schema = 'public' 
                     AND table_name = 'usuarios'
                     AND is_nullable = 'NO'
-                    AND column_name NOT IN ('id', 'nome', 'email', 'senha', 'login', 'created_at', 'updated_at')
+                    AND column_name NOT IN ('id', 'nome', 'email', 'senha', 'senha_hash', 'password', 'pass', 'login', 'created_at', 'updated_at')
                     AND column_name NOT LIKE 'perm_%'
                     ORDER BY column_name
                 ");
@@ -206,7 +231,7 @@ class UsuarioSaveManager {
                         FROM information_schema.columns 
                         WHERE table_name = 'usuarios'
                         AND is_nullable = 'NO'
-                        AND column_name NOT IN ('id', 'nome', 'email', 'senha', 'login', 'created_at', 'updated_at')
+                        AND column_name NOT IN ('id', 'nome', 'email', 'senha', 'senha_hash', 'password', 'pass', 'login', 'created_at', 'updated_at')
                         AND column_name NOT LIKE 'perm_%'
                         ORDER BY column_name
                     ");
@@ -364,9 +389,9 @@ class UsuarioSaveManager {
             }
             
             if ($userId > 0) {
-                return $this->update($userId, $nome, $email, $senha, $alterarSenha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns);
+                return $this->update($userId, $nome, $email, $senha, $alterarSenha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns, $passwordColumn);
             } else {
-                return $this->insert($nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns);
+                return $this->insert($nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns, $passwordColumn);
             }
             
         } catch (Exception $e) {
@@ -378,7 +403,7 @@ class UsuarioSaveManager {
     /**
      * Atualizar usuário existente
      */
-    private function update($userId, $nome, $email, $senha, $alterarSenha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns) {
+    private function update($userId, $nome, $email, $senha, $alterarSenha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns, $passwordColumn = null) {
         $sql = "UPDATE usuarios SET nome = :nome";
         $params = [':nome' => $nome];
         
@@ -395,8 +420,8 @@ class UsuarioSaveManager {
         }
         
         // Adicionar senha se fornecida e coluna existir
-        if ($alterarSenha && !empty($senha) && $this->columnExists('senha')) {
-            $sql .= ", senha = :senha";
+        if ($alterarSenha && !empty($senha) && $passwordColumn !== null) {
+            $sql .= ", {$passwordColumn} = :senha";
             $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
         }
         
@@ -472,7 +497,7 @@ class UsuarioSaveManager {
     /**
      * Inserir novo usuário
      */
-    private function insert($nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns) {
+    private function insert($nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns, $passwordColumn = null) {
         error_log("DEBUG INSERT: nome=$nome, email=$email, login=$login, senha=" . (empty($senha) ? 'VAZIA' : 'PREENCHIDA'));
         
         $sqlCols = ['nome'];
@@ -490,16 +515,16 @@ class UsuarioSaveManager {
         }
         
         // Adicionar senha se coluna existir e senha fornecida
-        if ($this->columnExists('senha')) {
+        if ($passwordColumn !== null) {
             if (empty($senha)) {
                 throw new Exception("Senha é obrigatória para novos usuários");
             }
             error_log("DEBUG INSERT: Adicionando senha");
-            $sqlCols[] = 'senha';
+            $sqlCols[] = $passwordColumn;
             $sqlVals[] = ':senha';
             $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
         } else {
-            error_log("DEBUG INSERT: Coluna senha NÃO existe");
+            error_log("DEBUG INSERT: Coluna de senha NÃO existe");
         }
         
         // Adicionar login - SEMPRE adicionar se recebemos um valor (coluna provavelmente existe)
@@ -619,7 +644,7 @@ class UsuarioSaveManager {
                         $value = $email; // Já temos
                     } elseif ($colName === 'login') {
                         $value = $login; // Já temos
-                    } elseif ($colName === 'senha') {
+                    } elseif (in_array($colName, ['senha', 'senha_hash', 'password', 'pass'], true)) {
                         $value = password_hash($senha, PASSWORD_DEFAULT); // Já temos
                     } elseif (in_array($colName, ['criado_em', 'created_at', 'updated_at', 'atualizado_em'])) {
                         // Timestamps: usar timestamp atual

@@ -18,6 +18,7 @@ if (empty($_SESSION['logado'])) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/core/notification_dispatcher.php';
 
 ob_clean();
 header('Content-Type: application/json; charset=utf-8');
@@ -133,6 +134,91 @@ function demandasInternasLog(PDO $pdo, int $demandaId, int $userId, string $acao
         ':resumo' => $resumo,
         ':dados' => json_encode($dados, JSON_UNESCAPED_UNICODE),
     ]);
+}
+
+function demandasInternasBuildUrl(): string
+{
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return 'index.php?page=demandas';
+    }
+
+    $proto = trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    if ($proto === '') {
+        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    }
+
+    return $proto . '://' . $host . '/index.php?page=demandas';
+}
+
+function demandasInternasUsuariosDestino(PDO $pdo, string $responsavelTipo, int $responsavelId, string $responsavelSetor): array
+{
+    if ($responsavelTipo === 'usuario' && $responsavelId > 0) {
+        return [['id' => $responsavelId]];
+    }
+
+    if ($responsavelTipo !== 'setor' || $responsavelSetor === '') {
+        return [];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT id, email
+        FROM usuarios
+        WHERE cargo IS NOT NULL
+          AND LOWER(TRIM(cargo)) = LOWER(TRIM(:setor))
+          AND COALESCE(NULLIF(LOWER(status::TEXT), ''), 'ativo') IN ('ativo', '1', 'true', 't')
+    ");
+    $stmt->execute([':setor' => $responsavelSetor]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function demandasInternasNotificarCriacao(
+    PDO $pdo,
+    int $demandaId,
+    string $titulo,
+    string $descricao,
+    string $responsavelTipo,
+    int $responsavelId,
+    string $responsavelSetor,
+    string $prazo
+): void {
+    try {
+        $destinatarios = demandasInternasUsuariosDestino($pdo, $responsavelTipo, $responsavelId, $responsavelSetor);
+        if (empty($destinatarios)) {
+            return;
+        }
+
+        $url = demandasInternasBuildUrl();
+        $mensagem = "Nova demanda criada: {$titulo}";
+        if ($prazo !== '') {
+            $prazoFormatado = $prazo;
+            try {
+                $prazoFormatado = (new DateTimeImmutable($prazo))->format('d/m/Y');
+            } catch (Throwable $e) {
+                $prazoFormatado = $prazo;
+            }
+            $mensagem .= "\nPrazo: " . $prazoFormatado;
+        }
+        if ($descricao !== '') {
+            $descricaoResumo = strlen($descricao) > 500 ? substr($descricao, 0, 500) . '...' : $descricao;
+            $mensagem .= "\n\n" . $descricaoResumo;
+        }
+
+        $dispatcher = new NotificationDispatcher($pdo);
+        $dispatcher->dispatch($destinatarios, [
+            'tipo' => 'demanda_interna_criada',
+            'referencia_id' => $demandaId,
+            'titulo' => 'Nova demanda interna',
+            'mensagem' => $mensagem,
+            'url_destino' => $url,
+            'email_assunto' => 'Nova demanda interna: ' . $titulo,
+        ], [
+            'internal' => true,
+            'email' => true,
+        ]);
+    } catch (Throwable $e) {
+        error_log('[DEMANDAS INTERNAS] Falha ao notificar criação da demanda #' . $demandaId . ': ' . $e->getMessage());
+    }
 }
 
 function demandasInternasVisibleWhere(bool $isAdmin, int $userId, string $alias = 'd'): string
@@ -416,6 +502,16 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
         demandasInternasLog($pdo, $demandaId, $userId, 'responsavel_definido', 'Setor responsável definido.', ['setor' => $responsavelSetor]);
     }
     demandasInternasParseMentions($pdo, $demandaId, 0, $userId, $titulo . "\n" . $descricao);
+    demandasInternasNotificarCriacao(
+        $pdo,
+        $demandaId,
+        $titulo,
+        $descricao,
+        $responsavelTipo,
+        $responsavelId,
+        $responsavelSetor,
+        $prazo
+    );
 
     demandasInternasJson(['success' => true, 'id' => $demandaId]);
 }
