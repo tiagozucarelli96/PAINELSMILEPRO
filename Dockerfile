@@ -4,6 +4,7 @@ FROM php:8.2-cli
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     libgmp-dev \
+    libonig-dev \
     libzip-dev \
     zlib1g-dev \
     unzip \
@@ -15,7 +16,7 @@ RUN apt-get update && apt-get install -y \
     libmagickwand-dev \
     poppler-utils \
  && docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install -j$(nproc) gd pdo_pgsql bcmath gmp zip \
+ && docker-php-ext-install -j$(nproc) gd pdo_pgsql bcmath gmp mbstring zip \
  && pecl install imagick \
  && docker-php-ext-enable imagick \
  && rm -rf /var/lib/apt/lists/*

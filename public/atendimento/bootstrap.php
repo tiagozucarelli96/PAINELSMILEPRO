@@ -607,6 +607,7 @@ function wa_core_user_login_value(array $user): string
 function wa_login_user_options(): array
 {
     wa_ensure_core_permission_columns();
+    $orderExpr = wa_core_user_field_expr(wa_core_user_columns(), ['nome_completo', 'nome', 'name', 'email'], "'~'");
 
     $rows = wa_pdo()->query("
         SELECT *
@@ -618,7 +619,7 @@ function wa_login_user_options(): array
             OR COALESCE(perm_superadmin, FALSE) = TRUE
           )
         ORDER BY
-            COALESCE(nome_completo, nome, name, email) ASC
+            {$orderExpr} ASC
     ")->fetchAll(PDO::FETCH_ASSOC);
 
     $options = [];
