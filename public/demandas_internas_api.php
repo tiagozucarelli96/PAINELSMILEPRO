@@ -475,6 +475,30 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
     demandasInternasJson(['success' => true]);
 }
 
+function demandasInternasClose(PDO $pdo, int $userId, bool $isAdmin): void
+{
+    $id = (int)($_POST['demanda_id'] ?? 0);
+    if ($id <= 0 || !demandasInternasUserCanAccess($pdo, $id, $userId, $isAdmin)) {
+        demandasInternasJson(['success' => false, 'error' => 'Demanda não encontrada.'], 404);
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE demandas_internas
+        SET status = 'encerrada',
+            encerrada_em = NOW(),
+            atualizado_em = NOW()
+        WHERE id = :id
+          AND status NOT IN ('encerrada', 'cancelada')
+    ");
+    $stmt->execute([':id' => $id]);
+
+    if ($stmt->rowCount() > 0) {
+        demandasInternasLog($pdo, $id, $userId, 'demanda_encerrada', 'Demanda encerrada e arquivada.');
+    }
+
+    demandasInternasJson(['success' => true]);
+}
+
 function demandasInternasForward(PDO $pdo, int $userId, bool $isAdmin): void
 {
     $id = (int)($_POST['demanda_id'] ?? 0);
@@ -751,6 +775,8 @@ try {
         demandasInternasMessage($pdo, $userId, $isAdmin);
     } elseif ($action === 'update') {
         demandasInternasUpdate($pdo, $userId, $isAdmin);
+    } elseif ($action === 'close') {
+        demandasInternasClose($pdo, $userId, $isAdmin);
     } elseif ($action === 'forward') {
         demandasInternasForward($pdo, $userId, $isAdmin);
     } elseif ($action === 'attach') {

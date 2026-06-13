@@ -254,6 +254,20 @@ includeSidebar('Demandas');
     justify-content: space-between;
     align-items: center;
 }
+.composer-actions {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.btn-danger {
+    border-color: #dc2626;
+    background: #dc2626;
+    color: #fff;
+}
+.btn-danger:hover {
+    background: #b91c1c;
+}
 .admin-controls {
     margin-top: 0.8rem;
     border: 1px solid #dce6f2;
@@ -779,7 +793,8 @@ function renderDetail(d, mensagens, anexos) {
                     Anexar arquivo
                     <input class="hidden" type="file" name="arquivo">
                 </label>
-                <div>
+                <div class="composer-actions">
+                    ${d.status !== 'encerrada' && d.status !== 'cancelada' ? `<button class="btn btn-danger" type="button" onclick="closeDemand(${Number(d.id)})">Encerrar demanda</button>` : ''}
                     <button class="btn" type="button" onclick="openGallery(${Number(d.id)})">Galeria Smile</button>
                     <button class="btn" type="button" onclick="forwardDemand(${Number(d.id)})">Encaminhar</button>
                     <button class="btn btn-primary" type="submit">Enviar</button>
@@ -829,6 +844,24 @@ async function sendMessage(event, id) {
         }
         form.reset();
         await openDetail(id);
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function closeDemand(id) {
+    if (!confirm('Encerrar esta demanda? Ela sairá das abas abertas e ficará na aba Encerradas.')) {
+        return;
+    }
+
+    try {
+        const data = new FormData();
+        data.append('action', 'close');
+        data.append('demanda_id', id);
+        await fetchJson(API, { method: 'POST', body: data });
+        state.selectedId = null;
+        await loadDemandas();
+        document.getElementById('detail').innerHTML = '<div class="detail-empty">Demanda encerrada e arquivada.</div>';
     } catch (error) {
         alert(error.message);
     }
