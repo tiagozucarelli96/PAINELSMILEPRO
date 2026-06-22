@@ -950,9 +950,6 @@ function glcSubmit(action, btn) {
     document.getElementById('glcAction').value = action;
     if (btn) {
         btn.textContent = action === 'save' ? 'Salvando...' : 'Gerando...';
-        setTimeout(() => {
-            btn.disabled = true;
-        }, 0);
     }
     return true;
 }
