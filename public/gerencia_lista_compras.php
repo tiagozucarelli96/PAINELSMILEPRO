@@ -914,7 +914,6 @@ ob_start();
                     <table class="glc-table">
                         <thead>
                             <tr>
-                                <th>Tipologia</th>
                                 <th>Insumo</th>
                                 <th>Unidade</th>
                                 <th>Quantidade total</th>
@@ -929,7 +928,6 @@ ob_start();
                                     : (string)($insumo['unidade_nome'] ?? '');
                                 ?>
                                 <tr>
-                                    <td><?= h($insumo['tipologia_nome'] ?? 'Sem tipologia') ?></td>
                                     <td><?= h($insumo['nome_oficial'] ?? ('Insumo #' . (int)$total['insumo_id'])) ?></td>
                                     <td><?= h($unidadeNome) ?></td>
                                     <td><strong><?= glc_format_quantidade((float)$total['quantidade']) ?></strong></td>

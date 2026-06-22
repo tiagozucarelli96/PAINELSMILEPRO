@@ -181,7 +181,6 @@ includeSidebar('Logística - Histórico de Listas');
             <table class="table">
                 <thead>
                     <tr>
-                        <th>Tipologia</th>
                         <th>Item</th>
                         <th>Unidade</th>
                         <th>Quantidade total</th>
@@ -190,7 +189,6 @@ includeSidebar('Logística - Histórico de Listas');
                 <tbody>
                     <?php foreach ($lista_itens as $it): ?>
                         <tr>
-                            <td><?= h($it['tipologia_nome'] ?? 'Sem tipologia') ?></td>
                             <td><?= h($it['nome_oficial'] ?? '') ?></td>
                             <td><?= h($it['unidade_nome'] ?? '') ?></td>
                             <td><?= logistica_format_quantidade((float)$it['quantidade_total_bruto']) ?></td>

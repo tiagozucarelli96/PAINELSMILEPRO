@@ -142,7 +142,6 @@ th{background:#f4f6fb}
   <table>
     <thead>
       <tr>
-        <th>Tipologia</th>
         <th>Item</th>
         <th>Unidade</th>
         <th class="right">Quantidade total (bruto)</th>
@@ -155,7 +154,6 @@ th{background:#f4f6fb}
     <tbody>
       <?php foreach ($itens as $it): ?>
         <tr>
-          <td><?= h($it['tipologia_nome'] ?? 'Sem tipologia') ?></td>
           <td><?= h($it['nome_oficial'] ?? '') ?></td>
           <td><?= h($it['unidade_nome'] ?? '') ?></td>
           <td class="right"><?= logistica_format_quantidade((float)$it['quantidade_total_bruto']) ?></td>
