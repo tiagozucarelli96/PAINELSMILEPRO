@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS logistica_receitas (
     tipologia_receita_id INTEGER REFERENCES logistica_tipologias_receita(id),
     ativo BOOLEAN DEFAULT TRUE,
     visivel_na_lista BOOLEAN DEFAULT TRUE,
-    rendimento_base_pessoas INTEGER DEFAULT 1,
+    rendimento_base_pessoas INTEGER DEFAULT 100,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

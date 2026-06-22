@@ -10,6 +10,7 @@ ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_eventos BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_logistico BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS perm_gerencia BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_configuracoes BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_cadastros BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_financeiro BOOLEAN DEFAULT FALSE,
@@ -25,6 +26,7 @@ COMMENT ON COLUMN usuarios.perm_marketing IS 'Permissão para acessar o módulo 
 COMMENT ON COLUMN usuarios.perm_eventos IS 'Permissão para acessar o módulo Eventos';
 COMMENT ON COLUMN usuarios.perm_eventos_realizar IS 'Permissão para acessar a página Realizar evento';
 COMMENT ON COLUMN usuarios.perm_logistico IS 'Permissão para acessar o módulo Logístico';
+COMMENT ON COLUMN usuarios.perm_gerencia IS 'Permissão para acessar o módulo Gerência';
 COMMENT ON COLUMN usuarios.perm_configuracoes IS 'Permissão para acessar o módulo Configurações';
 COMMENT ON COLUMN usuarios.perm_cadastros IS 'Permissão para acessar o módulo Cadastros';
 COMMENT ON COLUMN usuarios.perm_financeiro IS 'Permissão para acessar o módulo Financeiro';
@@ -40,6 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_perm_marketing ON usuarios(perm_marketin
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_eventos ON usuarios(perm_eventos) WHERE perm_eventos = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_eventos_realizar ON usuarios(perm_eventos_realizar) WHERE perm_eventos_realizar = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_logistico ON usuarios(perm_logistico) WHERE perm_logistico = TRUE;
+CREATE INDEX IF NOT EXISTS idx_usuarios_perm_gerencia ON usuarios(perm_gerencia) WHERE perm_gerencia = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_configuracoes ON usuarios(perm_configuracoes) WHERE perm_configuracoes = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_cadastros ON usuarios(perm_cadastros) WHERE perm_cadastros = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_financeiro ON usuarios(perm_financeiro) WHERE perm_financeiro = TRUE;

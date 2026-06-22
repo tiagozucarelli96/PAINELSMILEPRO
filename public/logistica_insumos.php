@@ -122,6 +122,22 @@ function pg_bool_param(bool $value): string {
     return $value ? 'true' : 'false';
 }
 
+function logistica_insumos_ensure_rendimento_schema(PDO $pdo): void {
+    static $done = false;
+    if ($done) {
+        return;
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS rendimento_base_pessoas INTEGER NOT NULL DEFAULT 100");
+        $pdo->exec("UPDATE logistica_insumos SET rendimento_base_pessoas = 100 WHERE rendimento_base_pessoas IS NULL OR rendimento_base_pessoas <= 0");
+    } catch (Throwable $e) {
+        error_log('logistica_insumos_ensure_rendimento_schema: ' . $e->getMessage());
+    }
+
+    $done = true;
+}
+
 function clone_label(string $value): string {
     $base = trim($value);
     if ($base === '') {
@@ -188,6 +204,8 @@ function gerarUrlStoragePublicaMagalu(?string $chave_storage, ?string $fallback_
 
     return $fallback_url ?: null;
 }
+
+logistica_insumos_ensure_rendimento_schema($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -262,6 +280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':ativo' => pg_bool_param($ativo),
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
+                ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
                 ':fracionavel' => pg_bool_param($fracionavel),
                 ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 4),
                 ':unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')) ?: null,
@@ -289,6 +308,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ativo = :ativo,
                             sinonimos = :sinonimos,
                             barcode = :barcode,
+                            rendimento_base_pessoas = :rendimento_base_pessoas,
                             fracionavel = :fracionavel,
                             tamanho_embalagem = :tamanho_embalagem,
                             unidade_embalagem = :unidade_embalagem,
@@ -307,12 +327,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $cols = [
                         'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
-                        'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'fracionavel',
+                        'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas', 'fracionavel',
                         'tamanho_embalagem', 'unidade_embalagem', 'observacoes'
                     ];
                     $vals = [
                         ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
-                        ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':fracionavel',
+                        ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas', ':fracionavel',
                         ':tamanho_embalagem', ':unidade_embalagem', ':observacoes'
                     ];
                     if ($can_see_cost) {
@@ -452,6 +472,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'tipologia_insumo_id' => !empty($_POST['tipologia_insumo_id']) ? (int)$_POST['tipologia_insumo_id'] : null,
         'unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
+        'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
         'fracionavel' => $no_checks ? true : !empty($_POST['fracionavel']),
         'tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 4),
         'unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')),
@@ -1076,6 +1097,10 @@ body {
                         <button type="button" class="btn-primary btn-scanner" id="open-scanner">Ler câmera</button>
                     </div>
                 </div>
+                <div>
+                    <label class="field-label">Rendimento base (pessoas)</label>
+                    <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
+                </div>
                 <?php if (!$no_checks): ?>
                 <div>
                     <label class="field-label">Fracionável</label>
@@ -1169,6 +1194,7 @@ body {
                 <th>Nome</th>
                 <th>Tipologia</th>
                 <th>Unidade</th>
+                <th>Rendimento</th>
                 <th>Status</th>
                 <?php if ($can_see_cost): ?>
                     <th>Custo</th>
@@ -1190,6 +1216,7 @@ body {
                     <td><?= h($insumo['nome_oficial']) ?></td>
                         <td><?= h($insumo['tipologia_nome'] ?? '') ?></td>
                         <td><?= h($insumo['unidade_medida'] ?? '') ?></td>
+                        <td><?= (int)($insumo['rendimento_base_pessoas'] ?? 100) ?> pessoas</td>
                         <td>
                             <span class="status-pill <?= $insumo['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
                                 <?= $insumo['ativo'] ? 'Ativo' : 'Inativo' ?>
@@ -1209,7 +1236,7 @@ body {
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($insumos)): ?>
-                    <tr><td colspan="<?= $can_see_cost ? '7' : '6' ?>">Nenhum insumo encontrado.</td></tr>
+                    <tr><td colspan="<?= $can_see_cost ? '8' : '7' ?>">Nenhum insumo encontrado.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>

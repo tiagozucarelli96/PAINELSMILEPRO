@@ -27,6 +27,8 @@ return [
     'logistica' => 'perm_logistico',
     'logistica_divergencias' => 'perm_logistico_divergencias',
     'logistica_financeiro' => 'perm_logistico_financeiro',
+    'gerencia' => 'perm_gerencia',
+    'gerencia_lista_compras' => 'perm_gerencia',
     'configuracoes' => 'perm_configuracoes',
     'cadastros' => 'perm_cadastros',
     'cadastros_contratos' => 'perm_cadastros',

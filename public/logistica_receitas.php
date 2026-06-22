@@ -30,6 +30,22 @@ $errors = [];
 $messages = [];
 $redirect_id = 0;
 
+function logistica_receitas_ensure_rendimento_schema(PDO $pdo): void {
+    static $done = false;
+    if ($done) {
+        return;
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE logistica_receitas ALTER COLUMN rendimento_base_pessoas SET DEFAULT 100");
+        $pdo->exec("UPDATE logistica_receitas SET rendimento_base_pessoas = 100 WHERE rendimento_base_pessoas IS NULL OR rendimento_base_pessoas <= 0");
+    } catch (Throwable $e) {
+        error_log('logistica_receitas_ensure_rendimento_schema: ' . $e->getMessage());
+    }
+
+    $done = true;
+}
+
 function ensure_unidades_medida(PDO $pdo): array {
     $rows = $pdo->query("SELECT id, nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
     if (!empty($rows)) {
@@ -186,7 +202,7 @@ function calcular_custo_receita_total(int $receita_id, array $componentes_by_rec
                 $total += 0.0;
                 continue;
             }
-            $yield = (int)($receita_yield[$comp['item_id']] ?? 1);
+            $yield = (int)($receita_yield[$comp['item_id']] ?? 100);
             if ($yield <= 0) {
                 $yield = 1;
             }
@@ -222,7 +238,7 @@ function logistica_receitas_item_options_payload(PDO $pdo): array {
 
     $receita_yield = [];
     foreach ($receitas_all as $rec) {
-        $receita_yield[(int)$rec['id']] = (int)($rec['rendimento_base_pessoas'] ?? 1);
+        $receita_yield[(int)$rec['id']] = (int)($rec['rendimento_base_pessoas'] ?? 100);
     }
 
     $componentes_by_receita = [];
@@ -277,6 +293,8 @@ if (($_GET['ajax'] ?? '') === 'item_options') {
     exit;
 }
 
+logistica_receitas_ensure_rendimento_schema($pdo);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'save') {
@@ -327,7 +345,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':unidade_medida_padrao_id' => $unidade_padrao,
                 ':ativo' => pg_bool_param($ativo),
                 ':visivel_na_lista' => pg_bool_param($visivel),
-                ':rendimento_base_pessoas' => (int)($_POST['rendimento_base_pessoas'] ?? 1)
+                ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100))
             ];
             $cardapio_pacote_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? []);
             $cardapio_secao_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_secao_ids'] ?? []);
@@ -566,7 +584,7 @@ $receita_nome = [];
 $receita_yield = [];
 foreach ($receitas_all as $rec) {
     $receita_nome[(int)$rec['id']] = $rec['nome'];
-    $receita_yield[(int)$rec['id']] = (int)($rec['rendimento_base_pessoas'] ?? 1);
+    $receita_yield[(int)$rec['id']] = (int)($rec['rendimento_base_pessoas'] ?? 100);
 }
 
 $componentes_by_receita = [];
@@ -648,7 +666,7 @@ foreach ($receitas as $rec) {
             } else {
                 $sub_total = $receita_cost_total[$item_id] ?? null;
                 if ($sub_total !== null) {
-                    $yield = (int)($receita_yield[$item_id] ?? 1);
+                    $yield = (int)($receita_yield[$item_id] ?? 100);
                     if ($yield <= 0) {
                         $yield = 1;
                     }
@@ -675,7 +693,7 @@ foreach ($receitas as $rec) {
         'id' => $rid,
         'nome' => $rec['nome'] ?? '',
         'tipologia' => $rec['tipologia_nome'] ?? '',
-        'rendimento' => (int)($rec['rendimento_base_pessoas'] ?? 1),
+        'rendimento' => (int)($rec['rendimento_base_pessoas'] ?? 100),
         'updated_at' => $rec['updated_at'] ?? '',
         'foto' => $foto_modal,
         'linhas' => $linhas
@@ -986,7 +1004,7 @@ body {
                 </div>
                 <div>
                     <label>Rendimento base (pessoas)</label>
-                    <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 1) ?>">
+                    <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
                 </div>
                 <div class="span-2">
                     <label>Pacotes do cardápio</label>
@@ -1345,7 +1363,7 @@ function updateTotalReceita() {
     });
     const totalEl = document.getElementById('total-receita');
     if (totalEl) totalEl.value = formatCurrency(total);
-    const rendimento = parseInt(document.querySelector('[name=\"rendimento_base_pessoas\"]')?.value || '1', 10) || 1;
+    const rendimento = parseInt(document.querySelector('[name=\"rendimento_base_pessoas\"]')?.value || '100', 10) || 100;
     const totalPorPorcao = total / Math.max(1, rendimento);
     const totalPorcaoEl = document.getElementById('total-por-porcao');
     if (totalPorcaoEl) totalPorcaoEl.value = formatCurrency(totalPorPorcao);
@@ -1449,7 +1467,7 @@ document.querySelectorAll('.ver-ficha').forEach(btn => {
         `).join('');
 
         const total = linhas.reduce((sum, l) => sum + (l.custo_total || 0), 0);
-        const totalPorPorcao = total / Math.max(1, Number(data.rendimento || 1));
+        const totalPorPorcao = total / Math.max(1, Number(data.rendimento || 100));
 
         content.innerHTML = `
             <div class=\"ficha-header\">

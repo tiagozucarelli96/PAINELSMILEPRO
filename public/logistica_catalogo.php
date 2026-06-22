@@ -28,6 +28,13 @@ $itens = [];
 $catalog_messages = [];
 $catalog_errors = [];
 
+try {
+    $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS rendimento_base_pessoas INTEGER NOT NULL DEFAULT 100");
+    $pdo->exec("UPDATE logistica_insumos SET rendimento_base_pessoas = 100 WHERE rendimento_base_pessoas IS NULL OR rendimento_base_pessoas <= 0");
+} catch (Throwable $e) {
+    error_log('logistica_catalogo rendimento insumos: ' . $e->getMessage());
+}
+
 function catalogo_erros_fk(PDOException $e): bool
 {
     return $e->getCode() === '23503';
@@ -249,6 +256,7 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
                i.sinonimos,
                t.nome AS tipologia,
                u.nome AS unidade,
+               i.rendimento_base_pessoas,
                i.custo_padrao
         FROM logistica_insumos i
         LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
@@ -272,12 +280,17 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
         if ($can_see_cost && $row['custo_padrao'] !== null && $row['custo_padrao'] !== '') {
             $valores[] = 'Custo: R$ ' . number_format((float)$row['custo_padrao'], 2, ',', '.');
         }
+        $rendimento = (int)($row['rendimento_base_pessoas'] ?? 100);
+        $extra = array_values(array_filter([
+            trim((string)($row['unidade'] ?? '')),
+            $rendimento > 0 ? 'Rendimento: ' . $rendimento : '',
+        ]));
 
         $itens[] = [
             'tipo' => 'Insumo',
             'nome' => $row['nome'] ?? '',
             'tipologia' => $row['tipologia'] ?? '',
-            'extra' => $row['unidade'] ?? '',
+            'extra' => implode(' | ', $extra),
             'search_extra' => (string)($row['sinonimos'] ?? ''),
             'valores' => $valores ? implode(' | ', $valores) : '-',
             'ativo' => !empty($row['ativo']),

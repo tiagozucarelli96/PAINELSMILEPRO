@@ -95,6 +95,7 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
         'perm_marketing',
         'perm_smile_chat',
         'perm_smile_chat_admin',
+        'perm_gerencia',
     ];
 
     $missing = array_values(array_filter($requiredColumns, static function ($column) use ($existingPerms) {
@@ -121,6 +122,21 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
         }
     }
 
+    if (in_array('perm_gerencia', $missing, true)) {
+        try {
+            $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_gerencia BOOLEAN DEFAULT FALSE");
+            $existingPerms = array_flip(usuariosFetchPermissionColumns($pdo, true));
+            $missing = array_values(array_filter($requiredColumns, static function ($column) use ($existingPerms) {
+                return !isset($existingPerms[$column]);
+            }));
+            if (empty($missing)) {
+                return;
+            }
+        } catch (Throwable $e) {
+            error_log('Erro ao garantir coluna perm_gerencia: ' . $e->getMessage());
+        }
+    }
+
     if (!usuariosSchemaMarkerFresh('usuarios_known_permissions_schema_ready')) {
         $updates = [
             'perm_superadmin' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_superadmin BOOLEAN DEFAULT FALSE",
@@ -134,6 +150,7 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
             'perm_marketing' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE",
             'perm_smile_chat' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_smile_chat BOOLEAN DEFAULT FALSE",
             'perm_smile_chat_admin' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_smile_chat_admin BOOLEAN DEFAULT FALSE",
+            'perm_gerencia' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_gerencia BOOLEAN DEFAULT FALSE",
         ];
 
         foreach ($missing as $column) {
@@ -1440,7 +1457,7 @@ ob_start();
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
             'perm_superadmin', 'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_trello', 'perm_comercial', 'perm_marketing', 'perm_eventos', 'perm_eventos_realizar', 'perm_notificacoes_eventos', 'perm_logistico',
-            'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao',
+            'perm_gerencia', 'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao',
             'perm_portao'
         ];
         
@@ -1621,6 +1638,7 @@ ob_start();
                     'perm_eventos_realizar' => '✅ Realizar evento',
                     'perm_notificacoes_eventos' => '🔔 Notificações dos eventos',
                     'perm_logistico' => '📦 Logística',
+                    'perm_gerencia' => '🧭 Gerência',
                     'perm_configuracoes' => '⚙️ Configurações',
                     'perm_cadastros' => '📝 Cadastros',
                     'perm_financeiro' => '💰 Financeiro',
@@ -1643,6 +1661,7 @@ ob_start();
                     'perm_eventos_realizar',
                     'perm_notificacoes_eventos',
                     'perm_logistico',
+                    'perm_gerencia',
                     'perm_configuracoes',
                     'perm_cadastros',
                     'perm_financeiro',

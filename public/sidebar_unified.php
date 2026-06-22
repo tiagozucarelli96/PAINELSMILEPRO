@@ -248,6 +248,7 @@ $configuracoes_content = '';
 $cadastros_content = '';
 $financeiro_content = '';
 $administrativo_content = '';
+$gerencia_content = '';
 
 // Função para determinar se item está ativo
 if (!function_exists('isActiveUnified')) {
@@ -1335,6 +1336,13 @@ if ($current_page === 'dashboard') {
                 <a href="index.php?page=logistica" class="nav-item <?= isActiveUnified('logistica') ?>">
                     <span class="nav-item-icon">📦</span>
                     Logística
+                </a>
+                <?php endif; ?>
+
+                <?php if (!empty($_SESSION['perm_gerencia']) || !empty($_SESSION['perm_superadmin'])): ?>
+                <a href="index.php?page=gerencia" class="nav-item <?= isActiveUnified('gerencia') ?>">
+                    <span class="nav-item-icon">🧭</span>
+                    Gerência
                 </a>
                 <?php endif; ?>
                 
