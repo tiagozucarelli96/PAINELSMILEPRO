@@ -65,10 +65,35 @@ function glc_fetch_user_scope(PDO $pdo): array
         return ['scope' => 'nenhuma', 'unidade_id' => null, 'superadmin' => false];
     }
 
+    $columns = [];
+    try {
+        $stmtCols = $pdo->query("
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'usuarios'
+              AND column_name IN ('unidade_scope', 'unidade_id', 'perm_superadmin')
+        ");
+        foreach ($stmtCols->fetchAll(PDO::FETCH_COLUMN) ?: [] as $column) {
+            $columns[(string)$column] = true;
+        }
+    } catch (Throwable $e) {
+        error_log('glc_fetch_user_scope columns: ' . $e->getMessage());
+    }
+
+    $scopeSql = isset($columns['unidade_scope'])
+        ? "COALESCE(unidade_scope, 'nenhuma') AS unidade_scope"
+        : "'todas' AS unidade_scope";
+    $unitSql = isset($columns['unidade_id'])
+        ? "unidade_id"
+        : "NULL::integer AS unidade_id";
+    $superSql = isset($columns['perm_superadmin'])
+        ? "COALESCE(perm_superadmin, FALSE) AS perm_superadmin"
+        : "FALSE AS perm_superadmin";
+
     $stmt = $pdo->prepare("
-        SELECT COALESCE(unidade_scope, 'nenhuma') AS unidade_scope,
-               unidade_id,
-               COALESCE(perm_superadmin, FALSE) AS perm_superadmin
+        SELECT {$scopeSql},
+               {$unitSql},
+               {$superSql}
         FROM usuarios
         WHERE id = :id
         LIMIT 1
