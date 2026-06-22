@@ -28,6 +28,12 @@ if (!$canAccess) {
 
 const GLC_MARGEM_SEGURANCA = 1.05;
 
+function glc_format_quantidade(float $value): string
+{
+    $formatted = number_format($value, 3, ',', '.');
+    return rtrim(rtrim($formatted, '0'), ',');
+}
+
 function glc_ensure_schema(PDO $pdo): void
 {
     static $done = false;
@@ -926,7 +932,7 @@ ob_start();
                                     <td><?= h($insumo['tipologia_nome'] ?? 'Sem tipologia') ?></td>
                                     <td><?= h($insumo['nome_oficial'] ?? ('Insumo #' . (int)$total['insumo_id'])) ?></td>
                                     <td><?= h($unidadeNome) ?></td>
-                                    <td><strong><?= number_format((float)$total['quantidade'], 4, ',', '.') ?></strong></td>
+                                    <td><strong><?= glc_format_quantidade((float)$total['quantidade']) ?></strong></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

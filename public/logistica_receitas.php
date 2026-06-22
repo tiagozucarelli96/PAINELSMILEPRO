@@ -96,6 +96,14 @@ function parse_decimal($value): ?float {
     return (float)$normalized;
 }
 
+function format_decimal_display($value, int $maxDecimals = 3): string {
+    if ($value === null || $value === '') {
+        return '';
+    }
+    $formatted = number_format((float)$value, $maxDecimals, ',', '.');
+    return rtrim(rtrim($formatted, '0'), ',');
+}
+
 function pg_bool_param(bool $value): string {
     return $value ? 'true' : 'false';
 }
@@ -388,7 +396,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($fator === null || $fator <= 0) {
                     $fator = 1.0;
                 }
-                $peso_bruto = $peso_liquido * $fator;
+                $peso_liquido = round($peso_liquido, 3);
+                $fator = round($fator, 3);
+                $peso_bruto = round($peso_liquido * $fator, 3);
 
                 $overflow_error = validate_numeric_12_4($peso_liquido, 'Peso líquido');
                 if ($overflow_error === null) {
@@ -1108,9 +1118,9 @@ body {
                                 ? ($receita_nome[$item_id] ?? '')
                                 : ($insumo_nome[$item_id] ?? '');
                             $unidade_id = (int)($comp['unidade_medida_id'] ?? 0);
-                            $peso_liquido = $comp['peso_liquido'] ?? '';
-                            $fator_correcao = $comp['fator_correcao'] ?? '';
-                            $peso_bruto = $comp['peso_bruto'] ?? '';
+                            $peso_liquido = format_decimal_display($comp['peso_liquido'] ?? '');
+                            $fator_correcao = format_decimal_display($comp['fator_correcao'] ?? '');
+                            $peso_bruto = format_decimal_display($comp['peso_bruto'] ?? '');
                         ?>
                             <tr class="componente-row" data-index="<?= $row_index ?>">
                                 <td>
@@ -1293,7 +1303,9 @@ function parseNumber(value) {
 
 function formatNumber(value, decimals = 3) {
     if (value === null || value === undefined || Number.isNaN(value)) return '-';
-    return Number(value).toFixed(decimals).replace('.', ',');
+    const formatted = Number(value).toFixed(decimals).replace('.', ',');
+    if (!formatted.includes(',')) return formatted;
+    return formatted.replace(/0+$/, '').replace(/,$/, '');
 }
 
 function formatCurrency(value) {

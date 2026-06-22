@@ -19,6 +19,13 @@ if (!$can_manage) {
 $messages = [];
 $errors = [];
 
+if (!function_exists('logistica_format_quantidade')) {
+    function logistica_format_quantidade(float $value): string {
+        $formatted = number_format($value, 3, ',', '.');
+        return rtrim(rtrim($formatted, '0'), ',');
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id > 0) {
@@ -186,7 +193,7 @@ includeSidebar('Logística - Histórico de Listas');
                             <td><?= h($it['tipologia_nome'] ?? 'Sem tipologia') ?></td>
                             <td><?= h($it['nome_oficial'] ?? '') ?></td>
                             <td><?= h($it['unidade_nome'] ?? '') ?></td>
-                            <td><?= number_format((float)$it['quantidade_total_bruto'], 4, ',', '.') ?></td>
+                            <td><?= logistica_format_quantidade((float)$it['quantidade_total_bruto']) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

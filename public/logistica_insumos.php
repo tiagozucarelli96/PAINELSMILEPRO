@@ -282,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
                 ':fracionavel' => pg_bool_param($fracionavel),
-                ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 4),
+                ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 3),
                 ':unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')) ?: null,
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null
             ];
@@ -474,7 +474,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
         'fracionavel' => $no_checks ? true : !empty($_POST['fracionavel']),
-        'tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 4),
+        'tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 3),
         'unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')),
         'visivel_na_lista' => $no_checks ? true : !empty($_POST['visivel_na_lista']),
         'ativo' => $no_checks ? true : !empty($_POST['ativo']),
@@ -1112,7 +1112,7 @@ body {
                 <?php endif; ?>
                 <div>
                     <label class="field-label">Tamanho embalagem</label>
-                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" placeholder="Ex.: 1.500 ou 0,5100" value="<?= isset($form_item['tamanho_embalagem']) ? format_decimal_input($form_item['tamanho_embalagem'] !== null ? (float)$form_item['tamanho_embalagem'] : null, 4) : '' ?>">
+                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" placeholder="Ex.: 1,5 ou 0,51" value="<?= isset($form_item['tamanho_embalagem']) ? format_decimal_input($form_item['tamanho_embalagem'] !== null ? (float)$form_item['tamanho_embalagem'] : null, 3) : '' ?>">
                 </div>
                 <div>
                     <label class="field-label">Unidade embalagem</label>

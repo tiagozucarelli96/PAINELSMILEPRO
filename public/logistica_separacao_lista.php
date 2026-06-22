@@ -19,6 +19,13 @@ if (!$can_manage) {
 $errors = [];
 $messages = [];
 
+if (!function_exists('logistica_format_quantidade')) {
+    function logistica_format_quantidade(float $value): string {
+        $formatted = number_format($value, 3, ',', '.');
+        return rtrim(rtrim($formatted, '0'), ',');
+    }
+}
+
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) {
     $errors[] = 'Lista inválida.';
@@ -338,7 +345,7 @@ includeSidebar('Separação - Logística');
                         <tr>
                             <td><?= h($it['nome_oficial'] ?? '') ?></td>
                             <td><?= h($it['unidade_nome'] ?? '') ?></td>
-                            <td><?= number_format((float)$it['quantidade_total_bruto'], 4, ',', '.') ?></td>
+                            <td><?= logistica_format_quantidade((float)$it['quantidade_total_bruto']) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

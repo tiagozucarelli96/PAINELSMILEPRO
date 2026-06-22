@@ -23,6 +23,13 @@ if ($requested_values && !$can_values) {
 }
 $show_values = $requested_values && $can_values;
 
+if (!function_exists('logistica_format_quantidade')) {
+    function logistica_format_quantidade(float $value): string {
+        $formatted = number_format($value, 3, ',', '.');
+        return rtrim(rtrim($formatted, '0'), ',');
+    }
+}
+
 $stmt = $pdo->prepare("
     SELECT l.*, u.nome AS unidade_nome
     FROM logistica_listas l
@@ -151,7 +158,7 @@ th{background:#f4f6fb}
           <td><?= h($it['tipologia_nome'] ?? 'Sem tipologia') ?></td>
           <td><?= h($it['nome_oficial'] ?? '') ?></td>
           <td><?= h($it['unidade_nome'] ?? '') ?></td>
-          <td class="right"><?= number_format((float)$it['quantidade_total_bruto'], 4, ',', '.') ?></td>
+          <td class="right"><?= logistica_format_quantidade((float)$it['quantidade_total_bruto']) ?></td>
           <?php if ($show_values): ?>
             <td class="right"><?= $it['custo_padrao'] === null || $it['custo_padrao'] === '' ? '-' : format_currency($it['custo_padrao']) ?></td>
             <td class="right"><?= $it['custo_total'] === null ? '-' : format_currency($it['custo_total']) ?></td>
@@ -174,7 +181,7 @@ function copyChecklist() {
     const texto = <?= json_encode("LISTA DE COMPRAS\\n" . implode("\\n", array_map(function($it){
         $nome = $it['nome_oficial'] ?? '';
         $uni = $it['unidade_nome'] ?? '';
-        $qtd = number_format((float)$it['quantidade_total_bruto'], 4, ',', '.');
+        $qtd = logistica_format_quantidade((float)$it['quantidade_total_bruto']);
         return "- {$nome}: {$qtd} {$uni}";
     }, $itens)), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     navigator.clipboard.writeText(texto).then(() => {

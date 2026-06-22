@@ -23,6 +23,13 @@ $result_totals = [];
 $result_meta = [];
 $payload_saved = null;
 
+if (!function_exists('logistica_format_quantidade')) {
+    function logistica_format_quantidade(float $value): string {
+        $formatted = number_format($value, 3, ',', '.');
+        return rtrim(rtrim($formatted, '0'), ',');
+    }
+}
+
 function parse_decimal_local($value): float {
     $raw = trim((string)$value);
     if ($raw === '') return 0.0;
@@ -581,7 +588,7 @@ includeSidebar('Logística - Gerar Lista');
                                 <tr>
                                     <td><?= h($it['nome']) ?></td>
                                     <td><?= h($it['unidade']) ?></td>
-                                    <td><?= number_format((float)$it['quantidade'], 4, ',', '.') ?></td>
+                                    <td><?= logistica_format_quantidade((float)$it['quantidade']) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
