@@ -130,6 +130,17 @@ function logistica_insumos_ensure_rendimento_schema(PDO $pdo): void {
 
     try {
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS rendimento_base_pessoas INTEGER NOT NULL DEFAULT 100");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_aplicar_margem BOOLEAN DEFAULT TRUE");
+        $pdo->exec("
+            UPDATE logistica_insumos i
+            SET grupo_arredondar_inteiro = COALESCE(i.grupo_arredondar_inteiro, COALESCE(t.grupo_arredondar_inteiro, TRUE)),
+                grupo_aplicar_margem = COALESCE(i.grupo_aplicar_margem, COALESCE(t.grupo_aplicar_margem, TRUE))
+            FROM logistica_tipologias_insumo t
+            WHERE t.id = i.tipologia_insumo_id
+              AND COALESCE(t.calculo_por_grupo, FALSE) = TRUE
+              AND (i.grupo_arredondar_inteiro IS NULL OR i.grupo_aplicar_margem IS NULL)
+        ");
         $pdo->exec("UPDATE logistica_insumos SET rendimento_base_pessoas = 100 WHERE rendimento_base_pessoas IS NULL OR rendimento_base_pessoas <= 0");
     } catch (Throwable $e) {
         error_log('logistica_insumos_ensure_rendimento_schema: ' . $e->getMessage());
@@ -280,6 +291,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
+                ':grupo_arredondar_inteiro' => pg_bool_param($no_checks ? true : !empty($_POST['grupo_arredondar_inteiro'])),
+                ':grupo_aplicar_margem' => pg_bool_param($no_checks ? true : !empty($_POST['grupo_aplicar_margem'])),
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null
             ];
 
@@ -305,6 +318,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             sinonimos = :sinonimos,
                             barcode = :barcode,
                             rendimento_base_pessoas = :rendimento_base_pessoas,
+                            grupo_arredondar_inteiro = :grupo_arredondar_inteiro,
+                            grupo_aplicar_margem = :grupo_aplicar_margem,
                             observacoes = :observacoes,
                             updated_at = NOW()
                     ";
@@ -321,12 +336,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $cols = [
                         'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
                         'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas',
-                        'observacoes'
+                        'grupo_arredondar_inteiro', 'grupo_aplicar_margem', 'observacoes'
                     ];
                     $vals = [
                         ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
                         ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas',
-                        ':observacoes'
+                        ':grupo_arredondar_inteiro', ':grupo_aplicar_margem', ':observacoes'
                     ];
                     if ($can_see_cost) {
                         $cols[] = 'custo_padrao';
@@ -466,6 +481,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
+        'grupo_arredondar_inteiro' => $no_checks ? true : !empty($_POST['grupo_arredondar_inteiro']),
+        'grupo_aplicar_margem' => $no_checks ? true : !empty($_POST['grupo_aplicar_margem']),
         'visivel_na_lista' => $no_checks ? true : !empty($_POST['visivel_na_lista']),
         'ativo' => $no_checks ? true : !empty($_POST['ativo']),
         'sinonimos' => trim((string)($_POST['sinonimos'] ?? '')),
@@ -761,6 +778,11 @@ body {
     width: 18px;
     height: 18px;
     accent-color: var(--primary);
+}
+.check-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 1rem;
 }
 .form-block {
     margin-top: 1.05rem;
@@ -1090,6 +1112,21 @@ body {
                     <label class="field-label">Rendimento base (pessoas)</label>
                     <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
                 </div>
+                <?php if (!$no_checks): ?>
+                <div>
+                    <label class="field-label">Cálculo na lista</label>
+                    <div class="check-grid">
+                        <label class="check-item">
+                            <input type="checkbox" name="grupo_arredondar_inteiro" <?= !isset($form_item) || !isset($form_item['grupo_arredondar_inteiro']) || !empty($form_item['grupo_arredondar_inteiro']) ? 'checked' : '' ?>>
+                            Arredondar para cima
+                        </label>
+                        <label class="check-item">
+                            <input type="checkbox" name="grupo_aplicar_margem" <?= !isset($form_item) || !isset($form_item['grupo_aplicar_margem']) || !empty($form_item['grupo_aplicar_margem']) ? 'checked' : '' ?>>
+                            Acrescentar 5%
+                        </label>
+                    </div>
+                </div>
+                <?php endif; ?>
                 <?php if ($can_see_cost): ?>
                 <div>
                     <label class="field-label">Custo padrão</label>

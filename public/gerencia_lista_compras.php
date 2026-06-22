@@ -41,7 +41,7 @@ function glc_ensure_schema(PDO $pdo): void
         return;
     }
 
-    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v2';
+    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v3';
     $markerMtime = @filemtime($marker);
     if ($markerMtime !== false && (time() - $markerMtime) < 3600) {
         $done = true;
@@ -101,6 +101,20 @@ function glc_ensure_schema(PDO $pdo): void
             ADD COLUMN IF NOT EXISTS grupo_distribuir_igual BOOLEAN DEFAULT TRUE,
             ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE,
             ADD COLUMN IF NOT EXISTS grupo_aplicar_margem BOOLEAN DEFAULT TRUE
+    ");
+    $pdo->exec("
+        ALTER TABLE logistica_insumos
+            ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS grupo_aplicar_margem BOOLEAN DEFAULT TRUE
+    ");
+    $pdo->exec("
+        UPDATE logistica_insumos i
+        SET grupo_arredondar_inteiro = COALESCE(i.grupo_arredondar_inteiro, COALESCE(t.grupo_arredondar_inteiro, TRUE)),
+            grupo_aplicar_margem = COALESCE(i.grupo_aplicar_margem, COALESCE(t.grupo_aplicar_margem, TRUE))
+        FROM logistica_tipologias_insumo t
+        WHERE t.id = i.tipologia_insumo_id
+          AND COALESCE(t.calculo_por_grupo, FALSE) = TRUE
+          AND (i.grupo_arredondar_inteiro IS NULL OR i.grupo_aplicar_margem IS NULL)
     ");
 
     @touch($marker);
@@ -354,8 +368,8 @@ function glc_fetch_catalogo(PDO $pdo): array
                            t.grupo_quantidade_base,
                            t.grupo_unidade_medida_id,
                            COALESCE(t.grupo_distribuir_igual, TRUE) AS grupo_distribuir_igual,
-                           COALESCE(t.grupo_arredondar_inteiro, TRUE) AS grupo_arredondar_inteiro,
-                           COALESCE(t.grupo_aplicar_margem, TRUE) AS grupo_aplicar_margem,
+                           COALESCE(i.grupo_arredondar_inteiro, COALESCE(t.grupo_arredondar_inteiro, TRUE)) AS grupo_arredondar_inteiro,
+                           COALESCE(i.grupo_aplicar_margem, COALESCE(t.grupo_aplicar_margem, TRUE)) AS grupo_aplicar_margem,
                            u.nome AS unidade_nome
                     FROM logistica_insumos i
                     LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
@@ -520,18 +534,18 @@ function glc_add_totais_grupo_tipologia(
         $config = $group['config'];
         $pessoasBase = max(0.001, (float)($config['grupo_pessoas_base'] ?? 0));
         $quantidadeBase = (float)($config['grupo_quantidade_base'] ?? 0);
-        $margem = !empty($config['grupo_aplicar_margem']) ? GLC_MARGEM_SEGURANCA : 1.0;
-        $totalGrupo = ($convidados / $pessoasBase) * $quantidadeBase * $margem;
+        $totalGrupo = ($convidados / $pessoasBase) * $quantidadeBase;
         $distribuirIgual = !empty($config['grupo_distribuir_igual']);
-        $quantityPerItem = $distribuirIgual ? ($totalGrupo / $count) : $totalGrupo;
-        if (!empty($config['grupo_arredondar_inteiro'])) {
-            $quantityPerItem = ceil($quantityPerItem);
-        }
+        $baseQuantityPerItem = $distribuirIgual ? ($totalGrupo / $count) : $totalGrupo;
 
         $unitId = !empty($config['grupo_unidade_medida_id']) ? (int)$config['grupo_unidade_medida_id'] : null;
         foreach ($items as $item) {
             $itemId = (int)($item['item_id'] ?? 0);
             $insumo = $insumos[$itemId] ?? [];
+            $quantityPerItem = $baseQuantityPerItem * (!empty($insumo['grupo_aplicar_margem']) ? GLC_MARGEM_SEGURANCA : 1.0);
+            if (!empty($insumo['grupo_arredondar_inteiro'])) {
+                $quantityPerItem = ceil($quantityPerItem);
+            }
             $itemUnitId = $unitId ?: (!empty($insumo['unidade_medida_padrao_id']) ? (int)$insumo['unidade_medida_padrao_id'] : null);
             glc_add_total($totals, $eventId, $itemId, $itemUnitId ?: null, $quantityPerItem, [
                 'tipo' => 'tipologia por grupo',
