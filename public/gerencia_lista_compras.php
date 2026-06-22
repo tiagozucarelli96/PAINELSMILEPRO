@@ -41,7 +41,7 @@ function glc_ensure_schema(PDO $pdo): void
         return;
     }
 
-    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v5';
+    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v6';
     $markerMtime = @filemtime($marker);
     if ($markerMtime !== false && (time() - $markerMtime) < 3600) {
         $done = true;
@@ -105,6 +105,7 @@ function glc_ensure_schema(PDO $pdo): void
     $pdo->exec("
         ALTER TABLE logistica_insumos
             ADD COLUMN IF NOT EXISTS calculo_lista_metodo VARCHAR(20) DEFAULT 'rendimento',
+            ADD COLUMN IF NOT EXISTS arredondar_rendimento_lista BOOLEAN DEFAULT FALSE,
             ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3),
             ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
             ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
@@ -398,6 +399,7 @@ function glc_fetch_catalogo(PDO $pdo): array
                                    ELSE 'rendimento'
                                END
                            ) AS calculo_lista_metodo,
+                           COALESCE(i.arredondar_rendimento_lista, FALSE) AS arredondar_rendimento_lista,
                            t.nome AS tipologia_nome,
                            COALESCE(t.visivel_na_lista, TRUE) AS tipologia_visivel_na_lista,
                            COALESCE(t.calculo_por_grupo, FALSE) AS calculo_por_grupo,
@@ -725,6 +727,9 @@ function glc_calcular_lista(PDO $pdo, array $events): array
                 }
                 $yield = max(1, (int)($insumos[$itemId]['rendimento_base_pessoas'] ?? 100));
                 $quantity = ($convidados / $yield) * GLC_MARGEM_SEGURANCA;
+                if (!empty($insumos[$itemId]['arredondar_rendimento_lista'])) {
+                    $quantity = ceil($quantity);
+                }
                 $unitId = isset($insumos[$itemId]['unidade_medida_padrao_id']) ? (int)$insumos[$itemId]['unidade_medida_padrao_id'] : null;
                 glc_add_total($totals, (int)$eventId, $itemId, $unitId ?: null, $quantity, [
                     'tipo' => 'insumo direto',

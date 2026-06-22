@@ -136,6 +136,7 @@ function logistica_insumos_ensure_rendimento_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3)");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id)");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS calculo_lista_metodo VARCHAR(20) DEFAULT 'rendimento'");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS arredondar_rendimento_lista BOOLEAN DEFAULT FALSE");
         $pdo->exec("
             UPDATE logistica_insumos i
             SET grupo_arredondar_inteiro = COALESCE(i.grupo_arredondar_inteiro, COALESCE(t.grupo_arredondar_inteiro, TRUE)),
@@ -319,6 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
                 ':calculo_lista_metodo' => in_array(($_POST['calculo_lista_metodo'] ?? 'rendimento'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo'] : 'rendimento',
+                ':arredondar_rendimento_lista' => pg_bool_param($no_checks ? !empty($edit_item['arredondar_rendimento_lista']) : !empty($_POST['arredondar_rendimento_lista'])),
                 ':grupo_pessoas_base' => parse_decimal_input((string)($_POST['grupo_pessoas_base'] ?? ''), 3),
                 ':grupo_quantidade_base' => parse_decimal_input((string)($_POST['grupo_quantidade_base'] ?? ''), 3),
                 ':grupo_unidade_medida_id' => !empty($_POST['grupo_unidade_medida_id']) ? (int)$_POST['grupo_unidade_medida_id'] : null,
@@ -350,6 +352,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             barcode = :barcode,
                             rendimento_base_pessoas = :rendimento_base_pessoas,
                             calculo_lista_metodo = :calculo_lista_metodo,
+                            arredondar_rendimento_lista = :arredondar_rendimento_lista,
                             grupo_pessoas_base = :grupo_pessoas_base,
                             grupo_quantidade_base = :grupo_quantidade_base,
                             grupo_unidade_medida_id = :grupo_unidade_medida_id,
@@ -371,12 +374,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $cols = [
                         'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
                         'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas', 'calculo_lista_metodo',
+                        'arredondar_rendimento_lista',
                         'grupo_pessoas_base', 'grupo_quantidade_base', 'grupo_unidade_medida_id',
                         'grupo_arredondar_inteiro', 'grupo_aplicar_margem', 'observacoes'
                     ];
                     $vals = [
                         ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
                         ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas', ':calculo_lista_metodo',
+                        ':arredondar_rendimento_lista',
                         ':grupo_pessoas_base', ':grupo_quantidade_base', ':grupo_unidade_medida_id',
                         ':grupo_arredondar_inteiro', ':grupo_aplicar_margem', ':observacoes'
                     ];
@@ -519,6 +524,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
         'calculo_lista_metodo' => in_array(($_POST['calculo_lista_metodo'] ?? 'rendimento'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo'] : 'rendimento',
+        'arredondar_rendimento_lista' => $no_checks ? !empty($edit_item['arredondar_rendimento_lista']) : !empty($_POST['arredondar_rendimento_lista']),
         'grupo_pessoas_base' => parse_decimal_input((string)($_POST['grupo_pessoas_base'] ?? ''), 3),
         'grupo_quantidade_base' => parse_decimal_input((string)($_POST['grupo_quantidade_base'] ?? ''), 3),
         'grupo_unidade_medida_id' => !empty($_POST['grupo_unidade_medida_id']) ? (int)$_POST['grupo_unidade_medida_id'] : null,
@@ -1181,6 +1187,13 @@ body {
                         <label class="field-label">Rendimento base (pessoas)</label>
                         <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
                     </div>
+                    <div>
+                        <label class="field-label">Arredondamento</label>
+                        <label class="check-item">
+                            <input type="checkbox" name="arredondar_rendimento_lista" <?= !empty($form_item['arredondar_rendimento_lista']) ? 'checked' : '' ?>>
+                            Arredondar para cima na lista
+                        </label>
+                    </div>
                 </div>
                 <div class="span-4 calc-panel" data-calc-panel="grupo">
                     <div>
@@ -1219,6 +1232,7 @@ body {
                 <?php else: ?>
                 <input type="hidden" name="calculo_lista_metodo" value="<?= h($form_item['calculo_lista_metodo'] ?? 'rendimento') ?>">
                 <input type="hidden" name="rendimento_base_pessoas" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
+                <input type="hidden" name="arredondar_rendimento_lista" value="<?= !empty($form_item['arredondar_rendimento_lista']) ? '1' : '' ?>">
                 <input type="hidden" name="grupo_pessoas_base" value="<?= isset($form_item['grupo_pessoas_base']) && $form_item['grupo_pessoas_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_pessoas_base'], 3)) : '' ?>">
                 <input type="hidden" name="grupo_quantidade_base" value="<?= isset($form_item['grupo_quantidade_base']) && $form_item['grupo_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_quantidade_base'], 3)) : '' ?>">
                 <input type="hidden" name="grupo_unidade_medida_id" value="<?= h((string)($form_item['grupo_unidade_medida_id'] ?? '')) ?>">
