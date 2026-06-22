@@ -699,6 +699,7 @@ $isFormRequest = $_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'preview' 
 $selectedEvents = [];
 $calculo = null;
 $savedListId = 0;
+$debugInfo = [];
 
 if ($isFormRequest) {
     try {
@@ -745,6 +746,20 @@ if ($isFormRequest && !empty($selectedEvents)) {
     }
 }
 
+if (isset($_GET['_glc_debug'])) {
+    $debugInfo = [
+        'method' => $_SERVER['REQUEST_METHOD'] ?? '',
+        'action' => $action,
+        'get_keys' => array_keys($_GET),
+        'request_keys' => array_keys($requestInput),
+        'raw_event_ids' => $rawEventIds,
+        'selected_ids' => $selectedIds,
+        'is_form_request' => $isFormRequest,
+        'selected_events_count' => count($selectedEvents),
+        'errors_count' => count($errors),
+    ];
+}
+
 ob_start();
 ?>
 
@@ -778,6 +793,10 @@ ob_start();
 </style>
 
 <div class="glc-page">
+    <?php if ($debugInfo): ?>
+        <!-- GLC_DEBUG <?= h(json_encode($debugInfo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?> -->
+    <?php endif; ?>
+
     <header class="glc-header">
         <div>
             <h1>Lista de compras</h1>
