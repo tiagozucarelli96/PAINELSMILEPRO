@@ -41,7 +41,7 @@ function glc_ensure_schema(PDO $pdo): void
         return;
     }
 
-    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v3';
+    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v4';
     $markerMtime = @filemtime($marker);
     if ($markerMtime !== false && (time() - $markerMtime) < 3600) {
         $done = true;
@@ -104,17 +104,29 @@ function glc_ensure_schema(PDO $pdo): void
     ");
     $pdo->exec("
         ALTER TABLE logistica_insumos
+            ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3),
+            ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
+            ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
             ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE,
             ADD COLUMN IF NOT EXISTS grupo_aplicar_margem BOOLEAN DEFAULT TRUE
     ");
     $pdo->exec("
         UPDATE logistica_insumos i
         SET grupo_arredondar_inteiro = COALESCE(i.grupo_arredondar_inteiro, COALESCE(t.grupo_arredondar_inteiro, TRUE)),
-            grupo_aplicar_margem = COALESCE(i.grupo_aplicar_margem, COALESCE(t.grupo_aplicar_margem, TRUE))
+            grupo_aplicar_margem = COALESCE(i.grupo_aplicar_margem, COALESCE(t.grupo_aplicar_margem, TRUE)),
+            grupo_pessoas_base = COALESCE(i.grupo_pessoas_base, t.grupo_pessoas_base),
+            grupo_quantidade_base = COALESCE(i.grupo_quantidade_base, t.grupo_quantidade_base),
+            grupo_unidade_medida_id = COALESCE(i.grupo_unidade_medida_id, t.grupo_unidade_medida_id)
         FROM logistica_tipologias_insumo t
         WHERE t.id = i.tipologia_insumo_id
           AND COALESCE(t.calculo_por_grupo, FALSE) = TRUE
-          AND (i.grupo_arredondar_inteiro IS NULL OR i.grupo_aplicar_margem IS NULL)
+          AND (
+              i.grupo_arredondar_inteiro IS NULL
+              OR i.grupo_aplicar_margem IS NULL
+              OR i.grupo_pessoas_base IS NULL
+              OR i.grupo_quantidade_base IS NULL
+              OR i.grupo_unidade_medida_id IS NULL
+          )
     ");
 
     @touch($marker);
@@ -364,9 +376,9 @@ function glc_fetch_catalogo(PDO $pdo): array
                            t.nome AS tipologia_nome,
                            COALESCE(t.visivel_na_lista, TRUE) AS tipologia_visivel_na_lista,
                            COALESCE(t.calculo_por_grupo, FALSE) AS calculo_por_grupo,
-                           t.grupo_pessoas_base,
-                           t.grupo_quantidade_base,
-                           t.grupo_unidade_medida_id,
+                           COALESCE(i.grupo_pessoas_base, t.grupo_pessoas_base) AS grupo_pessoas_base,
+                           COALESCE(i.grupo_quantidade_base, t.grupo_quantidade_base) AS grupo_quantidade_base,
+                           COALESCE(i.grupo_unidade_medida_id, t.grupo_unidade_medida_id) AS grupo_unidade_medida_id,
                            COALESCE(t.grupo_distribuir_igual, TRUE) AS grupo_distribuir_igual,
                            COALESCE(i.grupo_arredondar_inteiro, COALESCE(t.grupo_arredondar_inteiro, TRUE)) AS grupo_arredondar_inteiro,
                            COALESCE(i.grupo_aplicar_margem, COALESCE(t.grupo_aplicar_margem, TRUE)) AS grupo_aplicar_margem,

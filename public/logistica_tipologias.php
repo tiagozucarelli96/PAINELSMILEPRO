@@ -31,23 +31,6 @@ function tipologias_ensure_schema(PDO $pdo): void {
     ");
 }
 
-function tipologias_parse_decimal(?string $value): ?float {
-    $raw = trim((string)$value);
-    if ($raw === '') {
-        return null;
-    }
-    $normalized = str_replace(['.', ','], ['', '.'], $raw);
-    return is_numeric($normalized) ? (float)$normalized : null;
-}
-
-function tipologias_format_decimal($value): string {
-    if ($value === null || $value === '') {
-        return '';
-    }
-    $formatted = number_format((float)$value, 3, ',', '.');
-    return rtrim(rtrim($formatted, '0'), ',');
-}
-
 function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$errors, array &$messages): void {
     $nome = trim((string)($data['nome'] ?? ''));
     if ($nome === '') {
@@ -61,25 +44,7 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
     $id = isset($data['id']) ? (int)$data['id'] : 0;
     $isInsumo = $table === 'logistica_tipologias_insumo';
     $calculoPorGrupo = !empty($data['calculo_por_grupo']);
-    $grupoPessoasBase = tipologias_parse_decimal($data['grupo_pessoas_base'] ?? null);
-    $grupoQuantidadeBase = tipologias_parse_decimal($data['grupo_quantidade_base'] ?? null);
-    $grupoUnidadeMedidaId = !empty($data['grupo_unidade_medida_id']) ? (int)$data['grupo_unidade_medida_id'] : null;
     $grupoDistribuirIgual = !empty($data['grupo_distribuir_igual']);
-
-    if ($isInsumo && $calculoPorGrupo) {
-        if ($grupoPessoasBase === null || $grupoPessoasBase <= 0) {
-            $errors[] = 'Informe uma base de pessoas maior que zero para o cálculo por grupo.';
-            return;
-        }
-        if ($grupoQuantidadeBase === null || $grupoQuantidadeBase <= 0) {
-            $errors[] = 'Informe uma quantidade base maior que zero para o cálculo por grupo.';
-            return;
-        }
-        if ($grupoUnidadeMedidaId === null || $grupoUnidadeMedidaId <= 0) {
-            $errors[] = 'Informe a unidade do cálculo por grupo.';
-            return;
-        }
-    }
 
     if ($id > 0) {
         $extraSet = '';
@@ -87,15 +52,9 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
         if ($isInsumo) {
             $extraSet = ",
                 calculo_por_grupo = :calculo_por_grupo,
-                grupo_pessoas_base = :grupo_pessoas_base,
-                grupo_quantidade_base = :grupo_quantidade_base,
-                grupo_unidade_medida_id = :grupo_unidade_medida_id,
                 grupo_distribuir_igual = :grupo_distribuir_igual";
             $params += [
                 ':calculo_por_grupo' => $calculoPorGrupo ? '1' : '0',
-                ':grupo_pessoas_base' => $calculoPorGrupo ? $grupoPessoasBase : null,
-                ':grupo_quantidade_base' => $calculoPorGrupo ? $grupoQuantidadeBase : null,
-                ':grupo_unidade_medida_id' => $calculoPorGrupo ? $grupoUnidadeMedidaId : null,
                 ':grupo_distribuir_igual' => $calculoPorGrupo ? ($grupoDistribuirIgual ? '1' : '0') : '1',
             ];
         }
@@ -118,19 +77,14 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
     if ($isInsumo) {
         $stmt = $pdo->prepare("
             INSERT INTO {$table}
-                (nome, ordem, ativo, visivel_na_lista, calculo_por_grupo, grupo_pessoas_base, grupo_quantidade_base,
-                 grupo_unidade_medida_id, grupo_distribuir_igual)
+                (nome, ordem, ativo, visivel_na_lista, calculo_por_grupo, grupo_distribuir_igual)
             VALUES
-                (:nome, :ordem, {$ativo}, {$visivel}, :calculo_por_grupo, :grupo_pessoas_base, :grupo_quantidade_base,
-                 :grupo_unidade_medida_id, :grupo_distribuir_igual)
+                (:nome, :ordem, {$ativo}, {$visivel}, :calculo_por_grupo, :grupo_distribuir_igual)
         ");
         $stmt->execute([
             ':nome' => $nome,
             ':ordem' => $ordem,
             ':calculo_por_grupo' => $calculoPorGrupo ? '1' : '0',
-            ':grupo_pessoas_base' => $calculoPorGrupo ? $grupoPessoasBase : null,
-            ':grupo_quantidade_base' => $calculoPorGrupo ? $grupoQuantidadeBase : null,
-            ':grupo_unidade_medida_id' => $calculoPorGrupo ? $grupoUnidadeMedidaId : null,
             ':grupo_distribuir_igual' => $calculoPorGrupo ? ($grupoDistribuirIgual ? '1' : '0') : '1',
         ]);
     } else {
@@ -705,25 +659,6 @@ $is_editing_receita = is_array($edit_receita);
                             </label>
                         </div>
                     </div>
-                    <div>
-                        <label class="field-label">Pessoas base</label>
-                        <input class="form-input" name="grupo_pessoas_base" inputmode="decimal" value="<?= h(tipologias_format_decimal($edit_insumo['grupo_pessoas_base'] ?? '')) ?>" placeholder="Ex.: 100">
-                    </div>
-                    <div>
-                        <label class="field-label">Quantidade total do grupo</label>
-                        <input class="form-input" name="grupo_quantidade_base" inputmode="decimal" value="<?= h(tipologias_format_decimal($edit_insumo['grupo_quantidade_base'] ?? '')) ?>" placeholder="Ex.: 1500">
-                    </div>
-                    <div>
-                        <label class="field-label">Unidade do grupo</label>
-                        <select class="form-input" name="grupo_unidade_medida_id">
-                            <option value="">Selecione</option>
-                            <?php foreach ($unidades_medida as $unidade): ?>
-                                <option value="<?= (int)$unidade['id'] ?>" <?= (int)($edit_insumo['grupo_unidade_medida_id'] ?? 0) === (int)$unidade['id'] ? 'selected' : '' ?>>
-                                    <?= h($unidade['nome']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
                     <div class="form-actions">
                         <button class="btn-primary" type="submit"><?= $is_editing_insumo ? 'Atualizar insumo' : 'Criar insumo' ?></button>
                         <?php if ($is_editing_insumo): ?>
@@ -758,8 +693,7 @@ $is_editing_receita = is_array($edit_receita);
                                 <td><?= $tip['visivel_na_lista'] ? 'Sim' : 'Não' ?></td>
                                 <td>
                                     <?php if (!empty($tip['calculo_por_grupo'])): ?>
-                                        Grupo: <?= h(tipologias_format_decimal($tip['grupo_pessoas_base'] ?? '')) ?> pessoa(s) =
-                                        <?= h(tipologias_format_decimal($tip['grupo_quantidade_base'] ?? '')) ?>
+                                        Cálculo por grupo
                                     <?php else: ?>
                                         Rendimento do item
                                     <?php endif; ?>

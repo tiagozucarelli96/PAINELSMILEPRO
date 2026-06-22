@@ -132,14 +132,26 @@ function logistica_insumos_ensure_rendimento_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS rendimento_base_pessoas INTEGER NOT NULL DEFAULT 100");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_aplicar_margem BOOLEAN DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3)");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3)");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id)");
         $pdo->exec("
             UPDATE logistica_insumos i
             SET grupo_arredondar_inteiro = COALESCE(i.grupo_arredondar_inteiro, COALESCE(t.grupo_arredondar_inteiro, TRUE)),
-                grupo_aplicar_margem = COALESCE(i.grupo_aplicar_margem, COALESCE(t.grupo_aplicar_margem, TRUE))
+                grupo_aplicar_margem = COALESCE(i.grupo_aplicar_margem, COALESCE(t.grupo_aplicar_margem, TRUE)),
+                grupo_pessoas_base = COALESCE(i.grupo_pessoas_base, t.grupo_pessoas_base),
+                grupo_quantidade_base = COALESCE(i.grupo_quantidade_base, t.grupo_quantidade_base),
+                grupo_unidade_medida_id = COALESCE(i.grupo_unidade_medida_id, t.grupo_unidade_medida_id)
             FROM logistica_tipologias_insumo t
             WHERE t.id = i.tipologia_insumo_id
               AND COALESCE(t.calculo_por_grupo, FALSE) = TRUE
-              AND (i.grupo_arredondar_inteiro IS NULL OR i.grupo_aplicar_margem IS NULL)
+              AND (
+                  i.grupo_arredondar_inteiro IS NULL
+                  OR i.grupo_aplicar_margem IS NULL
+                  OR i.grupo_pessoas_base IS NULL
+                  OR i.grupo_quantidade_base IS NULL
+                  OR i.grupo_unidade_medida_id IS NULL
+              )
         ");
         $pdo->exec("UPDATE logistica_insumos SET rendimento_base_pessoas = 100 WHERE rendimento_base_pessoas IS NULL OR rendimento_base_pessoas <= 0");
     } catch (Throwable $e) {
@@ -291,6 +303,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
+                ':grupo_pessoas_base' => parse_decimal_input((string)($_POST['grupo_pessoas_base'] ?? ''), 3),
+                ':grupo_quantidade_base' => parse_decimal_input((string)($_POST['grupo_quantidade_base'] ?? ''), 3),
+                ':grupo_unidade_medida_id' => !empty($_POST['grupo_unidade_medida_id']) ? (int)$_POST['grupo_unidade_medida_id'] : null,
                 ':grupo_arredondar_inteiro' => pg_bool_param($no_checks ? true : !empty($_POST['grupo_arredondar_inteiro'])),
                 ':grupo_aplicar_margem' => pg_bool_param($no_checks ? true : !empty($_POST['grupo_aplicar_margem'])),
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null
@@ -318,6 +333,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             sinonimos = :sinonimos,
                             barcode = :barcode,
                             rendimento_base_pessoas = :rendimento_base_pessoas,
+                            grupo_pessoas_base = :grupo_pessoas_base,
+                            grupo_quantidade_base = :grupo_quantidade_base,
+                            grupo_unidade_medida_id = :grupo_unidade_medida_id,
                             grupo_arredondar_inteiro = :grupo_arredondar_inteiro,
                             grupo_aplicar_margem = :grupo_aplicar_margem,
                             observacoes = :observacoes,
@@ -336,11 +354,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $cols = [
                         'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
                         'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas',
+                        'grupo_pessoas_base', 'grupo_quantidade_base', 'grupo_unidade_medida_id',
                         'grupo_arredondar_inteiro', 'grupo_aplicar_margem', 'observacoes'
                     ];
                     $vals = [
                         ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
                         ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas',
+                        ':grupo_pessoas_base', ':grupo_quantidade_base', ':grupo_unidade_medida_id',
                         ':grupo_arredondar_inteiro', ':grupo_aplicar_margem', ':observacoes'
                     ];
                     if ($can_see_cost) {
@@ -481,6 +501,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
+        'grupo_pessoas_base' => parse_decimal_input((string)($_POST['grupo_pessoas_base'] ?? ''), 3),
+        'grupo_quantidade_base' => parse_decimal_input((string)($_POST['grupo_quantidade_base'] ?? ''), 3),
+        'grupo_unidade_medida_id' => !empty($_POST['grupo_unidade_medida_id']) ? (int)$_POST['grupo_unidade_medida_id'] : null,
         'grupo_arredondar_inteiro' => $no_checks ? true : !empty($_POST['grupo_arredondar_inteiro']),
         'grupo_aplicar_margem' => $no_checks ? true : !empty($_POST['grupo_aplicar_margem']),
         'visivel_na_lista' => $no_checks ? true : !empty($_POST['visivel_na_lista']),
@@ -1125,6 +1148,25 @@ body {
                             Acrescentar 5%
                         </label>
                     </div>
+                </div>
+                <div>
+                    <label class="field-label">Pessoas base do grupo</label>
+                    <input class="form-input" name="grupo_pessoas_base" inputmode="decimal" value="<?= isset($form_item['grupo_pessoas_base']) && $form_item['grupo_pessoas_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_pessoas_base'], 3)) : '' ?>" placeholder="Ex.: 100">
+                </div>
+                <div>
+                    <label class="field-label">Quantidade total do grupo</label>
+                    <input class="form-input" name="grupo_quantidade_base" inputmode="decimal" value="<?= isset($form_item['grupo_quantidade_base']) && $form_item['grupo_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_quantidade_base'], 3)) : '' ?>" placeholder="Ex.: 1500">
+                </div>
+                <div>
+                    <label class="field-label">Unidade do grupo</label>
+                    <select class="form-input" name="grupo_unidade_medida_id">
+                        <option value="">Selecione...</option>
+                        <?php foreach ($unidades_medida as $un): ?>
+                            <option value="<?= (int)$un['id'] ?>" <?= (int)($form_item['grupo_unidade_medida_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
+                                <?= h($un['nome']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <?php endif; ?>
                 <?php if ($can_see_cost): ?>
