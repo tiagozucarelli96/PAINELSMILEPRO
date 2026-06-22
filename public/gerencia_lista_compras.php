@@ -348,6 +348,7 @@ function glc_fetch_catalogo(PDO $pdo): array
                            i.unidade_medida_padrao_id,
                            COALESCE(i.rendimento_base_pessoas, 100) AS rendimento_base_pessoas,
                            t.nome AS tipologia_nome,
+                           COALESCE(t.visivel_na_lista, TRUE) AS tipologia_visivel_na_lista,
                            COALESCE(t.calculo_por_grupo, FALSE) AS calculo_por_grupo,
                            t.grupo_pessoas_base,
                            t.grupo_quantidade_base,
@@ -475,6 +476,10 @@ function glc_add_totais_grupo_tipologia(
         }
 
         $insumo = $insumos[$itemId];
+        if (empty($insumo['tipologia_visivel_na_lista'])) {
+            continue;
+        }
+
         $tipologiaId = (int)($insumo['tipologia_insumo_id'] ?? 0);
         if ($tipologiaId <= 0) {
             $warnings[] = 'Insumo com cálculo por grupo sem tipologia: ' . (string)($insumo['nome_oficial'] ?? ('#' . $itemId));
@@ -588,6 +593,9 @@ function glc_expand_receita(
             $warnings[] = 'Componente com insumo não encontrado: #' . $itemId . '.';
             continue;
         }
+        if (empty($insumos[$itemId]['tipologia_visivel_na_lista'])) {
+            continue;
+        }
 
         $unitId = isset($component['unidade_medida_id']) && $component['unidade_medida_id'] !== ''
             ? (int)$component['unidade_medida_id']
@@ -641,6 +649,9 @@ function glc_calcular_lista(PDO $pdo, array $events): array
             if ($tipo === 'insumo') {
                 if (!isset($insumos[$itemId])) {
                     $warnings[] = 'Insumo do cardápio não encontrado: ' . ($itemName ?: ('#' . $itemId));
+                    continue;
+                }
+                if (empty($insumos[$itemId]['tipologia_visivel_na_lista'])) {
                     continue;
                 }
                 if (glc_insumo_usa_calculo_grupo($insumos[$itemId])) {
