@@ -693,6 +693,10 @@ $messages = [];
 $errors = [];
 $requestInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 $rawEventIds = $requestInput['event_ids'] ?? ($requestInput['event_ids[]'] ?? []);
+$selectedEventIdsCsv = trim((string)($requestInput['selected_event_ids'] ?? ''));
+if ($selectedEventIdsCsv !== '') {
+    $rawEventIds = preg_split('/\s*,\s*/', $selectedEventIdsCsv, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+}
 $action = (string)($requestInput['action'] ?? '');
 $selectedIds = glc_normalize_event_ids(is_array($rawEventIds) ? $rawEventIds : [$rawEventIds]);
 $isFormRequest = $_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'preview' || !empty($selectedIds);
@@ -753,6 +757,7 @@ if (isset($_GET['_glc_debug'])) {
         'get_keys' => array_keys($_GET),
         'request_keys' => array_keys($requestInput),
         'raw_event_ids' => $rawEventIds,
+        'selected_event_ids_csv' => $selectedEventIdsCsv,
         'selected_ids' => $selectedIds,
         'is_form_request' => $isFormRequest,
         'selected_events_count' => count($selectedEvents),
@@ -819,6 +824,7 @@ ob_start();
     <form method="POST" action="index.php?page=gerencia_lista_compras" id="glcForm">
         <input type="hidden" name="page" value="gerencia_lista_compras">
         <input type="hidden" name="action" id="glcAction" value="preview">
+        <input type="hidden" name="selected_event_ids" id="glcSelectedEventIds" value="<?= h(implode(',', $selectedIds)) ?>">
 
         <section class="glc-panel">
             <h2>Eventos disponíveis</h2>
@@ -969,12 +975,13 @@ function glcClearSelection() {
 }
 
 function glcSubmit(action, btn) {
-    const checked = document.querySelectorAll('input[name="event_ids[]"]:checked').length;
-    if (checked <= 0) {
+    const checkedInputs = Array.from(document.querySelectorAll('input[name="event_ids[]"]:checked'));
+    if (checkedInputs.length <= 0) {
         alert('Selecione pelo menos um evento.');
         return false;
     }
     document.getElementById('glcAction').value = action;
+    document.getElementById('glcSelectedEventIds').value = checkedInputs.map(input => input.value).join(',');
     if (btn) {
         btn.textContent = action === 'save' ? 'Salvando...' : 'Gerando...';
     }
