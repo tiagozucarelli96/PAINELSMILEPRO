@@ -99,7 +99,8 @@ function glc_ensure_schema(PDO $pdo): void
             ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
             ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
             ADD COLUMN IF NOT EXISTS grupo_distribuir_igual BOOLEAN DEFAULT TRUE,
-            ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE
+            ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS grupo_aplicar_margem BOOLEAN DEFAULT TRUE
     ");
 
     @touch($marker);
@@ -353,6 +354,7 @@ function glc_fetch_catalogo(PDO $pdo): array
                            t.grupo_unidade_medida_id,
                            COALESCE(t.grupo_distribuir_igual, TRUE) AS grupo_distribuir_igual,
                            COALESCE(t.grupo_arredondar_inteiro, TRUE) AS grupo_arredondar_inteiro,
+                           COALESCE(t.grupo_aplicar_margem, TRUE) AS grupo_aplicar_margem,
                            u.nome AS unidade_nome
                     FROM logistica_insumos i
                     LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
@@ -498,7 +500,8 @@ function glc_add_totais_grupo_tipologia(
         $config = $group['config'];
         $pessoasBase = max(0.001, (float)($config['grupo_pessoas_base'] ?? 0));
         $quantidadeBase = (float)($config['grupo_quantidade_base'] ?? 0);
-        $totalGrupo = ($convidados / $pessoasBase) * $quantidadeBase * GLC_MARGEM_SEGURANCA;
+        $margem = !empty($config['grupo_aplicar_margem']) ? GLC_MARGEM_SEGURANCA : 1.0;
+        $totalGrupo = ($convidados / $pessoasBase) * $quantidadeBase * $margem;
         $distribuirIgual = !empty($config['grupo_distribuir_igual']);
         $quantityPerItem = $distribuirIgual ? ($totalGrupo / $count) : $totalGrupo;
         if (!empty($config['grupo_arredondar_inteiro'])) {

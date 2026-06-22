@@ -26,7 +26,8 @@ function tipologias_ensure_schema(PDO $pdo): void {
             ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
             ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
             ADD COLUMN IF NOT EXISTS grupo_distribuir_igual BOOLEAN DEFAULT TRUE,
-            ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE
+            ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS grupo_aplicar_margem BOOLEAN DEFAULT TRUE
     ");
 }
 
@@ -65,6 +66,7 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
     $grupoUnidadeMedidaId = !empty($data['grupo_unidade_medida_id']) ? (int)$data['grupo_unidade_medida_id'] : null;
     $grupoDistribuirIgual = !empty($data['grupo_distribuir_igual']);
     $grupoArredondarInteiro = !empty($data['grupo_arredondar_inteiro']);
+    $grupoAplicarMargem = !empty($data['grupo_aplicar_margem']);
 
     if ($isInsumo && $calculoPorGrupo) {
         if ($grupoPessoasBase === null || $grupoPessoasBase <= 0) {
@@ -91,7 +93,8 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
                 grupo_quantidade_base = :grupo_quantidade_base,
                 grupo_unidade_medida_id = :grupo_unidade_medida_id,
                 grupo_distribuir_igual = :grupo_distribuir_igual,
-                grupo_arredondar_inteiro = :grupo_arredondar_inteiro";
+                grupo_arredondar_inteiro = :grupo_arredondar_inteiro,
+                grupo_aplicar_margem = :grupo_aplicar_margem";
             $params += [
                 ':calculo_por_grupo' => $calculoPorGrupo ? '1' : '0',
                 ':grupo_pessoas_base' => $calculoPorGrupo ? $grupoPessoasBase : null,
@@ -99,6 +102,7 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
                 ':grupo_unidade_medida_id' => $calculoPorGrupo ? $grupoUnidadeMedidaId : null,
                 ':grupo_distribuir_igual' => $calculoPorGrupo ? ($grupoDistribuirIgual ? '1' : '0') : '1',
                 ':grupo_arredondar_inteiro' => $calculoPorGrupo ? ($grupoArredondarInteiro ? '1' : '0') : '1',
+                ':grupo_aplicar_margem' => $calculoPorGrupo ? ($grupoAplicarMargem ? '1' : '0') : '1',
             ];
         }
 
@@ -121,10 +125,10 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
         $stmt = $pdo->prepare("
             INSERT INTO {$table}
                 (nome, ordem, ativo, visivel_na_lista, calculo_por_grupo, grupo_pessoas_base, grupo_quantidade_base,
-                 grupo_unidade_medida_id, grupo_distribuir_igual, grupo_arredondar_inteiro)
+                 grupo_unidade_medida_id, grupo_distribuir_igual, grupo_arredondar_inteiro, grupo_aplicar_margem)
             VALUES
                 (:nome, :ordem, {$ativo}, {$visivel}, :calculo_por_grupo, :grupo_pessoas_base, :grupo_quantidade_base,
-                 :grupo_unidade_medida_id, :grupo_distribuir_igual, :grupo_arredondar_inteiro)
+                 :grupo_unidade_medida_id, :grupo_distribuir_igual, :grupo_arredondar_inteiro, :grupo_aplicar_margem)
         ");
         $stmt->execute([
             ':nome' => $nome,
@@ -135,6 +139,7 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
             ':grupo_unidade_medida_id' => $calculoPorGrupo ? $grupoUnidadeMedidaId : null,
             ':grupo_distribuir_igual' => $calculoPorGrupo ? ($grupoDistribuirIgual ? '1' : '0') : '1',
             ':grupo_arredondar_inteiro' => $calculoPorGrupo ? ($grupoArredondarInteiro ? '1' : '0') : '1',
+            ':grupo_aplicar_margem' => $calculoPorGrupo ? ($grupoAplicarMargem ? '1' : '0') : '1',
         ]);
     } else {
         $stmt = $pdo->prepare("
@@ -710,6 +715,10 @@ $is_editing_receita = is_array($edit_receita);
                                 <input type="checkbox" name="grupo_arredondar_inteiro" <?= !$is_editing_insumo || !isset($edit_insumo['grupo_arredondar_inteiro']) || !empty($edit_insumo['grupo_arredondar_inteiro']) ? 'checked' : '' ?>>
                                 Arredondar para cima
                             </label>
+                            <label class="check-item">
+                                <input type="checkbox" name="grupo_aplicar_margem" <?= !$is_editing_insumo || !isset($edit_insumo['grupo_aplicar_margem']) || !empty($edit_insumo['grupo_aplicar_margem']) ? 'checked' : '' ?>>
+                                Acrescentar 5%
+                            </label>
                         </div>
                     </div>
                     <div>
@@ -767,6 +776,7 @@ $is_editing_receita = is_array($edit_receita);
                                     <?php if (!empty($tip['calculo_por_grupo'])): ?>
                                         Grupo: <?= h(tipologias_format_decimal($tip['grupo_pessoas_base'] ?? '')) ?> pessoa(s) =
                                         <?= h(tipologias_format_decimal($tip['grupo_quantidade_base'] ?? '')) ?>
+                                        <?= !empty($tip['grupo_aplicar_margem']) ? '+ 5%' : 'sem 5%' ?>
                                     <?php else: ?>
                                         Rendimento do item
                                     <?php endif; ?>

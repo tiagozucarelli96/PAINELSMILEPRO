@@ -4,7 +4,8 @@ ALTER TABLE logistica_tipologias_insumo
     ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
     ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
     ADD COLUMN IF NOT EXISTS grupo_distribuir_igual BOOLEAN DEFAULT TRUE,
-    ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE;
+    ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS grupo_aplicar_margem BOOLEAN DEFAULT TRUE;
 
 UPDATE logistica_tipologias_insumo t
 SET calculo_por_grupo = TRUE,
@@ -16,5 +17,6 @@ SET calculo_por_grupo = TRUE,
     ),
     grupo_distribuir_igual = TRUE,
     grupo_arredondar_inteiro = TRUE,
+    grupo_aplicar_margem = TRUE,
     updated_at = NOW()
 WHERE LOWER(TRIM(nome)) IN (LOWER('Salgados'), LOWER('Salgados Assados'));
