@@ -270,8 +270,9 @@
 
             const isLogistica = currentPage === 'logistica' || currentPage.startsWith('logistica_');
             const isEventos = currentPage === 'eventos' || currentPage.startsWith('eventos_');
+            const isGerencia = currentPage === 'gerencia' || currentPage.startsWith('gerencia_');
 
-            if (!pagesWithOwnRender.includes(currentPage) && !isLogistica && !isEventos) {
+            if (!pagesWithOwnRender.includes(currentPage) && !isLogistica && !isEventos && !isGerencia) {
                 // Para outras páginas, carregar via AJAX
                 loadPageContent(currentPage);
             }
