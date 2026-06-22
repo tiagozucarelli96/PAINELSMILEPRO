@@ -23,7 +23,6 @@ $quick_form = [
     'barcode' => '',
     'nome_oficial' => '',
     'unidade_medida_padrao_id' => '',
-    'unidade_embalagem' => '',
     'tipologia_insumo_id' => ''
 ];
 
@@ -58,7 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'nome_oficial' => trim((string)($_POST['nome_oficial'] ?? '')),
         'unidade_medida_padrao_id' => (string)(int)($_POST['unidade_medida_padrao_id'] ?? 0),
-        'unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')),
         'tipologia_insumo_id' => (string)(int)($_POST['tipologia_insumo_id'] ?? 0)
     ];
 
@@ -73,12 +71,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
     $unidade_medida_padrao_id = (int)$quick_form['unidade_medida_padrao_id'];
     if ($unidade_medida_padrao_id <= 0 || !isset($unidade_index[$unidade_medida_padrao_id])) {
         $quick_errors[] = 'Selecione uma unidade de medida válida.';
-    }
-
-    if ($quick_form['unidade_embalagem'] === '') {
-        $quick_errors[] = 'Selecione a unidade da embalagem.';
-    } elseif (!in_array($quick_form['unidade_embalagem'], array_values($unidade_index), true)) {
-        $quick_errors[] = 'Unidade da embalagem inválida.';
     }
 
     $tipologia_insumo_id = (int)$quick_form['tipologia_insumo_id'];
@@ -113,12 +105,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
             $stmt = $pdo->prepare(
                 "INSERT INTO logistica_insumos
                     (nome_oficial, unidade_medida, unidade_medida_padrao_id, tipologia_insumo_id,
-                     visivel_na_lista, ativo, barcode, fracionavel, unidade_embalagem,
-                     foto_url, foto_chave_storage)
+                     visivel_na_lista, ativo, barcode, fracionavel, foto_url, foto_chave_storage)
                  VALUES
                     (:nome_oficial, :unidade_medida, :unidade_medida_padrao_id, :tipologia_insumo_id,
-                     TRUE, TRUE, :barcode, TRUE, :unidade_embalagem,
-                     :foto_url, :foto_chave_storage)"
+                     TRUE, TRUE, :barcode, TRUE, :foto_url, :foto_chave_storage)"
             );
 
             $stmt->execute([
@@ -127,7 +117,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
                 ':unidade_medida_padrao_id' => $unidade_medida_padrao_id,
                 ':tipologia_insumo_id' => $tipologia_insumo_id,
                 ':barcode' => $quick_form['barcode'] !== '' ? $quick_form['barcode'] : null,
-                ':unidade_embalagem' => $quick_form['unidade_embalagem'],
                 ':foto_url' => $quick_foto_url,
                 ':foto_chave_storage' => $quick_foto_chave
             ]);
@@ -139,7 +128,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
                 'barcode' => '',
                 'nome_oficial' => '',
                 'unidade_medida_padrao_id' => '',
-                'unidade_embalagem' => '',
                 'tipologia_insumo_id' => ''
             ];
         } catch (Throwable $e) {
@@ -770,18 +758,6 @@ ob_start();
                         </div>
 
                         <div class="form-row">
-                            <label class="field-label" for="quick-unidade-embalagem">Unidade da embalagem *</label>
-                            <select class="form-select" id="quick-unidade-embalagem" name="unidade_embalagem" required>
-                                <option value="">Selecione...</option>
-                                <?php foreach ($unidades_medida as $unidade): ?>
-                                    <option value="<?= h($unidade['nome']) ?>" <?= $quick_form['unidade_embalagem'] === $unidade['nome'] ? 'selected' : '' ?>>
-                                        <?= h($unidade['nome']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-
-                        <div class="form-row">
                             <label class="field-label" for="quick-tipologia">Tipologia (insumo) *</label>
                             <select class="form-select" id="quick-tipologia" name="tipologia_insumo_id" required>
                                 <option value="">Selecione...</option>
@@ -1121,7 +1097,7 @@ function openQuickModal() {
     setQuickPhotoHint();
 
     const panel = document.getElementById('quick-form-panel');
-    const hasServerPrefill = <?= ($open_quick_modal || $quick_form['barcode'] !== '' || $quick_form['nome_oficial'] !== '' || $quick_form['unidade_medida_padrao_id'] !== '' || $quick_form['unidade_embalagem'] !== '' || $quick_form['tipologia_insumo_id'] !== '') ? 'true' : 'false' ?>;
+    const hasServerPrefill = <?= ($open_quick_modal || $quick_form['barcode'] !== '' || $quick_form['nome_oficial'] !== '' || $quick_form['unidade_medida_padrao_id'] !== '' || $quick_form['tipologia_insumo_id'] !== '') ? 'true' : 'false' ?>;
 
     if (!hasServerPrefill && panel) {
         panel.classList.remove('visible');

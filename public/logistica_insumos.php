@@ -280,8 +280,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
-                ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 3),
-                ':unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')) ?: null,
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null
             ];
 
@@ -307,8 +305,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             sinonimos = :sinonimos,
                             barcode = :barcode,
                             rendimento_base_pessoas = :rendimento_base_pessoas,
-                            tamanho_embalagem = :tamanho_embalagem,
-                            unidade_embalagem = :unidade_embalagem,
                             observacoes = :observacoes,
                             updated_at = NOW()
                     ";
@@ -325,12 +321,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $cols = [
                         'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
                         'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas',
-                        'tamanho_embalagem', 'unidade_embalagem', 'observacoes'
+                        'observacoes'
                     ];
                     $vals = [
                         ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
                         ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas',
-                        ':tamanho_embalagem', ':unidade_embalagem', ':observacoes'
+                        ':observacoes'
                     ];
                     if ($can_see_cost) {
                         $cols[] = 'custo_padrao';
@@ -470,8 +466,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
-        'tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 3),
-        'unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')),
         'visivel_na_lista' => $no_checks ? true : !empty($_POST['visivel_na_lista']),
         'ativo' => $no_checks ? true : !empty($_POST['ativo']),
         'sinonimos' => trim((string)($_POST['sinonimos'] ?? '')),
@@ -1096,21 +1090,6 @@ body {
                     <label class="field-label">Rendimento base (pessoas)</label>
                     <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
                 </div>
-                <div>
-                    <label class="field-label">Tamanho embalagem</label>
-                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" placeholder="Ex.: 1,5 ou 0,51" value="<?= isset($form_item['tamanho_embalagem']) ? format_decimal_input($form_item['tamanho_embalagem'] !== null ? (float)$form_item['tamanho_embalagem'] : null, 3) : '' ?>">
-                </div>
-                <div>
-                    <label class="field-label">Unidade embalagem</label>
-                    <select class="form-input" name="unidade_embalagem">
-                        <option value="">Selecione...</option>
-                        <?php foreach ($unidades_medida as $un): ?>
-                            <option value="<?= h($un['nome']) ?>" <?= ($form_item['unidade_embalagem'] ?? '') === $un['nome'] ? 'selected' : '' ?>>
-                                <?= h($un['nome']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
                 <?php if ($can_see_cost): ?>
                 <div>
                     <label class="field-label">Custo padrão</label>
@@ -1545,13 +1524,6 @@ attachSmartDecimalMask(document.getElementById('custo_padrao'), {
     maximumFractionDigits: 2,
     scaleFromDigits: true,
     preferPtBrSeparators: false
-});
-
-attachSmartDecimalMask(document.getElementById('tamanho_embalagem'), {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 4,
-    scaleFromDigits: false,
-    preferPtBrSeparators: true
 });
 
 </script>
