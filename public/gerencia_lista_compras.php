@@ -790,7 +790,7 @@ ob_start();
         <div class="glc-alert warn">Seu usuário não possui unidade vinculada. Ajuste o cadastro do usuário para listar eventos.</div>
     <?php endif; ?>
 
-    <form method="POST" id="glcForm">
+    <form method="POST" action="index.php?page=gerencia_lista_compras" id="glcForm">
         <input type="hidden" name="action" id="glcAction" value="preview">
 
         <section class="glc-panel">
