@@ -451,6 +451,21 @@ function glc_insumo_usa_calculo_grupo(array $insumo): bool
         && (float)($insumo['grupo_quantidade_base'] ?? 0) > 0;
 }
 
+function glc_tipologia_permite_lista(array $insumo): bool
+{
+    if (!array_key_exists('tipologia_visivel_na_lista', $insumo)) {
+        return true;
+    }
+
+    $value = $insumo['tipologia_visivel_na_lista'];
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    $normalized = strtolower(trim((string)$value));
+    return !in_array($normalized, ['', '0', 'f', 'false'], true);
+}
+
 function glc_add_totais_grupo_tipologia(
     array $event,
     array $eventItems,
@@ -476,7 +491,7 @@ function glc_add_totais_grupo_tipologia(
         }
 
         $insumo = $insumos[$itemId];
-        if (empty($insumo['tipologia_visivel_na_lista'])) {
+        if (!glc_tipologia_permite_lista($insumo)) {
             continue;
         }
 
@@ -593,7 +608,7 @@ function glc_expand_receita(
             $warnings[] = 'Componente com insumo não encontrado: #' . $itemId . '.';
             continue;
         }
-        if (empty($insumos[$itemId]['tipologia_visivel_na_lista'])) {
+        if (!glc_tipologia_permite_lista($insumos[$itemId])) {
             continue;
         }
 
@@ -651,7 +666,7 @@ function glc_calcular_lista(PDO $pdo, array $events): array
                     $warnings[] = 'Insumo do cardápio não encontrado: ' . ($itemName ?: ('#' . $itemId));
                     continue;
                 }
-                if (empty($insumos[$itemId]['tipologia_visivel_na_lista'])) {
+                if (!glc_tipologia_permite_lista($insumos[$itemId])) {
                     continue;
                 }
                 if (glc_insumo_usa_calculo_grupo($insumos[$itemId])) {
