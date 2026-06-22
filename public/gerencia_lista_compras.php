@@ -803,7 +803,7 @@ ob_start();
         <div class="glc-alert warn">Seu usuário não possui unidade vinculada. Ajuste o cadastro do usuário para listar eventos.</div>
     <?php endif; ?>
 
-    <form method="POST" action="gerencia_lista_compras.php" id="glcForm">
+    <form method="GET" action="index.php" id="glcForm">
         <input type="hidden" name="page" value="gerencia_lista_compras">
         <input type="hidden" name="action" id="glcAction" value="preview">
         <input type="hidden" name="selected_event_ids" id="glcSelectedEventIds" value="<?= h(implode(',', $selectedIds)) ?>">
@@ -853,9 +853,9 @@ ob_start();
         </section>
 
         <div class="glc-toolbar">
-            <button class="glc-btn" type="submit" formmethod="GET" formaction="gerencia_lista_compras.php" name="action" value="preview" id="glcPreviewBtn" onclick="return glcSubmit('preview', this)">Gerar prévia</button>
+            <button class="glc-btn" type="submit" id="glcPreviewBtn" onclick="return glcSubmit('preview', this)">Gerar prévia</button>
             <?php if ($calculo && !empty($calculo['totals'])): ?>
-                <button class="glc-btn" type="submit" name="action" value="save" id="glcSaveBtn" onclick="return glcSubmit('save', this)">Salvar lista</button>
+                <button class="glc-btn" type="submit" formmethod="POST" formaction="index.php?page=gerencia_lista_compras" id="glcSaveBtn" onclick="return glcSubmit('save', this)">Salvar lista</button>
             <?php endif; ?>
         </div>
     </form>
