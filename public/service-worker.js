@@ -1,5 +1,5 @@
 // service-worker.js — Service Worker para Web Push Notifications
-const CACHE_NAME = 'painel-smile-v1';
+const CACHE_NAME = 'painel-smile-v2';
 
 // Instalar service worker
 self.addEventListener('install', (event) => {
@@ -14,15 +14,28 @@ self.addEventListener('activate', (event) => {
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
-                        console.log('[Service Worker] Removendo cache antigo:', cacheName);
-                        return caches.delete(cacheName);
-                    }
+                    console.log('[Service Worker] Removendo cache:', cacheName);
+                    return caches.delete(cacheName);
                 })
             );
         })
     );
     return self.clients.claim();
+});
+
+// Nunca servir páginas dinâmicas do painel a partir de cache.
+self.addEventListener('fetch', (event) => {
+    const request = event.request;
+    const url = new URL(request.url);
+
+    if (
+        request.mode === 'navigate' ||
+        url.pathname.endsWith('.php') ||
+        url.pathname === '/' ||
+        url.searchParams.has('page')
+    ) {
+        event.respondWith(fetch(request, { cache: 'no-store' }));
+    }
 });
 
 // Receber notificações push
