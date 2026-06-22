@@ -901,6 +901,9 @@ ob_start();
 
         <section class="glc-panel">
             <h2>Necessidade bruta consolidada</h2>
+            <p class="glc-muted">
+                A unidade vem do cadastro do insumo. Quando o item vem de uma receita, usa a unidade definida no componente da receita; se o componente não tiver unidade, usa a unidade padrão do insumo. A quantidade total considera convidados contratados, rendimento base e margem automática de 5%.
+            </p>
             <?php if (empty($calculo['totals'])): ?>
                 <p class="glc-muted">Nenhum item calculado.</p>
             <?php else: ?>
@@ -912,7 +915,6 @@ ob_start();
                                 <th>Insumo</th>
                                 <th>Unidade</th>
                                 <th>Quantidade total</th>
-                                <th>Eventos</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -922,18 +924,12 @@ ob_start();
                                 $unidadeNome = !empty($total['unidade_medida_id'])
                                     ? (string)($calculo['unidades'][(int)$total['unidade_medida_id']] ?? '')
                                     : (string)($insumo['unidade_nome'] ?? '');
-                                $eventPieces = [];
-                                foreach ($total['eventos'] as $eventId => $qty) {
-                                    $eventName = $selectedEvents[(int)$eventId]['nome_evento'] ?? ('Evento #' . $eventId);
-                                    $eventPieces[] = $eventName . ': ' . number_format((float)$qty, 4, ',', '.');
-                                }
                                 ?>
                                 <tr>
                                     <td><?= h($insumo['tipologia_nome'] ?? 'Sem tipologia') ?></td>
                                     <td><?= h($insumo['nome_oficial'] ?? ('Insumo #' . (int)$total['insumo_id'])) ?></td>
                                     <td><?= h($unidadeNome) ?></td>
                                     <td><strong><?= number_format((float)$total['quantidade'], 4, ',', '.') ?></strong></td>
-                                    <td><span class="glc-muted"><?= h(implode(' | ', $eventPieces)) ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
