@@ -800,6 +800,7 @@ ob_start();
 <div class="glc-page">
     <?php if ($debugInfo): ?>
         <!-- GLC_DEBUG <?= h(json_encode($debugInfo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?> -->
+        <pre class="glc-alert warn">GLC_DEBUG <?= h(json_encode($debugInfo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></pre>
     <?php endif; ?>
 
     <header class="glc-header">
