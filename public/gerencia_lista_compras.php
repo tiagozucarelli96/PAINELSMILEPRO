@@ -703,7 +703,6 @@ $isFormRequest = $_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'preview' 
 $selectedEvents = [];
 $calculo = null;
 $savedListId = 0;
-$debugInfo = [];
 
 if ($isFormRequest) {
     try {
@@ -750,21 +749,6 @@ if ($isFormRequest && !empty($selectedEvents)) {
     }
 }
 
-if (isset($_GET['_glc_debug'])) {
-    $debugInfo = [
-        'method' => $_SERVER['REQUEST_METHOD'] ?? '',
-        'action' => $action,
-        'get_keys' => array_keys($_GET),
-        'request_keys' => array_keys($requestInput),
-        'raw_event_ids' => $rawEventIds,
-        'selected_event_ids_csv' => $selectedEventIdsCsv,
-        'selected_ids' => $selectedIds,
-        'is_form_request' => $isFormRequest,
-        'selected_events_count' => count($selectedEvents),
-        'errors_count' => count($errors),
-    ];
-}
-
 ob_start();
 ?>
 
@@ -798,11 +782,6 @@ ob_start();
 </style>
 
 <div class="glc-page">
-    <?php if ($debugInfo): ?>
-        <!-- GLC_DEBUG <?= h(json_encode($debugInfo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?> -->
-        <pre class="glc-alert warn">GLC_DEBUG <?= h(json_encode($debugInfo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></pre>
-    <?php endif; ?>
-
     <header class="glc-header">
         <div>
             <h1>Lista de compras</h1>
@@ -822,8 +801,7 @@ ob_start();
         <div class="glc-alert warn">Seu usuário não possui unidade vinculada. Ajuste o cadastro do usuário para listar eventos.</div>
     <?php endif; ?>
 
-    <form method="POST" action="index.php?page=gerencia_lista_compras" id="glcForm">
-        <input type="hidden" name="page" value="gerencia_lista_compras">
+    <form method="POST" action="gerencia_lista_compras.php" id="glcForm">
         <input type="hidden" name="action" id="glcAction" value="preview">
         <input type="hidden" name="selected_event_ids" id="glcSelectedEventIds" value="<?= h(implode(',', $selectedIds)) ?>">
 
@@ -872,7 +850,7 @@ ob_start();
         </section>
 
         <div class="glc-toolbar">
-            <button class="glc-btn" type="submit" formmethod="GET" formaction="index.php" name="action" value="preview" id="glcPreviewBtn" onclick="return glcSubmit('preview', this)">Gerar prévia</button>
+            <button class="glc-btn" type="submit" formmethod="GET" formaction="gerencia_lista_compras.php" name="action" value="preview" id="glcPreviewBtn" onclick="return glcSubmit('preview', this)">Gerar prévia</button>
             <?php if ($calculo && !empty($calculo['totals'])): ?>
                 <button class="glc-btn" type="submit" name="action" value="save" id="glcSaveBtn" onclick="return glcSubmit('save', this)">Salvar lista</button>
             <?php endif; ?>
