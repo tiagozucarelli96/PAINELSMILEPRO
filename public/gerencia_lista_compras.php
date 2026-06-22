@@ -33,22 +33,58 @@ function glc_ensure_schema(PDO $pdo): void
         return;
     }
 
-    $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS rendimento_base_pessoas INTEGER NOT NULL DEFAULT 100");
-    $pdo->exec("UPDATE logistica_insumos SET rendimento_base_pessoas = 100 WHERE rendimento_base_pessoas IS NULL OR rendimento_base_pessoas <= 0");
-    $pdo->exec("ALTER TABLE logistica_listas ADD COLUMN IF NOT EXISTS status VARCHAR(40) DEFAULT 'gerada'");
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS logistica_lista_evento_itens (
-            id SERIAL PRIMARY KEY,
-            lista_id INTEGER REFERENCES logistica_listas(id) ON DELETE CASCADE,
-            evento_id INTEGER REFERENCES logistica_eventos_espelho(id),
-            insumo_id INTEGER REFERENCES logistica_insumos(id),
-            unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
-            quantidade_total_bruto NUMERIC(12,4) NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
+    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v1';
+    $markerMtime = @filemtime($marker);
+    if ($markerMtime !== false && (time() - $markerMtime) < 3600) {
+        $done = true;
+        return;
+    }
+
+    $stmt = $pdo->query("
+        SELECT
+            EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'logistica_insumos'
+                  AND column_name = 'rendimento_base_pessoas'
+            ) AS has_insumo_rendimento,
+            EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'logistica_receitas'
+                  AND column_name = 'rendimento_base_pessoas'
+            ) AS has_receita_rendimento,
+            EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_name = 'logistica_lista_evento_itens'
+            ) AS has_lista_evento_itens,
+            EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'logistica_listas'
+                  AND column_name = 'status'
+            ) AS has_lista_status
     ");
-    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_lista_evento_itens_evento ON logistica_lista_evento_itens (evento_id)");
-    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_lista_evento_itens_lista ON logistica_lista_evento_itens (lista_id)");
+    $schema = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $missing = [];
+    if (empty($schema['has_insumo_rendimento'])) {
+        $missing[] = 'logistica_insumos.rendimento_base_pessoas';
+    }
+    if (empty($schema['has_receita_rendimento'])) {
+        $missing[] = 'logistica_receitas.rendimento_base_pessoas';
+    }
+    if (empty($schema['has_lista_evento_itens'])) {
+        $missing[] = 'logistica_lista_evento_itens';
+    }
+    if (empty($schema['has_lista_status'])) {
+        $missing[] = 'logistica_listas.status';
+    }
+    if (!empty($missing)) {
+        throw new RuntimeException('Estrutura pendente. Execute sql/083_gerencia_lista_compras.sql. Faltando: ' . implode(', ', $missing));
+    }
+
+    @touch($marker);
 
     $done = true;
 }
@@ -60,24 +96,35 @@ function glc_user_id(): int
 
 function glc_fetch_user_scope(PDO $pdo): array
 {
+    if (!empty($_SESSION['perm_superadmin']) || ($_SESSION['unidade_scope'] ?? '') !== '') {
+        return [
+            'scope' => (string)($_SESSION['unidade_scope'] ?? 'nenhuma'),
+            'unidade_id' => isset($_SESSION['unidade_id']) && $_SESSION['unidade_id'] !== '' ? (int)$_SESSION['unidade_id'] : null,
+            'superadmin' => !empty($_SESSION['perm_superadmin']),
+        ];
+    }
+
     $userId = glc_user_id();
     if ($userId <= 0) {
         return ['scope' => 'nenhuma', 'unidade_id' => null, 'superadmin' => false];
     }
 
-    $columns = [];
-    try {
-        $stmtCols = $pdo->query("
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'usuarios'
-              AND column_name IN ('unidade_scope', 'unidade_id', 'perm_superadmin')
-        ");
-        foreach ($stmtCols->fetchAll(PDO::FETCH_COLUMN) ?: [] as $column) {
-            $columns[(string)$column] = true;
+    static $columns = null;
+    if ($columns === null) {
+        $columns = [];
+        try {
+            $stmtCols = $pdo->query("
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'usuarios'
+                  AND column_name IN ('unidade_scope', 'unidade_id', 'perm_superadmin')
+            ");
+            foreach ($stmtCols->fetchAll(PDO::FETCH_COLUMN) ?: [] as $column) {
+                $columns[(string)$column] = true;
+            }
+        } catch (Throwable $e) {
+            error_log('glc_fetch_user_scope columns: ' . $e->getMessage());
         }
-    } catch (Throwable $e) {
-        error_log('glc_fetch_user_scope columns: ' . $e->getMessage());
     }
 
     $scopeSql = isset($columns['unidade_scope'])
@@ -137,7 +184,7 @@ function glc_normalize_event_ids(array $raw): array
 function glc_fetch_eventos_disponiveis(PDO $pdo, array $scope): array
 {
     $params = [
-        ':ini' => date('Y-m-d', strtotime('-30 days')),
+        ':ini' => date('Y-m-d'),
         ':fim' => date('Y-m-d', strtotime('+365 days')),
     ];
     $scopeSql = glc_allowed_event_condition($scope, $params, 'e');
@@ -187,6 +234,7 @@ function glc_fetch_eventos_by_ids(PDO $pdo, array $scope, array $eventIds): arra
         $params[$key] = $id;
     }
     $scopeSql = glc_allowed_event_condition($scope, $params, 'e');
+    $params[':today'] = date('Y-m-d');
 
     $stmt = $pdo->prepare("
         SELECT e.id,
@@ -209,6 +257,7 @@ function glc_fetch_eventos_by_ids(PDO $pdo, array $scope, array $eventIds): arra
         LEFT JOIN logistica_unidades u ON u.id = e.unidade_interna_id
         WHERE e.id IN (" . implode(', ', $placeholders) . ")
           AND e.arquivado IS FALSE
+          AND e.data_evento >= :today
           AND {$scopeSql}
         ORDER BY e.data_evento ASC, e.hora_inicio ASC NULLS LAST, e.nome_evento ASC
     ");
@@ -269,36 +318,63 @@ function glc_fetch_cardapio_items(PDO $pdo, array $respostaIds): array
 
 function glc_fetch_catalogo(PDO $pdo): array
 {
-    $insumos = [];
     $stmt = $pdo->query("
-        SELECT i.id,
-               i.nome_oficial,
-               i.tipologia_insumo_id,
-               i.unidade_medida_padrao_id,
-               COALESCE(i.rendimento_base_pessoas, 100) AS rendimento_base_pessoas,
-               t.nome AS tipologia_nome,
-               u.nome AS unidade_nome
-        FROM logistica_insumos i
-        LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
-        LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
+        SELECT
+            COALESCE((
+                SELECT json_agg(row_to_json(x))
+                FROM (
+                    SELECT i.id,
+                           i.nome_oficial,
+                           i.tipologia_insumo_id,
+                           i.unidade_medida_padrao_id,
+                           COALESCE(i.rendimento_base_pessoas, 100) AS rendimento_base_pessoas,
+                           t.nome AS tipologia_nome,
+                           u.nome AS unidade_nome
+                    FROM logistica_insumos i
+                    LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
+                    LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
+                ) x
+            ), '[]'::json) AS insumos_json,
+            COALESCE((
+                SELECT json_agg(row_to_json(x))
+                FROM (
+                    SELECT id, nome, COALESCE(rendimento_base_pessoas, 100) AS rendimento_base_pessoas
+                    FROM logistica_receitas
+                ) x
+            ), '[]'::json) AS receitas_json,
+            COALESCE((
+                SELECT json_agg(row_to_json(x))
+                FROM (
+                    SELECT *
+                    FROM logistica_receita_componentes
+                    ORDER BY receita_id ASC, id ASC
+                ) x
+            ), '[]'::json) AS componentes_json,
+            COALESCE((
+                SELECT json_agg(row_to_json(x))
+                FROM (
+                    SELECT id, nome
+                    FROM logistica_unidades_medida
+                ) x
+            ), '[]'::json) AS unidades_json
     ");
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+    $payload = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    $insumos = [];
+    $insumosRows = json_decode((string)($payload['insumos_json'] ?? '[]'), true);
+    foreach (is_array($insumosRows) ? $insumosRows : [] as $row) {
         $insumos[(int)$row['id']] = $row;
     }
 
     $receitas = [];
-    $stmt = $pdo->query("SELECT id, nome, COALESCE(rendimento_base_pessoas, 100) AS rendimento_base_pessoas FROM logistica_receitas");
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+    $receitasRows = json_decode((string)($payload['receitas_json'] ?? '[]'), true);
+    foreach (is_array($receitasRows) ? $receitasRows : [] as $row) {
         $receitas[(int)$row['id']] = $row;
     }
 
     $componentes = [];
-    $stmt = $pdo->query("
-        SELECT *
-        FROM logistica_receita_componentes
-        ORDER BY receita_id ASC, id ASC
-    ");
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+    $componentesRows = json_decode((string)($payload['componentes_json'] ?? '[]'), true);
+    foreach (is_array($componentesRows) ? $componentesRows : [] as $row) {
         $rid = (int)($row['receita_id'] ?? 0);
         if ($rid <= 0) {
             continue;
@@ -310,8 +386,8 @@ function glc_fetch_catalogo(PDO $pdo): array
     }
 
     $unidades = [];
-    $stmt = $pdo->query("SELECT id, nome FROM logistica_unidades_medida");
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+    $unidadesRows = json_decode((string)($payload['unidades_json'] ?? '[]'), true);
+    foreach (is_array($unidadesRows) ? $unidadesRows : [] as $row) {
         $unidades[(int)$row['id']] = (string)$row['nome'];
     }
 
@@ -652,10 +728,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $eventosDisponiveis = [];
-try {
-    $eventosDisponiveis = glc_fetch_eventos_disponiveis($pdo, $scope);
-} catch (Throwable $e) {
-    $errors[] = 'Erro ao carregar eventos: ' . $e->getMessage();
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($selectedEvents)) {
+    $eventosDisponiveis = array_values($selectedEvents);
+} else {
+    try {
+        $eventosDisponiveis = glc_fetch_eventos_disponiveis($pdo, $scope);
+    } catch (Throwable $e) {
+        $errors[] = 'Erro ao carregar eventos: ' . $e->getMessage();
+    }
 }
 
 ob_start();
@@ -758,9 +838,9 @@ ob_start();
         </section>
 
         <div class="glc-toolbar">
-            <button class="glc-btn" type="button" onclick="glcSubmit('preview')">Gerar prévia</button>
+            <button class="glc-btn" type="button" id="glcPreviewBtn" onclick="glcSubmit('preview')">Gerar prévia</button>
             <?php if ($calculo && !empty($calculo['totals'])): ?>
-                <button class="glc-btn" type="button" onclick="glcSubmit('save')">Salvar lista</button>
+                <button class="glc-btn" type="button" id="glcSaveBtn" onclick="glcSubmit('save')">Salvar lista</button>
             <?php endif; ?>
         </div>
     </form>
@@ -775,7 +855,7 @@ ob_start();
             </section>
         <?php endif; ?>
 
-        <section class="glc-panel">
+        <section class="glc-panel" id="glcPreview">
             <h2>Eventos usados no cálculo</h2>
             <div class="glc-table-wrap">
                 <table class="glc-table">
@@ -862,7 +942,17 @@ function glcClearSelection() {
 }
 
 function glcSubmit(action) {
+    const checked = document.querySelectorAll('input[name="event_ids[]"]:checked').length;
+    if (checked <= 0) {
+        alert('Selecione pelo menos um evento.');
+        return;
+    }
     document.getElementById('glcAction').value = action;
+    const btn = action === 'save' ? document.getElementById('glcSaveBtn') : document.getElementById('glcPreviewBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = action === 'save' ? 'Salvando...' : 'Gerando...';
+    }
     document.getElementById('glcForm').submit();
 }
 
@@ -875,6 +965,9 @@ document.getElementById('glcSearch')?.addEventListener('input', function () {
 });
 
 glcUpdateCount();
+<?php if ($calculo): ?>
+document.getElementById('glcPreview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+<?php endif; ?>
 </script>
 
 <?php
