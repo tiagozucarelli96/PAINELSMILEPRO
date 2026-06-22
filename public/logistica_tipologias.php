@@ -151,9 +151,9 @@ $is_editing_receita = is_array($edit_receita);
 
 <style>
 .page-container {
-    max-width: 1320px;
+    max-width: 1180px;
     margin: 0 auto;
-    padding: 1.5rem;
+    padding: 1.35rem 1.5rem 2rem;
 }
 
 .page-header {
@@ -162,16 +162,32 @@ $is_editing_receita = is_array($edit_receita);
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.1rem;
+    padding: 1.15rem 1.25rem;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.page-kicker {
+    margin: 0 0 0.25rem;
+    color: #2563eb;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
 }
 
 .page-title {
     margin: 0;
     color: #0f172a;
+    font-size: 1.85rem;
+    line-height: 1.1;
 }
 
 .page-subtitle {
-    margin: 0.35rem 0 0;
+    margin: 0.4rem 0 0;
     color: #64748b;
     font-size: 0.95rem;
 }
@@ -180,21 +196,23 @@ $is_editing_receita = is_array($edit_receita);
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
+    align-items: center;
 }
 
 .tipologia-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
-    gap: 1rem;
+    grid-template-columns: 1fr;
+    gap: 1.1rem;
 }
 
 .section-card {
     background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
     min-width: 0;
+    overflow: hidden;
 }
 
 .section-head {
@@ -202,12 +220,15 @@ $is_editing_receita = is_array($edit_receita);
     align-items: flex-start;
     justify-content: space-between;
     gap: 0.75rem;
-    margin-bottom: 1rem;
+    padding: 1.1rem 1.25rem 0.9rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
 
 .section-head h2 {
     margin: 0;
-    font-size: 1.2rem;
+    font-size: 1.15rem;
+    line-height: 1.2;
     color: #0f172a;
 }
 
@@ -223,19 +244,57 @@ $is_editing_receita = is_array($edit_receita);
     flex-wrap: wrap;
 }
 
+.section-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.section-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #1e40af;
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.tipologia-form {
+    padding: 1rem 1.25rem 1.1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+
 .form-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1rem;
+    grid-template-columns: minmax(260px, 1fr) 120px minmax(250px, 0.85fr) auto;
+    align-items: end;
+    gap: 0.85rem;
+    margin-bottom: 0;
 }
 
 .form-input {
     width: 100%;
-    padding: 0.6rem 0.75rem;
-    border: 1px solid #cbd5f5;
+    height: 42px;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid #cbd5e1;
     border-radius: 8px;
     font-size: 0.95rem;
+    color: #0f172a;
+    background: #ffffff;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    outline: none;
 }
 
 .field-label {
@@ -249,13 +308,18 @@ $is_editing_receita = is_array($edit_receita);
 .check-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(140px, 1fr));
-    gap: 0.65rem;
+    gap: 0.5rem;
 }
 
 .check-item {
     display: flex;
     align-items: center;
     gap: 0.45rem;
+    min-height: 42px;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
     font-size: 0.9rem;
     color: #334155;
 }
@@ -269,7 +333,6 @@ $is_editing_receita = is_array($edit_receita);
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
-    margin-top: 0.2rem;
 }
 
 .btn-link {
@@ -284,31 +347,46 @@ $is_editing_receita = is_array($edit_receita);
     background: #2563eb;
     color: #fff;
     border: none;
-    padding: 0.6rem 1rem;
+    min-height: 42px;
+    padding: 0.55rem 0.95rem;
     border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
+    font-size: 0.9rem;
     text-decoration: none;
+    white-space: nowrap;
 }
 
 .btn-secondary {
     background: #e2e8f0;
     color: #1f2937;
     border: none;
-    padding: 0.5rem 0.9rem;
+    min-height: 36px;
+    padding: 0.45rem 0.75rem;
     border-radius: 8px;
     cursor: pointer;
     text-decoration: none;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .btn-danger {
     background: #fee2e2;
     color: #991b1b;
     border: none;
-    padding: 0.5rem 0.9rem;
+    min-height: 36px;
+    padding: 0.45rem 0.75rem;
     border-radius: 8px;
     cursor: pointer;
     text-decoration: none;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-danger:hover {
+    filter: brightness(0.98);
 }
 
 .edit-badge {
@@ -331,37 +409,59 @@ $is_editing_receita = is_array($edit_receita);
 .table-wrap {
     width: 100%;
     overflow-x: auto;
-    margin-top: 1rem;
+    margin-top: 0;
 }
 
 .table th,
 .table td {
     text-align: left;
-    padding: 0.65rem;
+    padding: 0.78rem 1rem;
     border-bottom: 1px solid #e5e7eb;
     font-size: 0.9rem;
     white-space: nowrap;
+    vertical-align: middle;
 }
 
 .table th {
     color: #475569;
     font-weight: 600;
+    background: #f1f5f9;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.table tbody tr:hover {
     background: #f8fafc;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table td:first-child {
+    color: #0f172a;
+    font-weight: 650;
+    min-width: 220px;
 }
 
 .table td:last-child {
     white-space: normal;
+    min-width: 270px;
 }
 
 .actions-row {
     display: flex;
-    gap: 0.45rem;
+    align-items: center;
+    gap: 0.4rem;
     flex-wrap: wrap;
 }
 
 .status-pill {
-    display: inline-block;
-    padding: 0.15rem 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0.15rem 0.55rem;
     border-radius: 999px;
     font-size: 0.75rem;
     font-weight: 600;
@@ -396,14 +496,39 @@ $is_editing_receita = is_array($edit_receita);
     .page-container {
         padding: 1rem;
     }
+    .page-header {
+        padding: 1rem;
+    }
     .section-card {
+        border-radius: 8px;
+    }
+    .section-head {
         padding: 1rem;
     }
     .tipologia-grid {
         grid-template-columns: 1fr;
     }
+    .tipologia-form {
+        padding: 1rem;
+    }
+    .form-row {
+        grid-template-columns: 1fr;
+    }
     .check-grid {
         grid-template-columns: 1fr;
+    }
+    .form-actions,
+    .form-actions .btn-primary,
+    .form-actions .btn-secondary {
+        width: 100%;
+    }
+    .page-header-actions,
+    .page-header-actions .btn-secondary {
+        width: 100%;
+    }
+    .table td:first-child,
+    .table td:last-child {
+        min-width: 0;
     }
 }
 </style>
@@ -411,6 +536,7 @@ $is_editing_receita = is_array($edit_receita);
 <div class="page-container">
     <div class="page-header">
         <div>
+            <p class="page-kicker">Logística > Catálogo</p>
             <h1 class="page-title">Tipologias</h1>
             <p class="page-subtitle">Gerencie os tipos usados no cadastro de insumos e receitas.</p>
         </div>
@@ -435,16 +561,19 @@ $is_editing_receita = is_array($edit_receita);
             <div class="section-head">
                 <div>
                     <h2>Tipologias de Insumo</h2>
-                    <p><?= count($tipologias_insumo) ?> cadastrada(s)</p>
+                    <p>Categorias usadas nos insumos do catálogo.</p>
                 </div>
-                <?php if ($is_editing_insumo): ?>
-                    <div class="section-actions">
-                        <span class="edit-badge">Editando ID #<?= (int)$edit_insumo['id'] ?></span>
-                    </div>
-                <?php endif; ?>
+                <div class="section-meta">
+                    <span class="section-count"><?= count($tipologias_insumo) ?> cadastrada(s)</span>
+                    <?php if ($is_editing_insumo): ?>
+                        <div class="section-actions">
+                            <span class="edit-badge">Editando ID #<?= (int)$edit_insumo['id'] ?></span>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
 
-            <form method="POST">
+            <form class="tipologia-form" method="POST">
                 <input type="hidden" name="action" value="save">
                 <input type="hidden" name="tipo" value="insumo">
                 <input type="hidden" name="id" value="<?= $is_editing_insumo ? (int)$edit_insumo['id'] : '' ?>">
@@ -470,12 +599,12 @@ $is_editing_receita = is_array($edit_receita);
                             </label>
                         </div>
                     </div>
-                </div>
-                <div class="form-actions">
-                    <button class="btn-primary" type="submit"><?= $is_editing_insumo ? 'Atualizar tipologia de insumo' : 'Criar tipologia de insumo' ?></button>
-                    <?php if ($is_editing_insumo): ?>
-                        <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias">Cancelar edição</a>
-                    <?php endif; ?>
+                    <div class="form-actions">
+                        <button class="btn-primary" type="submit"><?= $is_editing_insumo ? 'Atualizar insumo' : 'Criar insumo' ?></button>
+                        <?php if ($is_editing_insumo): ?>
+                            <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias">Cancelar</a>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </form>
 
@@ -507,7 +636,7 @@ $is_editing_receita = is_array($edit_receita);
                                             <input type="hidden" name="action" value="toggle">
                                             <input type="hidden" name="tipo" value="insumo">
                                             <input type="hidden" name="id" value="<?= (int)$tip['id'] ?>">
-                                            <button class="btn-secondary" type="submit">Ativar/Desativar</button>
+                                            <button class="btn-secondary" type="submit">Alternar</button>
                                         </form>
                                         <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias&edit_insumo_id=<?= (int)$tip['id'] ?>">Editar</a>
                                         <form method="POST" onsubmit="return confirm('Apagar esta tipologia de insumo? Esta ação não pode ser desfeita.');">
@@ -532,16 +661,19 @@ $is_editing_receita = is_array($edit_receita);
             <div class="section-head">
                 <div>
                     <h2>Tipologias de Receita</h2>
-                    <p><?= count($tipologias_receita) ?> cadastrada(s)</p>
+                    <p>Categorias usadas nas receitas do catálogo.</p>
                 </div>
-                <?php if ($is_editing_receita): ?>
-                    <div class="section-actions">
-                        <span class="edit-badge">Editando ID #<?= (int)$edit_receita['id'] ?></span>
-                    </div>
-                <?php endif; ?>
+                <div class="section-meta">
+                    <span class="section-count"><?= count($tipologias_receita) ?> cadastrada(s)</span>
+                    <?php if ($is_editing_receita): ?>
+                        <div class="section-actions">
+                            <span class="edit-badge">Editando ID #<?= (int)$edit_receita['id'] ?></span>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
 
-            <form method="POST">
+            <form class="tipologia-form" method="POST">
                 <input type="hidden" name="action" value="save">
                 <input type="hidden" name="tipo" value="receita">
                 <input type="hidden" name="id" value="<?= $is_editing_receita ? (int)$edit_receita['id'] : '' ?>">
@@ -567,12 +699,12 @@ $is_editing_receita = is_array($edit_receita);
                             </label>
                         </div>
                     </div>
-                </div>
-                <div class="form-actions">
-                    <button class="btn-primary" type="submit"><?= $is_editing_receita ? 'Atualizar tipologia de receita' : 'Criar tipologia de receita' ?></button>
-                    <?php if ($is_editing_receita): ?>
-                        <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias<?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Cancelar edição</a>
-                    <?php endif; ?>
+                    <div class="form-actions">
+                        <button class="btn-primary" type="submit"><?= $is_editing_receita ? 'Atualizar receita' : 'Criar receita' ?></button>
+                        <?php if ($is_editing_receita): ?>
+                            <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias<?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Cancelar</a>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </form>
 
@@ -604,7 +736,7 @@ $is_editing_receita = is_array($edit_receita);
                                             <input type="hidden" name="action" value="toggle">
                                             <input type="hidden" name="tipo" value="receita">
                                             <input type="hidden" name="id" value="<?= (int)$tip['id'] ?>">
-                                            <button class="btn-secondary" type="submit">Ativar/Desativar</button>
+                                            <button class="btn-secondary" type="submit">Alternar</button>
                                         </form>
                                         <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias&edit_receita_id=<?= (int)$tip['id'] ?><?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Editar</a>
                                         <form method="POST" onsubmit="return confirm('Apagar esta tipologia de receita? Esta ação não pode ser desfeita.');">
