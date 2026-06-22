@@ -18,6 +18,35 @@ if (empty($_SESSION['perm_superadmin']) && empty($_SESSION['perm_logistico'])) {
 $errors = [];
 $messages = [];
 
+function tipologias_ensure_schema(PDO $pdo): void {
+    $pdo->exec("
+        ALTER TABLE logistica_tipologias_insumo
+            ADD COLUMN IF NOT EXISTS calculo_por_grupo BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3),
+            ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
+            ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
+            ADD COLUMN IF NOT EXISTS grupo_distribuir_igual BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE
+    ");
+}
+
+function tipologias_parse_decimal(?string $value): ?float {
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return null;
+    }
+    $normalized = str_replace(['.', ','], ['', '.'], $raw);
+    return is_numeric($normalized) ? (float)$normalized : null;
+}
+
+function tipologias_format_decimal($value): string {
+    if ($value === null || $value === '') {
+        return '';
+    }
+    $formatted = number_format((float)$value, 3, ',', '.');
+    return rtrim(rtrim($formatted, '0'), ',');
+}
+
 function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$errors, array &$messages): void {
     $nome = trim((string)($data['nome'] ?? ''));
     if ($nome === '') {
@@ -29,27 +58,91 @@ function handle_tipologia_save(PDO $pdo, string $table, array $data, array &$err
     $ativo = !empty($data['ativo']) ? 'TRUE' : 'FALSE';
     $visivel = !empty($data['visivel_na_lista']) ? 'TRUE' : 'FALSE';
     $id = isset($data['id']) ? (int)$data['id'] : 0;
+    $isInsumo = $table === 'logistica_tipologias_insumo';
+    $calculoPorGrupo = !empty($data['calculo_por_grupo']);
+    $grupoPessoasBase = tipologias_parse_decimal($data['grupo_pessoas_base'] ?? null);
+    $grupoQuantidadeBase = tipologias_parse_decimal($data['grupo_quantidade_base'] ?? null);
+    $grupoUnidadeMedidaId = !empty($data['grupo_unidade_medida_id']) ? (int)$data['grupo_unidade_medida_id'] : null;
+    $grupoDistribuirIgual = !empty($data['grupo_distribuir_igual']);
+    $grupoArredondarInteiro = !empty($data['grupo_arredondar_inteiro']);
+
+    if ($isInsumo && $calculoPorGrupo) {
+        if ($grupoPessoasBase === null || $grupoPessoasBase <= 0) {
+            $errors[] = 'Informe uma base de pessoas maior que zero para o cálculo por grupo.';
+            return;
+        }
+        if ($grupoQuantidadeBase === null || $grupoQuantidadeBase <= 0) {
+            $errors[] = 'Informe uma quantidade base maior que zero para o cálculo por grupo.';
+            return;
+        }
+        if ($grupoUnidadeMedidaId === null || $grupoUnidadeMedidaId <= 0) {
+            $errors[] = 'Informe a unidade do cálculo por grupo.';
+            return;
+        }
+    }
 
     if ($id > 0) {
+        $extraSet = '';
+        $params = [':nome' => $nome, ':ordem' => $ordem, ':id' => $id];
+        if ($isInsumo) {
+            $extraSet = ",
+                calculo_por_grupo = :calculo_por_grupo,
+                grupo_pessoas_base = :grupo_pessoas_base,
+                grupo_quantidade_base = :grupo_quantidade_base,
+                grupo_unidade_medida_id = :grupo_unidade_medida_id,
+                grupo_distribuir_igual = :grupo_distribuir_igual,
+                grupo_arredondar_inteiro = :grupo_arredondar_inteiro";
+            $params += [
+                ':calculo_por_grupo' => $calculoPorGrupo ? '1' : '0',
+                ':grupo_pessoas_base' => $calculoPorGrupo ? $grupoPessoasBase : null,
+                ':grupo_quantidade_base' => $calculoPorGrupo ? $grupoQuantidadeBase : null,
+                ':grupo_unidade_medida_id' => $calculoPorGrupo ? $grupoUnidadeMedidaId : null,
+                ':grupo_distribuir_igual' => $calculoPorGrupo ? ($grupoDistribuirIgual ? '1' : '0') : '1',
+                ':grupo_arredondar_inteiro' => $calculoPorGrupo ? ($grupoArredondarInteiro ? '1' : '0') : '1',
+            ];
+        }
+
         $stmt = $pdo->prepare("
             UPDATE {$table}
             SET nome = :nome,
                 ordem = :ordem,
                 ativo = {$ativo},
-                visivel_na_lista = {$visivel},
+                visivel_na_lista = {$visivel}
+                {$extraSet},
                 updated_at = NOW()
             WHERE id = :id
         ");
-        $stmt->execute([':nome' => $nome, ':ordem' => $ordem, ':id' => $id]);
+        $stmt->execute($params);
         $messages[] = 'Tipologia atualizada.';
         return;
     }
 
-    $stmt = $pdo->prepare("
-        INSERT INTO {$table} (nome, ordem, ativo, visivel_na_lista)
-        VALUES (:nome, :ordem, {$ativo}, {$visivel})
-    ");
-    $stmt->execute([':nome' => $nome, ':ordem' => $ordem]);
+    if ($isInsumo) {
+        $stmt = $pdo->prepare("
+            INSERT INTO {$table}
+                (nome, ordem, ativo, visivel_na_lista, calculo_por_grupo, grupo_pessoas_base, grupo_quantidade_base,
+                 grupo_unidade_medida_id, grupo_distribuir_igual, grupo_arredondar_inteiro)
+            VALUES
+                (:nome, :ordem, {$ativo}, {$visivel}, :calculo_por_grupo, :grupo_pessoas_base, :grupo_quantidade_base,
+                 :grupo_unidade_medida_id, :grupo_distribuir_igual, :grupo_arredondar_inteiro)
+        ");
+        $stmt->execute([
+            ':nome' => $nome,
+            ':ordem' => $ordem,
+            ':calculo_por_grupo' => $calculoPorGrupo ? '1' : '0',
+            ':grupo_pessoas_base' => $calculoPorGrupo ? $grupoPessoasBase : null,
+            ':grupo_quantidade_base' => $calculoPorGrupo ? $grupoQuantidadeBase : null,
+            ':grupo_unidade_medida_id' => $calculoPorGrupo ? $grupoUnidadeMedidaId : null,
+            ':grupo_distribuir_igual' => $calculoPorGrupo ? ($grupoDistribuirIgual ? '1' : '0') : '1',
+            ':grupo_arredondar_inteiro' => $calculoPorGrupo ? ($grupoArredondarInteiro ? '1' : '0') : '1',
+        ]);
+    } else {
+        $stmt = $pdo->prepare("
+            INSERT INTO {$table} (nome, ordem, ativo, visivel_na_lista)
+            VALUES (:nome, :ordem, {$ativo}, {$visivel})
+        ");
+        $stmt->execute([':nome' => $nome, ':ordem' => $ordem]);
+    }
     $messages[] = 'Tipologia criada.';
 }
 
@@ -102,6 +195,8 @@ function handle_tipologia_delete(PDO $pdo, string $tipo, int $id, array &$errors
     }
 }
 
+tipologias_ensure_schema($pdo);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $tipo = $_POST['tipo'] ?? '';
@@ -127,6 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $tipologias_insumo = $pdo->query("SELECT * FROM logistica_tipologias_insumo ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 $tipologias_receita = $pdo->query("SELECT * FROM logistica_tipologias_receita ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
+$unidades_medida = $pdo->query("SELECT id, nome FROM logistica_unidades_medida ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 
 $edit_insumo_id = (int)($_GET['edit_insumo_id'] ?? 0);
 $edit_receita_id = (int)($_GET['edit_receita_id'] ?? 0);
@@ -599,6 +695,42 @@ $is_editing_receita = is_array($edit_receita);
                             </label>
                         </div>
                     </div>
+                    <div>
+                        <label class="field-label">Cálculo por grupo</label>
+                        <div class="check-grid">
+                            <label class="check-item">
+                                <input type="checkbox" name="calculo_por_grupo" <?= $is_editing_insumo && !empty($edit_insumo['calculo_por_grupo']) ? 'checked' : '' ?>>
+                                Usar regra da tipologia
+                            </label>
+                            <label class="check-item">
+                                <input type="checkbox" name="grupo_distribuir_igual" <?= !$is_editing_insumo || !isset($edit_insumo['grupo_distribuir_igual']) || !empty($edit_insumo['grupo_distribuir_igual']) ? 'checked' : '' ?>>
+                                Dividir entre itens
+                            </label>
+                            <label class="check-item">
+                                <input type="checkbox" name="grupo_arredondar_inteiro" <?= !$is_editing_insumo || !isset($edit_insumo['grupo_arredondar_inteiro']) || !empty($edit_insumo['grupo_arredondar_inteiro']) ? 'checked' : '' ?>>
+                                Arredondar para cima
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="field-label">Pessoas base</label>
+                        <input class="form-input" name="grupo_pessoas_base" inputmode="decimal" value="<?= h(tipologias_format_decimal($edit_insumo['grupo_pessoas_base'] ?? '')) ?>" placeholder="Ex.: 100">
+                    </div>
+                    <div>
+                        <label class="field-label">Quantidade total do grupo</label>
+                        <input class="form-input" name="grupo_quantidade_base" inputmode="decimal" value="<?= h(tipologias_format_decimal($edit_insumo['grupo_quantidade_base'] ?? '')) ?>" placeholder="Ex.: 1500">
+                    </div>
+                    <div>
+                        <label class="field-label">Unidade do grupo</label>
+                        <select class="form-input" name="grupo_unidade_medida_id">
+                            <option value="">Selecione</option>
+                            <?php foreach ($unidades_medida as $unidade): ?>
+                                <option value="<?= (int)$unidade['id'] ?>" <?= (int)($edit_insumo['grupo_unidade_medida_id'] ?? 0) === (int)$unidade['id'] ? 'selected' : '' ?>>
+                                    <?= h($unidade['nome']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                     <div class="form-actions">
                         <button class="btn-primary" type="submit"><?= $is_editing_insumo ? 'Atualizar insumo' : 'Criar insumo' ?></button>
                         <?php if ($is_editing_insumo): ?>
@@ -616,6 +748,7 @@ $is_editing_receita = is_array($edit_receita);
                             <th>Ordem</th>
                             <th>Status</th>
                             <th>Visível</th>
+                            <th>Cálculo</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -630,6 +763,14 @@ $is_editing_receita = is_array($edit_receita);
                                     </span>
                                 </td>
                                 <td><?= $tip['visivel_na_lista'] ? 'Sim' : 'Não' ?></td>
+                                <td>
+                                    <?php if (!empty($tip['calculo_por_grupo'])): ?>
+                                        Grupo: <?= h(tipologias_format_decimal($tip['grupo_pessoas_base'] ?? '')) ?> pessoa(s) =
+                                        <?= h(tipologias_format_decimal($tip['grupo_quantidade_base'] ?? '')) ?>
+                                    <?php else: ?>
+                                        Rendimento do item
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <div class="actions-row">
                                         <form method="POST">
@@ -650,7 +791,7 @@ $is_editing_receita = is_array($edit_receita);
                             </tr>
                         <?php endforeach; ?>
                         <?php if (empty($tipologias_insumo)): ?>
-                            <tr><td colspan="5">Nenhuma tipologia de insumo cadastrada.</td></tr>
+                            <tr><td colspan="6">Nenhuma tipologia de insumo cadastrada.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
