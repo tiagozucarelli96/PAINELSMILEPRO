@@ -109,7 +109,7 @@ ob_start();
     </header>
 
     <div class="gerencia-grid">
-        <a href="gerencia_lista_compras.php" class="gerencia-card">
+        <a href="gerencia_lista_compras.php?page=gerencia_lista_compras" class="gerencia-card">
             <div class="gerencia-card-icon">🛒</div>
             <h2>Lista de compras</h2>
             <p>Área reservada para a próxima etapa da lógica de compras.</p>

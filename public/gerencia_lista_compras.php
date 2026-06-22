@@ -804,6 +804,7 @@ ob_start();
     <?php endif; ?>
 
     <form method="POST" action="gerencia_lista_compras.php" id="glcForm">
+        <input type="hidden" name="page" value="gerencia_lista_compras">
         <input type="hidden" name="action" id="glcAction" value="preview">
         <input type="hidden" name="selected_event_ids" id="glcSelectedEventIds" value="<?= h(implode(',', $selectedIds)) ?>">
 
