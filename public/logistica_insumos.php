@@ -257,7 +257,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$errors && !$duplicate_warning) {
             $visivel = $no_checks ? true : !empty($_POST['visivel_na_lista']);
             $ativo = $no_checks ? true : !empty($_POST['ativo']);
-            $fracionavel = $no_checks ? true : !empty($_POST['fracionavel']);
             $cardapio_pacote_ids = $is_quick_modal ? [] : logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? []);
             $cardapio_secao_ids = $is_quick_modal ? [] : logistica_cardapio_normalizar_ids($_POST['cardapio_secao_ids'] ?? []);
 
@@ -281,7 +280,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
-                ':fracionavel' => pg_bool_param($fracionavel),
                 ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 3),
                 ':unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')) ?: null,
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null
@@ -309,7 +307,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             sinonimos = :sinonimos,
                             barcode = :barcode,
                             rendimento_base_pessoas = :rendimento_base_pessoas,
-                            fracionavel = :fracionavel,
                             tamanho_embalagem = :tamanho_embalagem,
                             unidade_embalagem = :unidade_embalagem,
                             observacoes = :observacoes,
@@ -327,12 +324,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $cols = [
                         'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
-                        'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas', 'fracionavel',
+                        'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas',
                         'tamanho_embalagem', 'unidade_embalagem', 'observacoes'
                     ];
                     $vals = [
                         ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
-                        ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas', ':fracionavel',
+                        ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas',
                         ':tamanho_embalagem', ':unidade_embalagem', ':observacoes'
                     ];
                     if ($can_see_cost) {
@@ -473,7 +470,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
-        'fracionavel' => $no_checks ? true : !empty($_POST['fracionavel']),
         'tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 3),
         'unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')),
         'visivel_na_lista' => $no_checks ? true : !empty($_POST['visivel_na_lista']),
@@ -1021,7 +1017,6 @@ body {
                 <input type="hidden" name="nochecks" value="1">
                 <input type="hidden" name="visivel_na_lista" value="1">
                 <input type="hidden" name="ativo" value="1">
-                <input type="hidden" name="fracionavel" value="1">
             <?php endif; ?>
             <input type="hidden" name="id" value="<?= $form_item_id > 0 ? $form_item_id : '' ?>">
             <input type="hidden" name="confirm_duplicate" value="<?= $duplicate_warning ? '1' : '' ?>">
@@ -1101,15 +1096,6 @@ body {
                     <label class="field-label">Rendimento base (pessoas)</label>
                     <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
                 </div>
-                <?php if (!$no_checks): ?>
-                <div>
-                    <label class="field-label">Fracionável</label>
-                    <label class="check-item">
-                        <input type="checkbox" name="fracionavel" <?= !isset($form_item) || !empty($form_item['fracionavel']) ? 'checked' : '' ?>>
-                        <span>Sim</span>
-                    </label>
-                </div>
-                <?php endif; ?>
                 <div>
                     <label class="field-label">Tamanho embalagem</label>
                     <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" placeholder="Ex.: 1,5 ou 0,51" value="<?= isset($form_item['tamanho_embalagem']) ? format_decimal_input($form_item['tamanho_embalagem'] !== null ? (float)$form_item['tamanho_embalagem'] : null, 3) : '' ?>">
