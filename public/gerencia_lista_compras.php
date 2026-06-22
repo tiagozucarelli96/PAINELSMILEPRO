@@ -901,9 +901,6 @@ ob_start();
 
         <section class="glc-panel">
             <h2>Necessidade bruta consolidada</h2>
-            <p class="glc-muted">
-                A unidade vem do cadastro do insumo. Quando o item vem de uma receita, usa a unidade definida no componente da receita; se o componente não tiver unidade, usa a unidade padrão do insumo. A quantidade total considera convidados contratados, rendimento base e margem automática de 5%.
-            </p>
             <?php if (empty($calculo['totals'])): ?>
                 <p class="glc-muted">Nenhum item calculado.</p>
             <?php else: ?>
