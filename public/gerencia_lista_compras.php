@@ -41,7 +41,7 @@ function glc_ensure_schema(PDO $pdo): void
         return;
     }
 
-    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v1';
+    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v2';
     $markerMtime = @filemtime($marker);
     if ($markerMtime !== false && (time() - $markerMtime) < 3600) {
         $done = true;
@@ -91,6 +91,16 @@ function glc_ensure_schema(PDO $pdo): void
     if (!empty($missing)) {
         throw new RuntimeException('Estrutura pendente. Execute sql/083_gerencia_lista_compras.sql. Faltando: ' . implode(', ', $missing));
     }
+
+    $pdo->exec("
+        ALTER TABLE logistica_tipologias_insumo
+            ADD COLUMN IF NOT EXISTS calculo_por_grupo BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3),
+            ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
+            ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
+            ADD COLUMN IF NOT EXISTS grupo_distribuir_igual BOOLEAN DEFAULT TRUE,
+            ADD COLUMN IF NOT EXISTS grupo_arredondar_inteiro BOOLEAN DEFAULT TRUE
+    ");
 
     @touch($marker);
 
@@ -337,6 +347,12 @@ function glc_fetch_catalogo(PDO $pdo): array
                            i.unidade_medida_padrao_id,
                            COALESCE(i.rendimento_base_pessoas, 100) AS rendimento_base_pessoas,
                            t.nome AS tipologia_nome,
+                           COALESCE(t.calculo_por_grupo, FALSE) AS calculo_por_grupo,
+                           t.grupo_pessoas_base,
+                           t.grupo_quantidade_base,
+                           t.grupo_unidade_medida_id,
+                           COALESCE(t.grupo_distribuir_igual, TRUE) AS grupo_distribuir_igual,
+                           COALESCE(t.grupo_arredondar_inteiro, TRUE) AS grupo_arredondar_inteiro,
                            u.nome AS unidade_nome
                     FROM logistica_insumos i
                     LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
@@ -423,6 +439,84 @@ function glc_add_total(array &$totals, int $eventId, int $insumoId, ?int $unidad
     $totals[$key]['quantidade'] += $quantity;
     $totals[$key]['eventos'][$eventId] = ($totals[$key]['eventos'][$eventId] ?? 0) + $quantity;
     $totals[$key]['origens'][] = $origin + ['quantidade' => $quantity];
+}
+
+function glc_insumo_usa_calculo_grupo(array $insumo): bool
+{
+    return !empty($insumo['calculo_por_grupo'])
+        && (float)($insumo['grupo_pessoas_base'] ?? 0) > 0
+        && (float)($insumo['grupo_quantidade_base'] ?? 0) > 0;
+}
+
+function glc_add_totais_grupo_tipologia(
+    array $event,
+    array $eventItems,
+    array $insumos,
+    array &$totals,
+    array &$warnings
+): void {
+    $eventId = (int)($event['id'] ?? 0);
+    $convidados = max(0, (int)($event['convidados'] ?? 0));
+    if ($eventId <= 0 || $convidados <= 0) {
+        return;
+    }
+
+    $groups = [];
+    foreach ($eventItems as $item) {
+        if (strtolower(trim((string)($item['item_tipo'] ?? ''))) !== 'insumo') {
+            continue;
+        }
+
+        $itemId = (int)($item['item_id'] ?? 0);
+        if ($itemId <= 0 || empty($insumos[$itemId]) || !glc_insumo_usa_calculo_grupo($insumos[$itemId])) {
+            continue;
+        }
+
+        $insumo = $insumos[$itemId];
+        $tipologiaId = (int)($insumo['tipologia_insumo_id'] ?? 0);
+        if ($tipologiaId <= 0) {
+            $warnings[] = 'Insumo com cálculo por grupo sem tipologia: ' . (string)($insumo['nome_oficial'] ?? ('#' . $itemId));
+            continue;
+        }
+
+        if (!isset($groups[$tipologiaId])) {
+            $groups[$tipologiaId] = [
+                'config' => $insumo,
+                'items' => [],
+            ];
+        }
+        $groups[$tipologiaId]['items'][$itemId] = $item;
+    }
+
+    foreach ($groups as $group) {
+        $items = array_values($group['items']);
+        $count = count($items);
+        if ($count === 0) {
+            continue;
+        }
+
+        $config = $group['config'];
+        $pessoasBase = max(0.001, (float)($config['grupo_pessoas_base'] ?? 0));
+        $quantidadeBase = (float)($config['grupo_quantidade_base'] ?? 0);
+        $totalGrupo = ($convidados / $pessoasBase) * $quantidadeBase * GLC_MARGEM_SEGURANCA;
+        $distribuirIgual = !empty($config['grupo_distribuir_igual']);
+        $quantityPerItem = $distribuirIgual ? ($totalGrupo / $count) : $totalGrupo;
+        if (!empty($config['grupo_arredondar_inteiro'])) {
+            $quantityPerItem = ceil($quantityPerItem);
+        }
+
+        $unitId = !empty($config['grupo_unidade_medida_id']) ? (int)$config['grupo_unidade_medida_id'] : null;
+        foreach ($items as $item) {
+            $itemId = (int)($item['item_id'] ?? 0);
+            $insumo = $insumos[$itemId] ?? [];
+            $itemUnitId = $unitId ?: (!empty($insumo['unidade_medida_padrao_id']) ? (int)$insumo['unidade_medida_padrao_id'] : null);
+            glc_add_total($totals, $eventId, $itemId, $itemUnitId ?: null, $quantityPerItem, [
+                'tipo' => 'tipologia por grupo',
+                'origem' => (string)($item['item_nome'] ?? ($insumo['nome_oficial'] ?? '')),
+                'tipologia' => (string)($config['tipologia_nome'] ?? ''),
+            ]);
+        }
+    }
 }
 
 function glc_component_quantity(array $component): float
@@ -535,6 +629,8 @@ function glc_calcular_lista(PDO $pdo, array $events): array
             continue;
         }
 
+        glc_add_totais_grupo_tipologia($event, $eventItems, $insumos, $totals, $warnings);
+
         foreach ($eventItems as $item) {
             $tipo = strtolower(trim((string)($item['item_tipo'] ?? '')));
             $itemId = (int)($item['item_id'] ?? 0);
@@ -542,6 +638,9 @@ function glc_calcular_lista(PDO $pdo, array $events): array
             if ($tipo === 'insumo') {
                 if (!isset($insumos[$itemId])) {
                     $warnings[] = 'Insumo do cardápio não encontrado: ' . ($itemName ?: ('#' . $itemId));
+                    continue;
+                }
+                if (glc_insumo_usa_calculo_grupo($insumos[$itemId])) {
                     continue;
                 }
                 $yield = max(1, (int)($insumos[$itemId]['rendimento_base_pessoas'] ?? 100));

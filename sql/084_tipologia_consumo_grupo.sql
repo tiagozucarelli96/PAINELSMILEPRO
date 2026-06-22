@@ -17,4 +17,4 @@ SET calculo_por_grupo = TRUE,
     grupo_distribuir_igual = TRUE,
     grupo_arredondar_inteiro = TRUE,
     updated_at = NOW()
-WHERE LOWER(TRIM(nome)) = LOWER('Salgados');
+WHERE LOWER(TRIM(nome)) IN (LOWER('Salgados'), LOWER('Salgados Assados'));
