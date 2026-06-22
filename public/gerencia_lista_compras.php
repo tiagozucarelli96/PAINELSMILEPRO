@@ -41,7 +41,7 @@ function glc_ensure_schema(PDO $pdo): void
         return;
     }
 
-    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v4';
+    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v5';
     $markerMtime = @filemtime($marker);
     if ($markerMtime !== false && (time() - $markerMtime) < 3600) {
         $done = true;
@@ -104,6 +104,7 @@ function glc_ensure_schema(PDO $pdo): void
     ");
     $pdo->exec("
         ALTER TABLE logistica_insumos
+            ADD COLUMN IF NOT EXISTS calculo_lista_metodo VARCHAR(20) DEFAULT 'rendimento',
             ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3),
             ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
             ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
@@ -128,6 +129,20 @@ function glc_ensure_schema(PDO $pdo): void
               OR i.grupo_unidade_medida_id IS NULL
           )
     ");
+    $pdo->exec("
+        UPDATE logistica_insumos i
+        SET calculo_lista_metodo = CASE
+                WHEN COALESCE(t.calculo_por_grupo, FALSE) = TRUE
+                     AND COALESCE(i.grupo_pessoas_base, t.grupo_pessoas_base) IS NOT NULL
+                     AND COALESCE(i.grupo_quantidade_base, t.grupo_quantidade_base) IS NOT NULL
+                    THEN 'grupo'
+                ELSE 'rendimento'
+            END
+        FROM logistica_tipologias_insumo t
+        WHERE t.id = i.tipologia_insumo_id
+          AND i.calculo_lista_metodo IS NULL
+    ");
+    $pdo->exec("UPDATE logistica_insumos SET calculo_lista_metodo = 'rendimento' WHERE calculo_lista_metodo IS NULL OR calculo_lista_metodo NOT IN ('rendimento', 'grupo')");
 
     @touch($marker);
 
@@ -373,6 +388,16 @@ function glc_fetch_catalogo(PDO $pdo): array
                            i.tipologia_insumo_id,
                            i.unidade_medida_padrao_id,
                            COALESCE(i.rendimento_base_pessoas, 100) AS rendimento_base_pessoas,
+                           COALESCE(
+                               NULLIF(i.calculo_lista_metodo, ''),
+                               CASE
+                                   WHEN COALESCE(t.calculo_por_grupo, FALSE) = TRUE
+                                        AND COALESCE(i.grupo_pessoas_base, t.grupo_pessoas_base) IS NOT NULL
+                                        AND COALESCE(i.grupo_quantidade_base, t.grupo_quantidade_base) IS NOT NULL
+                                       THEN 'grupo'
+                                   ELSE 'rendimento'
+                               END
+                           ) AS calculo_lista_metodo,
                            t.nome AS tipologia_nome,
                            COALESCE(t.visivel_na_lista, TRUE) AS tipologia_visivel_na_lista,
                            COALESCE(t.calculo_por_grupo, FALSE) AS calculo_por_grupo,
@@ -472,7 +497,7 @@ function glc_add_total(array &$totals, int $eventId, int $insumoId, ?int $unidad
 
 function glc_insumo_usa_calculo_grupo(array $insumo): bool
 {
-    return !empty($insumo['calculo_por_grupo'])
+    return ($insumo['calculo_lista_metodo'] ?? 'rendimento') === 'grupo'
         && (float)($insumo['grupo_pessoas_base'] ?? 0) > 0
         && (float)($insumo['grupo_quantidade_base'] ?? 0) > 0;
 }

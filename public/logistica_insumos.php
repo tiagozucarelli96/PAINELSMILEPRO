@@ -135,6 +135,7 @@ function logistica_insumos_ensure_rendimento_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3)");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3)");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id)");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS calculo_lista_metodo VARCHAR(20) DEFAULT 'rendimento'");
         $pdo->exec("
             UPDATE logistica_insumos i
             SET grupo_arredondar_inteiro = COALESCE(i.grupo_arredondar_inteiro, COALESCE(t.grupo_arredondar_inteiro, TRUE)),
@@ -153,6 +154,20 @@ function logistica_insumos_ensure_rendimento_schema(PDO $pdo): void {
                   OR i.grupo_unidade_medida_id IS NULL
               )
         ");
+        $pdo->exec("
+            UPDATE logistica_insumos i
+            SET calculo_lista_metodo = CASE
+                    WHEN COALESCE(t.calculo_por_grupo, FALSE) = TRUE
+                         AND COALESCE(i.grupo_pessoas_base, t.grupo_pessoas_base) IS NOT NULL
+                         AND COALESCE(i.grupo_quantidade_base, t.grupo_quantidade_base) IS NOT NULL
+                        THEN 'grupo'
+                    ELSE 'rendimento'
+                END
+            FROM logistica_tipologias_insumo t
+            WHERE t.id = i.tipologia_insumo_id
+              AND i.calculo_lista_metodo IS NULL
+        ");
+        $pdo->exec("UPDATE logistica_insumos SET calculo_lista_metodo = 'rendimento' WHERE calculo_lista_metodo IS NULL OR calculo_lista_metodo NOT IN ('rendimento', 'grupo')");
         $pdo->exec("UPDATE logistica_insumos SET rendimento_base_pessoas = 100 WHERE rendimento_base_pessoas IS NULL OR rendimento_base_pessoas <= 0");
     } catch (Throwable $e) {
         error_log('logistica_insumos_ensure_rendimento_schema: ' . $e->getMessage());
@@ -303,6 +318,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
+                ':calculo_lista_metodo' => in_array(($_POST['calculo_lista_metodo'] ?? 'rendimento'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo'] : 'rendimento',
                 ':grupo_pessoas_base' => parse_decimal_input((string)($_POST['grupo_pessoas_base'] ?? ''), 3),
                 ':grupo_quantidade_base' => parse_decimal_input((string)($_POST['grupo_quantidade_base'] ?? ''), 3),
                 ':grupo_unidade_medida_id' => !empty($_POST['grupo_unidade_medida_id']) ? (int)$_POST['grupo_unidade_medida_id'] : null,
@@ -333,6 +349,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             sinonimos = :sinonimos,
                             barcode = :barcode,
                             rendimento_base_pessoas = :rendimento_base_pessoas,
+                            calculo_lista_metodo = :calculo_lista_metodo,
                             grupo_pessoas_base = :grupo_pessoas_base,
                             grupo_quantidade_base = :grupo_quantidade_base,
                             grupo_unidade_medida_id = :grupo_unidade_medida_id,
@@ -353,13 +370,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $cols = [
                         'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
-                        'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas',
+                        'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas', 'calculo_lista_metodo',
                         'grupo_pessoas_base', 'grupo_quantidade_base', 'grupo_unidade_medida_id',
                         'grupo_arredondar_inteiro', 'grupo_aplicar_margem', 'observacoes'
                     ];
                     $vals = [
                         ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
-                        ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas',
+                        ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas', ':calculo_lista_metodo',
                         ':grupo_pessoas_base', ':grupo_quantidade_base', ':grupo_unidade_medida_id',
                         ':grupo_arredondar_inteiro', ':grupo_aplicar_margem', ':observacoes'
                     ];
@@ -501,6 +518,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
+        'calculo_lista_metodo' => in_array(($_POST['calculo_lista_metodo'] ?? 'rendimento'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo'] : 'rendimento',
         'grupo_pessoas_base' => parse_decimal_input((string)($_POST['grupo_pessoas_base'] ?? ''), 3),
         'grupo_quantidade_base' => parse_decimal_input((string)($_POST['grupo_quantidade_base'] ?? ''), 3),
         'grupo_unidade_medida_id' => !empty($_POST['grupo_unidade_medida_id']) ? (int)$_POST['grupo_unidade_medida_id'] : null,
@@ -618,6 +636,19 @@ body {
 }
 .span-2 { grid-column: span 2; }
 .span-3 { grid-column: span 3; }
+.span-4 { grid-column: 1 / -1; }
+.calc-panel {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+.calc-panel[hidden] {
+    display: none;
+}
 .section-card h2 {
     margin: 0 0 1.15rem;
     font-size: 1.22rem;
@@ -1131,43 +1162,66 @@ body {
                         <button type="button" class="btn-primary btn-scanner" id="open-scanner">Ler câmera</button>
                     </div>
                 </div>
-                <div>
-                    <label class="field-label">Rendimento base (pessoas)</label>
-                    <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
-                </div>
                 <?php if (!$no_checks): ?>
-                <div>
-                    <label class="field-label">Cálculo na lista</label>
-                    <div class="check-grid">
-                        <label class="check-item">
-                            <input type="checkbox" name="grupo_arredondar_inteiro" <?= !isset($form_item) || !isset($form_item['grupo_arredondar_inteiro']) || !empty($form_item['grupo_arredondar_inteiro']) ? 'checked' : '' ?>>
-                            Arredondar para cima
-                        </label>
-                        <label class="check-item">
-                            <input type="checkbox" name="grupo_aplicar_margem" <?= !isset($form_item) || !isset($form_item['grupo_aplicar_margem']) || !empty($form_item['grupo_aplicar_margem']) ? 'checked' : '' ?>>
-                            Acrescentar 5%
-                        </label>
-                    </div>
-                </div>
-                <div>
-                    <label class="field-label">Pessoas base do grupo</label>
-                    <input class="form-input" name="grupo_pessoas_base" inputmode="decimal" value="<?= isset($form_item['grupo_pessoas_base']) && $form_item['grupo_pessoas_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_pessoas_base'], 3)) : '' ?>" placeholder="Ex.: 100">
-                </div>
-                <div>
-                    <label class="field-label">Quantidade total do grupo</label>
-                    <input class="form-input" name="grupo_quantidade_base" inputmode="decimal" value="<?= isset($form_item['grupo_quantidade_base']) && $form_item['grupo_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_quantidade_base'], 3)) : '' ?>" placeholder="Ex.: 1500">
-                </div>
-                <div>
-                    <label class="field-label">Unidade do grupo</label>
-                    <select class="form-input" name="grupo_unidade_medida_id">
-                        <option value="">Selecione...</option>
-                        <?php foreach ($unidades_medida as $un): ?>
-                            <option value="<?= (int)$un['id'] ?>" <?= (int)($form_item['grupo_unidade_medida_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
-                                <?= h($un['nome']) ?>
-                            </option>
-                        <?php endforeach; ?>
+                <?php
+                $metodo_calculo_lista = (string)($form_item['calculo_lista_metodo'] ?? '');
+                if (!in_array($metodo_calculo_lista, ['rendimento', 'grupo'], true)) {
+                    $metodo_calculo_lista = !empty($form_item['grupo_pessoas_base']) && !empty($form_item['grupo_quantidade_base']) ? 'grupo' : 'rendimento';
+                }
+                ?>
+                <div class="span-4">
+                    <label class="field-label">Método de cálculo na lista</label>
+                    <select class="form-input" name="calculo_lista_metodo" id="calculo_lista_metodo">
+                        <option value="rendimento" <?= $metodo_calculo_lista === 'rendimento' ? 'selected' : '' ?>>Rendimento base do item</option>
+                        <option value="grupo" <?= $metodo_calculo_lista === 'grupo' ? 'selected' : '' ?>>Quantidade total por grupo</option>
                     </select>
                 </div>
+                <div class="span-4 calc-panel" data-calc-panel="rendimento">
+                    <div>
+                        <label class="field-label">Rendimento base (pessoas)</label>
+                        <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
+                    </div>
+                </div>
+                <div class="span-4 calc-panel" data-calc-panel="grupo">
+                    <div>
+                        <label class="field-label">Pessoas base do grupo</label>
+                        <input class="form-input" name="grupo_pessoas_base" inputmode="decimal" value="<?= isset($form_item['grupo_pessoas_base']) && $form_item['grupo_pessoas_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_pessoas_base'], 3)) : '' ?>" placeholder="Ex.: 100">
+                    </div>
+                    <div>
+                        <label class="field-label">Quantidade total do grupo</label>
+                        <input class="form-input" name="grupo_quantidade_base" inputmode="decimal" value="<?= isset($form_item['grupo_quantidade_base']) && $form_item['grupo_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_quantidade_base'], 3)) : '' ?>" placeholder="Ex.: 1500">
+                    </div>
+                    <div>
+                        <label class="field-label">Unidade do grupo</label>
+                        <select class="form-input" name="grupo_unidade_medida_id">
+                            <option value="">Selecione...</option>
+                            <?php foreach ($unidades_medida as $un): ?>
+                                <option value="<?= (int)$un['id'] ?>" <?= (int)($form_item['grupo_unidade_medida_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
+                                    <?= h($un['nome']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="field-label">Ajustes</label>
+                        <div class="check-grid">
+                            <label class="check-item">
+                                <input type="checkbox" name="grupo_arredondar_inteiro" <?= !isset($form_item) || !isset($form_item['grupo_arredondar_inteiro']) || !empty($form_item['grupo_arredondar_inteiro']) ? 'checked' : '' ?>>
+                                Arredondar para cima
+                            </label>
+                            <label class="check-item">
+                                <input type="checkbox" name="grupo_aplicar_margem" <?= !isset($form_item) || !isset($form_item['grupo_aplicar_margem']) || !empty($form_item['grupo_aplicar_margem']) ? 'checked' : '' ?>>
+                                Acrescentar 5%
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <?php else: ?>
+                <input type="hidden" name="calculo_lista_metodo" value="<?= h($form_item['calculo_lista_metodo'] ?? 'rendimento') ?>">
+                <input type="hidden" name="rendimento_base_pessoas" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
+                <input type="hidden" name="grupo_pessoas_base" value="<?= isset($form_item['grupo_pessoas_base']) && $form_item['grupo_pessoas_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_pessoas_base'], 3)) : '' ?>">
+                <input type="hidden" name="grupo_quantidade_base" value="<?= isset($form_item['grupo_quantidade_base']) && $form_item['grupo_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_quantidade_base'], 3)) : '' ?>">
+                <input type="hidden" name="grupo_unidade_medida_id" value="<?= h((string)($form_item['grupo_unidade_medida_id'] ?? '')) ?>">
                 <?php endif; ?>
                 <?php if ($can_see_cost): ?>
                 <div>
@@ -1604,6 +1658,26 @@ attachSmartDecimalMask(document.getElementById('custo_padrao'), {
     scaleFromDigits: true,
     preferPtBrSeparators: false
 });
+
+document.querySelectorAll('[name="grupo_pessoas_base"], [name="grupo_quantidade_base"]').forEach((input) => {
+    attachSmartDecimalMask(input, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 3,
+        preferPtBrSeparators: true
+    });
+});
+
+function updateCalcMethodPanels() {
+    const select = document.getElementById('calculo_lista_metodo');
+    if (!select) return;
+    const method = select.value || 'rendimento';
+    document.querySelectorAll('[data-calc-panel]').forEach((panel) => {
+        panel.hidden = panel.getAttribute('data-calc-panel') !== method;
+    });
+}
+
+document.getElementById('calculo_lista_metodo')?.addEventListener('change', updateCalcMethodPanels);
+updateCalcMethodPanels();
 
 </script>
 
