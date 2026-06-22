@@ -691,13 +691,15 @@ glc_ensure_schema($pdo);
 $scope = glc_fetch_user_scope($pdo);
 $messages = [];
 $errors = [];
-$selectedIds = glc_normalize_event_ids($_POST['event_ids'] ?? []);
-$action = (string)($_POST['action'] ?? '');
+$requestInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : (((string)($_GET['action'] ?? '') === 'preview') ? $_GET : []);
+$selectedIds = glc_normalize_event_ids($requestInput['event_ids'] ?? []);
+$action = (string)($requestInput['action'] ?? '');
+$isFormRequest = $_SERVER['REQUEST_METHOD'] === 'POST' || $action === 'preview';
 $selectedEvents = [];
 $calculo = null;
 $savedListId = 0;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($isFormRequest) {
     try {
         $selectedEvents = glc_fetch_eventos_by_ids($pdo, $scope, $selectedIds);
         if (empty($selectedIds)) {
@@ -718,8 +720,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($calculo['totals'])) {
                 $errors[] = 'Nenhum insumo foi calculado a partir do cardápio selecionado.';
             } elseif ($action === 'save') {
-                $savedListId = glc_salvar_lista($pdo, $selectedEvents, $calculo);
-                $messages[] = 'Lista salva com sucesso. ID #' . $savedListId . '.';
+                if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                    $errors[] = 'Use o botão Salvar lista para gravar a lista.';
+                } else {
+                    $savedListId = glc_salvar_lista($pdo, $selectedEvents, $calculo);
+                    $messages[] = 'Lista salva com sucesso. ID #' . $savedListId . '.';
+                }
             }
         }
     } catch (Throwable $e) {
@@ -728,7 +734,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $eventosDisponiveis = [];
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($selectedEvents)) {
+if ($isFormRequest && !empty($selectedEvents)) {
     $eventosDisponiveis = array_values($selectedEvents);
 } else {
     try {
@@ -791,6 +797,7 @@ ob_start();
     <?php endif; ?>
 
     <form method="POST" action="index.php?page=gerencia_lista_compras" id="glcForm">
+        <input type="hidden" name="page" value="gerencia_lista_compras">
         <input type="hidden" name="action" id="glcAction" value="preview">
 
         <section class="glc-panel">
@@ -838,7 +845,7 @@ ob_start();
         </section>
 
         <div class="glc-toolbar">
-            <button class="glc-btn" type="submit" name="action" value="preview" id="glcPreviewBtn" onclick="return glcSubmit('preview', this)">Gerar prévia</button>
+            <button class="glc-btn" type="submit" formmethod="GET" formaction="index.php" name="action" value="preview" id="glcPreviewBtn" onclick="return glcSubmit('preview', this)">Gerar prévia</button>
             <?php if ($calculo && !empty($calculo['totals'])): ?>
                 <button class="glc-btn" type="submit" name="action" value="save" id="glcSaveBtn" onclick="return glcSubmit('save', this)">Salvar lista</button>
             <?php endif; ?>
