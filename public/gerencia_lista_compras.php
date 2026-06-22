@@ -838,9 +838,9 @@ ob_start();
         </section>
 
         <div class="glc-toolbar">
-            <button class="glc-btn" type="submit" name="action" value="preview" id="glcPreviewBtn">Gerar prévia</button>
+            <button class="glc-btn" type="submit" name="action" value="preview" id="glcPreviewBtn" onclick="return glcSubmit('preview', this)">Gerar prévia</button>
             <?php if ($calculo && !empty($calculo['totals'])): ?>
-                <button class="glc-btn" type="submit" name="action" value="save" id="glcSaveBtn">Salvar lista</button>
+                <button class="glc-btn" type="submit" name="action" value="save" id="glcSaveBtn" onclick="return glcSubmit('save', this)">Salvar lista</button>
             <?php endif; ?>
         </div>
     </form>
@@ -941,26 +941,27 @@ function glcClearSelection() {
     glcUpdateCount();
 }
 
-function glcSubmit(action) {
+function glcSubmit(action, btn) {
     const checked = document.querySelectorAll('input[name="event_ids[]"]:checked').length;
     if (checked <= 0) {
         alert('Selecione pelo menos um evento.');
         return false;
     }
     document.getElementById('glcAction').value = action;
-    const btn = action === 'save' ? document.getElementById('glcSaveBtn') : document.getElementById('glcPreviewBtn');
     if (btn) {
-        btn.disabled = true;
         btn.textContent = action === 'save' ? 'Salvando...' : 'Gerando...';
+        setTimeout(() => {
+            btn.disabled = true;
+        }, 0);
     }
     return true;
 }
 
 document.getElementById('glcForm')?.addEventListener('submit', function (event) {
-    const submitter = event.submitter;
-    const action = submitter && submitter.value ? submitter.value : (document.getElementById('glcAction')?.value || 'preview');
-    if (!glcSubmit(action)) {
+    const checked = document.querySelectorAll('input[name="event_ids[]"]:checked').length;
+    if (checked <= 0) {
         event.preventDefault();
+        alert('Selecione pelo menos um evento.');
     }
 });
 
