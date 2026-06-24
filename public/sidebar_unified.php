@@ -1481,6 +1481,7 @@ if ($current_page === 'dashboard') {
                 ?>
     
     <script src="/js/push-notifications.js"></script>
+    <?php require __DIR__ . '/me_eventos_pendencias_modal.php'; ?>
     <style>
         .event-cancel-login-modal {
             position: fixed;

@@ -154,6 +154,82 @@ function processarWebhook($data) {
             logWebhook("Aviso: falha ao sincronizar cliente comercial pelo webhook: " . $e->getMessage());
         }
 
+        // Eventos criados diretamente na ME devem nascer no Painel como se tivessem
+        // passado pela Organização: reunião local, portal do cliente e pendência para
+        // o Comercial completar pacote + dados de PJ.
+        try {
+            $me_id_int = (int)$evento_id;
+            $is_created_like = in_array((string)$webhook_tipo_original, ['event_created', 'event_reactivated'], true);
+            if ($me_id_int > 0 && $is_created_like && $status !== 'cancelado') {
+                require_once __DIR__ . '/eventos_reuniao_helper.php';
+                require_once __DIR__ . '/me_eventos_pendencias_helper.php';
+
+                $meeting_result = eventos_reuniao_get_or_create($pdo, $me_id_int, 0, null);
+                if (empty($meeting_result['ok']) || empty($meeting_result['reuniao']['id'])) {
+                    logWebhook("Aviso: falha ao criar reunião automática via API do evento ME {$me_id_int}: " . (string)($meeting_result['error'] ?? 'erro desconhecido') . ". Tentando payload do webhook.");
+                    $stmt_existing_meeting = $pdo->prepare("SELECT * FROM eventos_reunioes WHERE me_event_id = :me_event_id LIMIT 1");
+                    $stmt_existing_meeting->execute([':me_event_id' => $me_id_int]);
+                    $reuniao_payload = $stmt_existing_meeting->fetch(PDO::FETCH_ASSOC) ?: null;
+                    if (!$reuniao_payload) {
+                        require_once __DIR__ . '/eventos_me_helper.php';
+                        $snapshot_payload = eventos_me_criar_snapshot(is_array($evento_data) ? $evento_data : []);
+                        $snapshot_payload['me_status'] = 'ativo';
+                        $snapshot_payload['webhook_event'] = (string)$webhook_tipo_original;
+                        $snapshot_payload['webhook_at'] = date('Y-m-d H:i:s');
+                        $stmt_insert_meeting = $pdo->prepare("
+                            INSERT INTO eventos_reunioes (me_event_id, me_event_snapshot, status, created_by, created_at, updated_at)
+                            VALUES (:me_event_id, :snapshot, 'rascunho', 0, NOW(), NOW())
+                            RETURNING *
+                        ");
+                        $stmt_insert_meeting->execute([
+                            ':me_event_id' => $me_id_int,
+                            ':snapshot' => json_encode($snapshot_payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                        ]);
+                        $reuniao_payload = $stmt_insert_meeting->fetch(PDO::FETCH_ASSOC) ?: null;
+                        if ($reuniao_payload && !empty($reuniao_payload['id'])) {
+                            $stmt_section = $pdo->prepare("
+                                INSERT INTO eventos_reunioes_secoes (meeting_id, section, content_html, content_text, created_at, updated_at)
+                                VALUES (:meeting_id, :section, '', '', NOW(), NOW())
+                                ON CONFLICT (meeting_id, section) DO NOTHING
+                            ");
+                            foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'] as $section) {
+                                $stmt_section->execute([
+                                    ':meeting_id' => (int)$reuniao_payload['id'],
+                                    ':section' => $section,
+                                ]);
+                            }
+                        }
+                    }
+                    $meeting_result = $reuniao_payload
+                        ? ['ok' => true, 'reuniao' => $reuniao_payload, 'created' => true, 'fallback' => 'webhook_payload']
+                        : $meeting_result;
+                }
+
+                if (empty($meeting_result['ok']) || empty($meeting_result['reuniao']['id'])) {
+                    logWebhook("Aviso: não foi possível criar reunião automática do evento ME {$me_id_int}.");
+                } else {
+                    $meeting_id_auto = (int)$meeting_result['reuniao']['id'];
+                    $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id_auto, 0);
+                    if (empty($portal_result['ok']) || empty($portal_result['portal'])) {
+                        logWebhook("Aviso: falha ao criar portal automático do evento ME {$me_id_int}: " . (string)($portal_result['error'] ?? 'erro desconhecido'));
+                    }
+
+                    $portal_id_auto = is_array($portal_result['portal'] ?? null) ? (int)($portal_result['portal']['id'] ?? 0) : 0;
+                    $pendencia_result = me_eventos_pendencias_registrar(
+                        $pdo,
+                        $me_id_int,
+                        $meeting_id_auto,
+                        $portal_id_auto > 0 ? $portal_id_auto : null,
+                        is_array($evento_data) ? $evento_data : [],
+                        'me_manual'
+                    );
+                    logWebhook("Pendência Comercial ME manual: " . json_encode($pendencia_result, JSON_UNESCAPED_UNICODE));
+                }
+            }
+        } catch (Throwable $e) {
+            logWebhook("Aviso: falha ao criar reunião/portal/pendência para evento ME manual: " . $e->getMessage());
+        }
+
         // Aplicar atualização na reunião (snapshot) e invalidar cache ME local.
         // Isso garante que o Portal/Calendários não fiquem com dados desatualizados (data/hora/local).
         try {

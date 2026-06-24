@@ -72,6 +72,7 @@ return [
     'vendas_administracao' => ['perm_vendas_administracao', 'perm_administrativo'],
     'vendas_kanban' => 'perm_comercial',
     'vendas_links_publicos' => 'perm_comercial',
+    'me_eventos_pendencias_api' => 'perm_comercial',
     'eventos_galeria' => 'perm_comercial',
     'eventos_galeria_wordpress_preview' => 'perm_comercial',
     // Formulários públicos não precisam de permissão

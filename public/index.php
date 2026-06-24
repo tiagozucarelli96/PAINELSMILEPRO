@@ -384,6 +384,7 @@ $routes = [
   'eventos_fornecedores' => 'eventos_fornecedores.php',
   'eventos_pdf' => 'eventos_pdf.php',
   'eventos_me_proxy' => 'eventos_me_proxy.php',
+  'me_eventos_pendencias_api' => 'me_eventos_pendencias_api.php',
   'eventos_upload' => 'eventos_upload.php',
   'eventos_ver_imagem' => 'eventos_ver_imagem.php',
   // Portais externos de fornecedores
