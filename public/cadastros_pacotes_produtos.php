@@ -209,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                     $_SESSION['cadastros_pp_success'] = 'Cadastro criado com sucesso.';
                 }
-                header('Location: index.php?page=cadastros_pacotes_produtos');
+                header('Location: index.php?page=cadastros_pacotes_produtos#pp-listagem');
                 exit;
             } catch (Throwable $e) {
                 error_log('cadastros_pp save: ' . $e->getMessage());
@@ -445,7 +445,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
     <?php if ($success !== ''): ?><div class="pp-alert success"><?= cadastros_pp_e($success) ?></div><?php endif; ?>
     <?php foreach ($errors as $error): ?><div class="pp-alert error"><?= cadastros_pp_e((string)$error) ?></div><?php endforeach; ?>
 
-    <section class="pp-card">
+    <section class="pp-card" id="pp-listagem">
         <div class="pp-card-header"><h2 class="pp-card-title">Listagem</h2></div>
         <div class="pp-table-wrap">
             <table class="pp-table">
