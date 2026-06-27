@@ -23,13 +23,36 @@ function cadastros_contratos_e(string $value): string
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 }
 
+function cadastros_contratos_query_params(): array
+{
+    $params = $_GET;
+    $queryString = (string)($_SERVER['QUERY_STRING'] ?? '');
+    if ($queryString !== '') {
+        parse_str(str_replace('&amp;', '&', $queryString), $parsed);
+        if (is_array($parsed)) {
+            $params = array_merge($parsed, $params);
+        }
+    }
+
+    $requestQuery = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
+    if ($requestQuery !== '') {
+        parse_str(str_replace('&amp;', '&', $requestQuery), $parsed);
+        if (is_array($parsed)) {
+            $params = array_merge($parsed, $params);
+        }
+    }
+
+    return $params;
+}
+
 contratos_modelos_ensure_schema($pdo);
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $success = '';
 $errors = [];
-$modalOpen = isset($_GET['novo']);
-$editId = (int)($_GET['edit_id'] ?? 0);
+$queryParams = cadastros_contratos_query_params();
+$modalOpen = array_key_exists('novo', $queryParams);
+$editId = (int)($queryParams['edit_id'] ?? 0);
 $modalModelo = [
     'id' => 0,
     'nome' => '',
