@@ -451,8 +451,8 @@ includeSidebar('Cartoes de Credito');
         <div><h1 class="cc-title">Cartoes de Credito</h1><p class="cc-sub">Cadastre cartoes, importe faturas e integre o total ao financeiro.</p></div>
         <div class="cc-actions">
             <a class="cc-btn" href="index.php?page=financeiro">Financeiro</a>
-            <button class="cc-btn green" type="button" data-open-modal="import-modal">Importar fatura</button>
-            <button class="cc-btn primary" type="button" data-open-modal="card-modal">Novo cartao</button>
+            <button class="cc-btn green" type="button" data-open-modal="import-modal" onclick="ccOpenModal('import-modal')">Importar fatura</button>
+            <button class="cc-btn primary" type="button" data-open-modal="card-modal" onclick="ccOpenModal('card-modal')">Novo cartao</button>
         </div>
     </div>
     <?php foreach ($messages as $msg): ?><div class="cc-alert success"><?= h($msg) ?></div><?php endforeach; ?>
@@ -507,11 +507,62 @@ includeSidebar('Cartoes de Credito');
 <div class="cc-modal-backdrop" id="import-modal"><div class="cc-modal"><div class="cc-modal-head"><h2 class="cc-modal-title">Importar fatura</h2><button class="cc-close" type="button" data-close-modal>×</button></div><form class="cc-form" method="post"><input type="hidden" name="action" value="preview_import"><div class="cc-form-grid"><div class="cc-field"><label>Cartao</label><select name="cartao_id" required><option value="">Selecionar cartao</option><?php foreach($cartoes as $cartao): if(empty($cartao['ativo'])) continue; ?><option value="<?= (int)$cartao['id'] ?>"><?= h((string)$cartao['nome']) ?></option><?php endforeach; ?></select></div><div class="cc-field"><label>Vencimento da fatura</label><input type="date" name="vencimento" required></div><div class="cc-field full"><label>Texto cru da fatura</label><textarea name="texto" placeholder="09/03/2026 | DEPOSITO FLORIDA JACAR | 380,90 | 2/3" required></textarea></div></div><div class="cc-footer"><button class="cc-btn primary" type="submit">Pre-visualizar</button></div></form></div></div>
 
 <script>
-document.querySelectorAll('[data-open-modal]').forEach((button)=>button.addEventListener('click',()=>document.getElementById(button.dataset.openModal)?.classList.add('open')));
-document.querySelectorAll('[data-close-modal]').forEach((button)=>button.addEventListener('click',()=>button.closest('.cc-modal-backdrop')?.classList.remove('open')));
-document.querySelectorAll('.cc-modal-backdrop').forEach((modal)=>modal.addEventListener('click',(event)=>{if(event.target===modal)modal.classList.remove('open')}));
-document.querySelectorAll('[data-edit-card]').forEach((button)=>button.addEventListener('click',()=>{document.getElementById('card-id').value=button.dataset.id||'0';document.getElementById('card-nome').value=button.dataset.nome||'';document.getElementById('card-dia').value=button.dataset.dia||'1';document.getElementById('card-modal-title').textContent='Editar cartao';document.getElementById('card-modal').classList.add('open')}));
-document.querySelector('[data-cc-select-all]')?.addEventListener('change',(event)=>document.querySelectorAll('[data-cc-row-check]').forEach((checkbox)=>{if(!checkbox.disabled)checkbox.checked=event.target.checked}));
+function ccOpenModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) {
+        modal.classList.add('open');
+    }
+}
+
+function ccCloseModal(modal) {
+    if (modal) {
+        modal.classList.remove('open');
+    }
+}
+
+function ccOpenCardModal(data = {}) {
+    document.getElementById('card-id').value = data.id || '0';
+    document.getElementById('card-nome').value = data.nome || '';
+    document.getElementById('card-dia').value = data.dia || '1';
+    document.getElementById('card-modal-title').textContent = data.id ? 'Editar cartao' : 'Novo cartao';
+    ccOpenModal('card-modal');
+}
+
+document.addEventListener('click', (event) => {
+    const openButton = event.target.closest('[data-open-modal]');
+    if (openButton) {
+        ccOpenModal(openButton.dataset.openModal || '');
+        return;
+    }
+
+    const closeButton = event.target.closest('[data-close-modal]');
+    if (closeButton) {
+        ccCloseModal(closeButton.closest('.cc-modal-backdrop'));
+        return;
+    }
+
+    const editButton = event.target.closest('[data-edit-card]');
+    if (editButton) {
+        ccOpenCardModal({
+            id: editButton.dataset.id || '0',
+            nome: editButton.dataset.nome || '',
+            dia: editButton.dataset.dia || '1',
+        });
+        return;
+    }
+
+    if (event.target.classList && event.target.classList.contains('cc-modal-backdrop')) {
+        ccCloseModal(event.target);
+    }
+});
+
+document.querySelector('[data-cc-select-all]')?.addEventListener('change', (event) => {
+    document.querySelectorAll('[data-cc-row-check]').forEach((checkbox) => {
+        if (!checkbox.disabled) {
+            checkbox.checked = event.target.checked;
+        }
+    });
+});
 </script>
 
 <?php endSidebar(); ?>

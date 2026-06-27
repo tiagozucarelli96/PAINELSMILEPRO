@@ -347,13 +347,6 @@ includeSidebar('Pacotes, Serviços e Produtos');
                                         title="Editar"
                                         data-edit-pp
                                         data-id="<?= (int)$item['id'] ?>"
-                                        data-categoria="<?= cadastros_pp_e($categoria) ?>"
-                                        data-nome="<?= cadastros_pp_e((string)$item['nome']) ?>"
-                                        data-valor-venda="<?= cadastros_pp_e((string)($item['valor_venda'] ?? '')) ?>"
-                                        data-valor-pacote="<?= cadastros_pp_e((string)($item['valor_pacote'] ?? '')) ?>"
-                                        data-pessoas-base="<?= cadastros_pp_e((string)($item['pessoas_base'] ?? '')) ?>"
-                                        data-valor-convidado-adicional="<?= cadastros_pp_e((string)($item['valor_convidado_adicional'] ?? '')) ?>"
-                                        data-descricao="<?= cadastros_pp_e((string)($item['descricao'] ?? '')) ?>"
                                     >✎</button>
                                     <form method="post" onsubmit="return confirm('Arquivar este cadastro?');">
                                         <input type="hidden" name="action" value="archive">
@@ -455,12 +448,19 @@ includeSidebar('Pacotes, Serviços e Produtos');
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js"></script>
+<script type="application/json" id="pp-items-json"><?= json_encode(array_column($itens, null, 'id'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
 <script>
 const ppModal = document.getElementById('pp-modal');
 const ppGalleryModal = document.getElementById('pp-gallery-modal');
 const ppForm = document.getElementById('pp-form');
 const ppCategoria = document.getElementById('pp-categoria');
 const ppDescricao = document.getElementById('pp-descricao');
+let ppItems = {};
+try {
+    ppItems = JSON.parse(document.getElementById('pp-items-json')?.textContent || '{}');
+} catch (error) {
+    ppItems = {};
+}
 
 function initPpTiny() {
     if (typeof tinymce === 'undefined' || tinymce.get('pp-descricao')) return;
@@ -561,16 +561,19 @@ document.querySelectorAll('[data-close-pp-gallery]').forEach((button) => button.
 ppCategoria?.addEventListener('change', updateCategoriaFields);
 
 document.querySelectorAll('[data-edit-pp]').forEach((button) => {
-    button.addEventListener('click', () => openPpModal({
-        id: button.dataset.id || '0',
-        categoria: button.dataset.categoria || 'Pacote',
-        nome: button.dataset.nome || '',
-        valorVenda: button.dataset.valorVenda || '',
-        valorPacote: button.dataset.valorPacote || '',
-        pessoasBase: button.dataset.pessoasBase || '',
-        valorConvidadoAdicional: button.dataset.valorConvidadoAdicional || '',
-        descricao: button.dataset.descricao || '',
-    }));
+    button.addEventListener('click', () => {
+        const item = ppItems[button.dataset.id || ''] || {};
+        openPpModal({
+            id: item.id || button.dataset.id || '0',
+            categoria: item.categoria || 'Pacote',
+            nome: item.nome || '',
+            valorVenda: item.valor_venda || '',
+            valorPacote: item.valor_pacote || '',
+            pessoasBase: item.pessoas_base || '',
+            valorConvidadoAdicional: item.valor_convidado_adicional || '',
+            descricao: item.descricao || '',
+        });
+    });
 });
 
 ppForm?.addEventListener('submit', () => {

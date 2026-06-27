@@ -312,24 +312,75 @@ includeSidebar('Categorias Financeiras');
 </div>
 
 <script>
-const cfModal = document.getElementById('cf-modal');
-const cfTitle = document.getElementById('cf-modal-title');
-function openCfModal(data = null) {
-    document.getElementById('cf-id').value = data?.id || '0';
-    document.getElementById('cf-nome').value = data?.nome || '';
-    document.getElementById('cf-grupo').value = data?.grupo || 'Geral';
-    document.getElementById('cf-tipo').value = data?.tipo || 'despesa';
-    document.getElementById('cf-ordem').value = data?.ordem || '0';
-    document.getElementById('cf-ativo').checked = data ? data.ativo === '1' : true;
-    document.getElementById('cf-descricao').value = data?.descricao || '';
-    cfTitle.textContent = data ? 'Editar categoria' : 'Nova categoria';
-    cfModal.classList.add('open');
-}
-document.querySelector('[data-open-cf-modal]')?.addEventListener('click', () => openCfModal());
-document.querySelectorAll('[data-edit-cf]').forEach((button) => button.addEventListener('click', () => openCfModal(button.dataset)));
-document.querySelectorAll('[data-close-cf-modal]').forEach((button) => button.addEventListener('click', () => cfModal.classList.remove('open')));
-cfModal?.addEventListener('click', (event) => { if (event.target === cfModal) cfModal.classList.remove('open'); });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape') cfModal?.classList.remove('open'); });
+(function () {
+    const cfModal = document.getElementById('cf-modal');
+    const fields = {
+        title: document.getElementById('cf-modal-title'),
+        id: document.getElementById('cf-id'),
+        nome: document.getElementById('cf-nome'),
+        grupo: document.getElementById('cf-grupo'),
+        tipo: document.getElementById('cf-tipo'),
+        ordem: document.getElementById('cf-ordem'),
+        ativo: document.getElementById('cf-ativo'),
+        descricao: document.getElementById('cf-descricao')
+    };
+
+    function openCfModal(data) {
+        if (!cfModal) {
+            return;
+        }
+        const isEditing = !!data;
+        fields.id.value = isEditing ? (data.id || '0') : '0';
+        fields.nome.value = isEditing ? (data.nome || '') : '';
+        fields.grupo.value = isEditing ? (data.grupo || 'Geral') : 'Geral';
+        fields.tipo.value = isEditing ? (data.tipo || 'despesa') : 'despesa';
+        fields.ordem.value = isEditing ? (data.ordem || '0') : '0';
+        fields.ativo.checked = isEditing ? data.ativo === '1' : true;
+        fields.descricao.value = isEditing ? (data.descricao || '') : '';
+        fields.title.textContent = isEditing ? 'Editar categoria' : 'Nova categoria';
+        cfModal.classList.add('open');
+        fields.nome.focus();
+    }
+
+    function closeCfModal() {
+        if (cfModal) {
+            cfModal.classList.remove('open');
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        const openButton = event.target.closest('[data-open-cf-modal]');
+        if (openButton) {
+            event.preventDefault();
+            openCfModal(null);
+            return;
+        }
+
+        const editButton = event.target.closest('[data-edit-cf]');
+        if (editButton) {
+            event.preventDefault();
+            openCfModal(editButton.dataset);
+            return;
+        }
+
+        const closeButton = event.target.closest('[data-close-cf-modal]');
+        if (closeButton) {
+            event.preventDefault();
+            closeCfModal();
+            return;
+        }
+
+        if (event.target === cfModal) {
+            closeCfModal();
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            closeCfModal();
+        }
+    });
+})();
 </script>
 
 <?php endSidebar(); ?>

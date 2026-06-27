@@ -520,7 +520,8 @@ financeiro_ensure_schema($pdo);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? '');
 
-    if ($action === 'add_despesa') {
+    if ($action === 'add_despesa' || $action === 'save_despesa') {
+        $id = (int)($_POST['id'] ?? 0);
         $descricao = trim((string)($_POST['descricao'] ?? ''));
         $valor = financeiro_money($_POST['valor'] ?? 0);
         $data = trim((string)($_POST['data_movimento'] ?? ''));
@@ -534,24 +535,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($data === '') {
             $errors[] = 'Informe a data da despesa.';
         } else {
+            if ($id > 0) {
+                $stmt = $pdo->prepare("
+                    UPDATE financeiro_despesas
+                    SET data_movimento = :data_movimento,
+                        descricao = :descricao,
+                        valor = :valor,
+                        banco = :banco,
+                        conta = :conta,
+                        categoria = :categoria,
+                        status = :status,
+                        updated_at = NOW()
+                    WHERE id = :id
+                      AND status <> 'cancelado'
+                ");
+                $stmt->execute([
+                    ':id' => $id,
+                    ':data_movimento' => $data,
+                    ':descricao' => $descricao,
+                    ':valor' => $valor,
+                    ':banco' => trim((string)($_POST['banco'] ?? '')) ?: null,
+                    ':conta' => trim((string)($_POST['conta'] ?? '')) ?: null,
+                    ':categoria' => trim((string)($_POST['categoria'] ?? '')) ?: null,
+                    ':status' => $status,
+                ]);
+                $messages[] = 'Despesa atualizada com sucesso.';
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO financeiro_despesas
+                        (data_movimento, descricao, valor, banco, conta, categoria, status, origem, created_by)
+                    VALUES
+                        (:data_movimento, :descricao, :valor, :banco, :conta, :categoria, :status, 'manual', :created_by)
+                ");
+                $stmt->execute([
+                    ':data_movimento' => $data,
+                    ':descricao' => $descricao,
+                    ':valor' => $valor,
+                    ':banco' => trim((string)($_POST['banco'] ?? '')) ?: null,
+                    ':conta' => trim((string)($_POST['conta'] ?? '')) ?: null,
+                    ':categoria' => trim((string)($_POST['categoria'] ?? '')) ?: null,
+                    ':status' => $status,
+                    ':created_by' => $userId > 0 ? $userId : null,
+                ]);
+                $messages[] = 'Despesa lancada com sucesso.';
+            }
+        }
+    }
+
+    if ($action === 'delete_despesa') {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id > 0) {
             $stmt = $pdo->prepare("
-                INSERT INTO financeiro_despesas
-                    (data_movimento, descricao, valor, banco, conta, categoria, centro_custo, status, origem, created_by)
-                VALUES
-                    (:data_movimento, :descricao, :valor, :banco, :conta, :categoria, :centro_custo, :status, 'manual', :created_by)
+                UPDATE financeiro_despesas
+                SET status = 'cancelado',
+                    updated_at = NOW()
+                WHERE id = :id
+                  AND status <> 'cancelado'
             ");
-            $stmt->execute([
-                ':data_movimento' => $data,
-                ':descricao' => $descricao,
-                ':valor' => $valor,
-                ':banco' => trim((string)($_POST['banco'] ?? '')) ?: null,
-                ':conta' => trim((string)($_POST['conta'] ?? '')) ?: null,
-                ':categoria' => trim((string)($_POST['categoria'] ?? '')) ?: null,
-                ':centro_custo' => trim((string)($_POST['centro_custo'] ?? '')) ?: null,
-                ':status' => $status,
-                ':created_by' => $userId > 0 ? $userId : null,
-            ]);
-            $messages[] = 'Despesa lancada com sucesso.';
+            $stmt->execute([':id' => $id]);
+            $messages[] = 'Despesa removida da listagem.';
         }
     }
 
