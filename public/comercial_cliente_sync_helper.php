@@ -101,6 +101,11 @@ if (!function_exists('comercial_cliente_sync_digits')) {
 if (!function_exists('comercial_cliente_sync_ensure_schema')) {
     function comercial_cliente_sync_ensure_schema(PDO $pdo): void
     {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+
         if (function_exists('painel_runtime_schema_setup_enabled') && !painel_runtime_schema_setup_enabled()) {
             return;
         }
@@ -161,6 +166,7 @@ if (!function_exists('comercial_cliente_sync_ensure_schema')) {
                 $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS cliente_cadastro_id BIGINT NULL");
                 $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_eventos_cliente_cadastro ON logistica_eventos_espelho(cliente_cadastro_id)");
             }
+            $ensured = true;
         } catch (Throwable $e) {
             error_log('comercial_cliente_sync_ensure_schema: ' . $e->getMessage());
         }

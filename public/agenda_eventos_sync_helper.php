@@ -91,11 +91,18 @@ if (!function_exists('agenda_eventos_sync_time')) {
 if (!function_exists('agenda_eventos_sync_mapeamento')) {
     function agenda_eventos_sync_mapeamento(PDO $pdo, int $idLocalEvento, string $localEvento): ?array
     {
+        static $cacheById = [];
+        static $cacheByName = [];
+
         if (!agenda_eventos_sync_table_exists($pdo, 'logistica_me_locais')) {
             return null;
         }
 
         if ($idLocalEvento > 0) {
+            if (array_key_exists($idLocalEvento, $cacheById)) {
+                return $cacheById[$idLocalEvento];
+            }
+
             $stmt = $pdo->prepare("
                 SELECT unidade_interna_id, space_visivel
                 FROM logistica_me_locais
@@ -105,8 +112,16 @@ if (!function_exists('agenda_eventos_sync_mapeamento')) {
             $stmt->execute([':me_local_id' => $idLocalEvento]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if (is_array($row)) {
+                $cacheById[$idLocalEvento] = $row;
                 return $row;
             }
+
+            $cacheById[$idLocalEvento] = null;
+        }
+
+        $nameKey = strtolower(trim($localEvento));
+        if (array_key_exists($nameKey, $cacheByName)) {
+            return $cacheByName[$nameKey];
         }
 
         $stmt = $pdo->prepare("
@@ -118,21 +133,30 @@ if (!function_exists('agenda_eventos_sync_mapeamento')) {
         $stmt->execute([':me_local_nome' => $localEvento]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        return is_array($row) ? $row : null;
+        $cacheByName[$nameKey] = is_array($row) ? $row : null;
+        return $cacheByName[$nameKey];
     }
 }
 
 if (!function_exists('agenda_eventos_sync_me_payload')) {
     function agenda_eventos_sync_me_payload(PDO $pdo, array $eventoData, string $webhookEvent = ''): array
     {
+        static $schemaEnsured = false;
+        static $hasNomeEvento = null;
+        static $hasWhatsappCliente = null;
+
         if (!agenda_eventos_sync_table_exists($pdo, 'logistica_eventos_espelho')) {
             return ['ok' => false, 'error' => 'Tabela logistica_eventos_espelho ausente.'];
         }
-        try {
-            $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS whatsapp_cliente VARCHAR(40)");
-            $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS telefone_cliente VARCHAR(40)");
-        } catch (Throwable $e) {
-            error_log('[AGENDA SYNC] Falha ao garantir telefone do cliente: ' . $e->getMessage());
+
+        if (!$schemaEnsured) {
+            try {
+                $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS whatsapp_cliente VARCHAR(40)");
+                $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS telefone_cliente VARCHAR(40)");
+                $schemaEnsured = true;
+            } catch (Throwable $e) {
+                error_log('[AGENDA SYNC] Falha ao garantir telefone do cliente: ' . $e->getMessage());
+            }
         }
 
         $meEventId = (int)agenda_eventos_sync_pick($eventoData, ['id', 'id_evento', 'idevento'], 0);
@@ -163,7 +187,9 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
         $statusMapeamento = $mapping ? 'MAPEADO' : 'PENDENTE';
         $unidadeId = $mapping['unidade_interna_id'] ?? null;
         $spaceVisivel = $mapping['space_visivel'] ?? null;
-        $hasNomeEvento = agenda_eventos_sync_column_exists($pdo, 'logistica_eventos_espelho', 'nome_evento');
+        if ($hasNomeEvento === null) {
+            $hasNomeEvento = agenda_eventos_sync_column_exists($pdo, 'logistica_eventos_espelho', 'nome_evento');
+        }
 
         $nomeEvento = trim((string)agenda_eventos_sync_pick($eventoData, ['nomeevento', 'nome_evento', 'nome', 'titulo'], ''));
         if ($nomeEvento === '') {
@@ -254,7 +280,11 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
 
-        if ($whatsappCliente !== '' && agenda_eventos_sync_column_exists($pdo, 'logistica_eventos_espelho', 'whatsapp_cliente')) {
+        if ($hasWhatsappCliente === null) {
+            $hasWhatsappCliente = agenda_eventos_sync_column_exists($pdo, 'logistica_eventos_espelho', 'whatsapp_cliente');
+        }
+
+        if ($whatsappCliente !== '' && $hasWhatsappCliente) {
             $stmtPhone = $pdo->prepare("
                 UPDATE logistica_eventos_espelho
                 SET whatsapp_cliente = :whatsapp_cliente,
