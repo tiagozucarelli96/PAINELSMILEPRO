@@ -648,6 +648,9 @@ if (!$file && $page) {
 }
 
 if ($path && is_file($path)) {
+  $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] = $_GET;
+  $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] = (string)($_SERVER['QUERY_STRING'] ?? '');
+  $GLOBALS['PAINEL_CURRENT_ROUTE_URI'] = (string)($_SERVER['REQUEST_URI'] ?? '');
   require $path;
   exit;
 } else if ($path) {

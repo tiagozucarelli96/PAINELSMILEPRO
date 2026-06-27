@@ -29,8 +29,13 @@ function cadastros_contratos_e(string $value): string
 
 function cadastros_contratos_query_params(): array
 {
-    $params = $_GET;
+    $routeParams = $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] ?? null;
+    $params = is_array($routeParams) ? array_merge($_GET, $routeParams) : $_GET;
     $queryString = (string)($_SERVER['QUERY_STRING'] ?? '');
+    $routeQueryString = (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? '');
+    if ($routeQueryString !== '') {
+        $queryString = $routeQueryString . ($queryString !== '' ? '&' . $queryString : '');
+    }
     if ($queryString !== '') {
         parse_str(str_replace('&amp;', '&', $queryString), $parsed);
         if (is_array($parsed)) {
@@ -38,7 +43,8 @@ function cadastros_contratos_query_params(): array
         }
     }
 
-    $requestQuery = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
+    $requestUri = (string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ($_SERVER['REQUEST_URI'] ?? ''));
+    $requestQuery = (string)(parse_url($requestUri, PHP_URL_QUERY) ?? '');
     if ($requestQuery !== '') {
         parse_str(str_replace('&amp;', '&', $requestQuery), $parsed);
         if (is_array($parsed)) {
