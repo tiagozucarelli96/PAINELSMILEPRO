@@ -59,6 +59,18 @@ cadastros_pp_ensure_schema($pdo);
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $success = '';
 $errors = [];
+$modalOpen = isset($_GET['novo']);
+$editId = (int)($_GET['edit_id'] ?? 0);
+$modalItem = [
+    'id' => 0,
+    'categoria' => 'Pacote',
+    'nome' => '',
+    'valor_venda' => '',
+    'valor_pacote' => '',
+    'pessoas_base' => '',
+    'valor_convidado_adicional' => '',
+    'descricao' => '',
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim((string)($_POST['action'] ?? ''));
@@ -196,6 +208,50 @@ if (!empty($_SESSION['cadastros_pp_success'])) {
     unset($_SESSION['cadastros_pp_success']);
 }
 
+if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'save')) {
+    $modalOpen = true;
+    $modalItem = [
+        'id' => (int)($_POST['id'] ?? 0),
+        'categoria' => trim((string)($_POST['categoria'] ?? 'Pacote')),
+        'nome' => trim((string)($_POST['nome'] ?? '')),
+        'valor_venda' => trim((string)($_POST['valor_venda'] ?? '')),
+        'valor_pacote' => trim((string)($_POST['valor_pacote'] ?? '')),
+        'pessoas_base' => trim((string)($_POST['pessoas_base'] ?? '')),
+        'valor_convidado_adicional' => trim((string)($_POST['valor_convidado_adicional'] ?? '')),
+        'descricao' => trim((string)($_POST['descricao'] ?? '')),
+    ];
+} elseif ($editId > 0) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM logistica_pacotes_evento
+            WHERE id = :id
+              AND deleted_at IS NULL
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $editId]);
+        $itemEdicao = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($itemEdicao) {
+            $modalOpen = true;
+            $modalItem = [
+                'id' => (int)$itemEdicao['id'],
+                'categoria' => (string)($itemEdicao['categoria'] ?? 'Pacote'),
+                'nome' => (string)($itemEdicao['nome'] ?? ''),
+                'valor_venda' => (string)($itemEdicao['valor_venda'] ?? ''),
+                'valor_pacote' => (string)($itemEdicao['valor_pacote'] ?? ''),
+                'pessoas_base' => (string)($itemEdicao['pessoas_base'] ?? ''),
+                'valor_convidado_adicional' => (string)($itemEdicao['valor_convidado_adicional'] ?? ''),
+                'descricao' => (string)($itemEdicao['descricao'] ?? ''),
+            ];
+        } else {
+            $errors[] = 'Cadastro não encontrado para edição.';
+        }
+    } catch (Throwable $e) {
+        error_log('cadastros_pp edit: ' . $e->getMessage());
+        $errors[] = 'Não foi possível carregar o cadastro para edição.';
+    }
+}
+
 try {
     $stmt = $pdo->query("
         SELECT *
@@ -243,6 +299,9 @@ try {
 }
 
 includeSidebar('Pacotes, Serviços e Produtos');
+
+$modalCategoria = in_array((string)$modalItem['categoria'], ['Pacote', 'Serviço', 'Produto'], true) ? (string)$modalItem['categoria'] : 'Pacote';
+$modalIsPacote = $modalCategoria === 'Pacote';
 ?>
 
 <style>
@@ -303,7 +362,7 @@ includeSidebar('Pacotes, Serviços e Produtos');
         </div>
         <div class="pp-actions">
             <a class="pp-btn secondary" href="index.php?page=cadastros">← Cadastros</a>
-            <button class="pp-btn" type="button" data-open-pp-modal onclick="ppOpenCadastroModal()">+ Adicionar</button>
+            <a class="pp-btn" href="index.php?page=cadastros_pacotes_produtos&novo=1" data-open-pp-modal>+ Adicionar</a>
         </div>
     </div>
 
@@ -341,14 +400,13 @@ includeSidebar('Pacotes, Serviços e Produtos');
                                         <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
                                         <button class="pp-icon-btn copy" type="submit" title="Duplicar">⧉</button>
                                     </form>
-                                    <button
+                                    <a
                                         class="pp-icon-btn edit"
-                                        type="button"
+                                        href="index.php?page=cadastros_pacotes_produtos&edit_id=<?= (int)$item['id'] ?>"
                                         title="Editar"
                                         data-edit-pp
-                                        onclick="ppOpenCadastroModalFromButton(this)"
                                         data-id="<?= (int)$item['id'] ?>"
-                                    >✎</button>
+                                    >✎</a>
                                     <form method="post" onsubmit="return confirm('Arquivar este cadastro?');">
                                         <input type="hidden" name="action" value="archive">
                                         <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
@@ -367,52 +425,52 @@ includeSidebar('Pacotes, Serviços e Produtos');
     </section>
 </main>
 
-<div class="pp-modal-backdrop" id="pp-modal" role="dialog" aria-modal="true" aria-labelledby="pp-modal-title">
+<div class="pp-modal-backdrop <?= $modalOpen ? 'open' : '' ?>" id="pp-modal" role="dialog" aria-modal="true" aria-labelledby="pp-modal-title">
     <div class="pp-modal">
         <div class="pp-modal-header">
-            <h2 class="pp-modal-title" id="pp-modal-title">Adicionar cadastro</h2>
-            <button class="pp-modal-close" type="button" data-close-pp-modal onclick="ppCloseCadastroModal()" aria-label="Fechar">×</button>
+            <h2 class="pp-modal-title" id="pp-modal-title"><?= (int)$modalItem['id'] > 0 ? 'Editar cadastro' : 'Adicionar cadastro' ?></h2>
+            <a class="pp-modal-close" href="index.php?page=cadastros_pacotes_produtos" data-close-pp-modal aria-label="Fechar">×</a>
         </div>
         <form method="post" class="pp-form" id="pp-form">
             <input type="hidden" name="action" value="save">
-            <input type="hidden" name="id" id="pp-id" value="0">
+            <input type="hidden" name="id" id="pp-id" value="<?= (int)$modalItem['id'] ?>">
             <div class="pp-grid">
                 <div class="pp-field">
                     <label for="pp-categoria">Categoria</label>
                     <select name="categoria" id="pp-categoria" required>
-                        <option value="Pacote">Pacote</option>
-                        <option value="Serviço">Serviço</option>
-                        <option value="Produto">Produto</option>
+                        <option value="Pacote" <?= $modalCategoria === 'Pacote' ? 'selected' : '' ?>>Pacote</option>
+                        <option value="Serviço" <?= $modalCategoria === 'Serviço' ? 'selected' : '' ?>>Serviço</option>
+                        <option value="Produto" <?= $modalCategoria === 'Produto' ? 'selected' : '' ?>>Produto</option>
                     </select>
                 </div>
                 <div class="pp-field">
                     <label for="pp-nome">Nome</label>
-                    <input type="text" name="nome" id="pp-nome" maxlength="180" required>
+                    <input type="text" name="nome" id="pp-nome" maxlength="180" required value="<?= cadastros_pp_e((string)$modalItem['nome']) ?>">
                 </div>
-                <div class="pp-field pp-service-fields">
+                <div class="pp-field pp-service-fields <?= $modalIsPacote ? 'hidden' : '' ?>">
                     <label for="pp-valor-venda">Valor de venda</label>
-                    <input type="text" name="valor_venda" id="pp-valor-venda" inputmode="decimal" placeholder="0,00">
+                    <input type="text" name="valor_venda" id="pp-valor-venda" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_venda']) ?>">
                 </div>
-                <div class="pp-field pp-package-fields hidden">
+                <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
                     <label for="pp-valor-pacote">Valor do pacote</label>
-                    <input type="text" name="valor_pacote" id="pp-valor-pacote" inputmode="decimal" placeholder="0,00">
+                    <input type="text" name="valor_pacote" id="pp-valor-pacote" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_pacote']) ?>">
                 </div>
-                <div class="pp-field pp-package-fields hidden">
+                <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
                     <label for="pp-pessoas-base">Quantia de pessoas base</label>
-                    <input type="number" name="pessoas_base" id="pp-pessoas-base" min="0" step="1">
+                    <input type="number" name="pessoas_base" id="pp-pessoas-base" min="0" step="1" value="<?= cadastros_pp_e((string)$modalItem['pessoas_base']) ?>">
                 </div>
-                <div class="pp-field pp-package-fields hidden">
+                <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
                     <label for="pp-valor-convidado-adicional">Valor convidado adicional</label>
-                    <input type="text" name="valor_convidado_adicional" id="pp-valor-convidado-adicional" inputmode="decimal" placeholder="0,00">
+                    <input type="text" name="valor_convidado_adicional" id="pp-valor-convidado-adicional" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_convidado_adicional']) ?>">
                 </div>
                 <div class="pp-field full">
                     <label for="pp-descricao">Descrição</label>
-                    <textarea name="descricao" id="pp-descricao" rows="14"></textarea>
+                    <textarea name="descricao" id="pp-descricao" rows="14"><?= cadastros_pp_e((string)$modalItem['descricao']) ?></textarea>
                 </div>
             </div>
         </form>
         <div class="pp-modal-actions">
-            <button class="pp-btn secondary" type="button" data-close-pp-modal onclick="ppCloseCadastroModal()">Cancelar</button>
+            <a class="pp-btn secondary" href="index.php?page=cadastros_pacotes_produtos" data-close-pp-modal>Cancelar</a>
             <button class="pp-btn" type="submit" form="pp-form">Salvar</button>
         </div>
     </div>
@@ -590,6 +648,12 @@ document.querySelectorAll('[data-edit-pp]').forEach((button) => {
         openPpModal(getPpItemModalData(button.dataset.id || ''));
     });
 });
+
+if (ppModal?.classList.contains('open')) {
+    updateCategoriaFields();
+    initPpTiny();
+    window.setTimeout(() => setTinyContent(ppDescricao?.value || ''), 120);
+}
 
 ppForm?.addEventListener('submit', () => {
     if (typeof tinymce !== 'undefined') {
