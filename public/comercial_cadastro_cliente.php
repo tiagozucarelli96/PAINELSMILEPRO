@@ -281,7 +281,7 @@ comercial_cadastro_cliente_ensure_schema($pdo);
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $search = trim((string)($_GET['search'] ?? ''));
-$clienteId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+$clienteId = (int)($_GET['id'] ?? $_GET['edit_id'] ?? $_POST['id'] ?? 0);
 $clienteAtual = comercial_cadastro_cliente_buscar($pdo, $clienteId);
 if (!$clienteAtual && $clienteId <= 0 && $search !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     $clienteAtual = comercial_cadastro_cliente_buscar_por_search($pdo, $search);
