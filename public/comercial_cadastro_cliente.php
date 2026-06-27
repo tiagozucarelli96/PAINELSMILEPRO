@@ -255,12 +255,12 @@ if ($requestMethod === 'POST') {
         'endereco_bairro' => trim((string)($_POST['endereco_bairro'] ?? '')),
         'endereco_cidade' => trim((string)($_POST['endereco_cidade'] ?? '')),
         'endereco_estado' => strtoupper(trim((string)($_POST['endereco_estado'] ?? ''))),
-        'origem_cliente' => trim((string)($_POST['origem_cliente'] ?? '')),
-        'responsavel_usuario_id' => (int)($_POST['responsavel_usuario_id'] ?? 0),
-        'tipo_interesse' => trim((string)($_POST['tipo_interesse'] ?? '')),
-        'data_desejada' => trim((string)($_POST['data_desejada'] ?? '')),
-        'unidade_interesse' => trim((string)($_POST['unidade_interesse'] ?? '')),
-        'observacoes' => trim((string)($_POST['observacoes'] ?? '')),
+        'origem_cliente' => trim((string)($_POST['origem_cliente'] ?? ($isEditing ? ($clienteAtual['origem_cliente'] ?? '') : ''))),
+        'responsavel_usuario_id' => (int)($_POST['responsavel_usuario_id'] ?? ($isEditing ? ($clienteAtual['responsavel_usuario_id'] ?? 0) : 0)),
+        'tipo_interesse' => trim((string)($_POST['tipo_interesse'] ?? ($isEditing ? ($clienteAtual['tipo_interesse'] ?? '') : ''))),
+        'data_desejada' => trim((string)($_POST['data_desejada'] ?? ($isEditing ? ($clienteAtual['data_desejada'] ?? '') : ''))),
+        'unidade_interesse' => trim((string)($_POST['unidade_interesse'] ?? ($isEditing ? ($clienteAtual['unidade_interesse'] ?? '') : ''))),
+        'observacoes' => trim((string)($_POST['observacoes'] ?? ($isEditing ? ($clienteAtual['observacoes'] ?? '') : ''))),
     ];
 
     if ($payload['nome_completo'] === '') {
@@ -377,7 +377,6 @@ if (!empty($_SESSION['comercial_cadastro_cliente_success'])) {
 }
 
 $search = trim((string)($_GET['search'] ?? ''));
-$usuarios = comercial_cadastro_cliente_usuarios($pdo);
 $clientes = comercial_cadastro_cliente_recentes($pdo, $search);
 
 includeSidebar('Cadastro do cliente');
@@ -699,59 +698,6 @@ includeSidebar('Cadastro do cliente');
                         <div class="cliente-field">
                             <label for="endereco_estado">Estado</label>
                             <input type="text" name="endereco_estado" id="endereco_estado" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('endereco_estado', $clienteAtual)) ?>" maxlength="2">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="cliente-section">
-                    <div class="cliente-section-title">Comercial e interesse</div>
-                    <div class="cliente-grid">
-                        <div class="cliente-field">
-                            <label for="origem_cliente">Origem</label>
-                            <select name="origem_cliente" id="origem_cliente">
-                                <?php
-                                $origens = ['', 'Instagram', 'Indicação', 'Google', 'Degustação', 'WhatsApp', 'Parceiro', 'Outro'];
-                                foreach ($origens as $origem):
-                                    $label = $origem !== '' ? $origem : 'Selecione...';
-                                ?>
-                                    <option value="<?= comercial_cadastro_cliente_e($origem) ?>" <?= comercial_cadastro_cliente_value('origem_cliente', $clienteAtual) === $origem ? 'selected' : '' ?>><?= comercial_cadastro_cliente_e($label) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="cliente-field">
-                            <label for="responsavel_usuario_id">Responsável comercial</label>
-                            <select name="responsavel_usuario_id" id="responsavel_usuario_id">
-                                <option value="">Selecione...</option>
-                                <?php foreach ($usuarios as $usuario): ?>
-                                    <option value="<?= (int)$usuario['id'] ?>" <?= (int)comercial_cadastro_cliente_value('responsavel_usuario_id', $clienteAtual) === (int)$usuario['id'] ? 'selected' : '' ?>>
-                                        <?= comercial_cadastro_cliente_e((string)$usuario['nome']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="cliente-field">
-                            <label for="tipo_interesse">Tipo de interesse</label>
-                            <select name="tipo_interesse" id="tipo_interesse">
-                                <?php
-                                $interesses = ['', '15 anos', 'Infantil', 'Casamento', 'Corporativo', 'Outro'];
-                                foreach ($interesses as $interesse):
-                                    $label = $interesse !== '' ? $interesse : 'Selecione...';
-                                ?>
-                                    <option value="<?= comercial_cadastro_cliente_e($interesse) ?>" <?= comercial_cadastro_cliente_value('tipo_interesse', $clienteAtual) === $interesse ? 'selected' : '' ?>><?= comercial_cadastro_cliente_e($label) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="cliente-field">
-                            <label for="data_desejada">Data desejada</label>
-                            <input type="date" name="data_desejada" id="data_desejada" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('data_desejada', $clienteAtual)) ?>">
-                        </div>
-                        <div class="cliente-field full">
-                            <label for="unidade_interesse">Unidade de interesse</label>
-                            <input type="text" name="unidade_interesse" id="unidade_interesse" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('unidade_interesse', $clienteAtual)) ?>" maxlength="120" placeholder="Ex: Lisbon 1, Diverkids, Garden, Cristal">
-                        </div>
-                        <div class="cliente-field full">
-                            <label for="observacoes">Observações internas</label>
-                            <textarea name="observacoes" id="observacoes"><?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('observacoes', $clienteAtual)) ?></textarea>
                         </div>
                     </div>
                 </div>

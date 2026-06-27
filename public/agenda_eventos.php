@@ -1236,10 +1236,9 @@ a.event-function-card:hover {
         $clienteDocumentoTipo = trim((string)($eventoSelecionado['cliente_documento_tipo'] ?? ''));
         $clienteDocumentoNumero = trim((string)($eventoSelecionado['cliente_documento_numero'] ?? ''));
         $clienteRg = trim((string)($eventoSelecionado['cliente_rg'] ?? ''));
-        $clienteCadastroHref = 'index.php?page=comercial_cadastro_cliente';
-        if ($clienteNome !== '') {
-            $clienteCadastroHref .= '&search=' . urlencode($clienteNome);
-        }
+        $clienteCadastroHref = $clienteCadastroId > 0
+            ? 'index.php?page=comercial_cadastro_cliente&id=' . $clienteCadastroId
+            : 'index.php?page=comercial_clientes_cadastrados' . ($clienteNome !== '' ? '&search=' . urlencode($clienteNome) : '');
 
         $cards = [
             ['icon' => '☑️', 'title' => 'Checklist', 'pill' => '10% / 90%'],
@@ -1250,16 +1249,6 @@ a.event-function-card:hover {
             ['icon' => '❕', 'title' => 'Histórico', 'pill' => '', 'href' => $historicoHref],
         ];
         ?>
-        <div class="calendar-toolbar event-detail-toolbar">
-            <div>
-                <h2 class="calendar-toolbar-title"><?= h((string)($eventoSelecionado['nome_evento'] ?? 'Evento')) ?></h2>
-                <p class="calendar-toolbar-subtitle">Primeira tela de substituição gradual das funções da ME Eventos.</p>
-            </div>
-            <div class="calendar-nav">
-                <a href="index.php?page=agenda_eventos<?= $eventMesLink !== '' ? '&mes=' . h($eventMesLink) : '' ?>" class="calendar-nav-btn">← Agenda</a>
-            </div>
-        </div>
-
         <div class="agenda-detail-layout">
             <aside class="event-side-panel">
                 <h2 class="event-side-title"><?= h((string)($eventoSelecionado['nome_evento'] ?? 'Evento')) ?></h2>
@@ -1309,6 +1298,7 @@ a.event-function-card:hover {
 
             <section class="event-functions-panel">
                 <div class="event-actions">
+                    <a class="event-action-btn" href="index.php?page=agenda_eventos<?= $eventMesLink !== '' ? '&mes=' . h($eventMesLink) : '' ?>">← Agenda</a>
                     <button type="button" class="event-action-btn" onclick="window.print()">🖨️ Imprimir</button>
                     <a class="event-action-btn event-action-btn--green" href="index.php?page=agenda_eventos&evento_id=<?= (int)$eventoSelecionado['id'] ?>">🔗</a>
                 </div>
