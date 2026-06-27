@@ -260,6 +260,10 @@
                 'vendas_kanban', 'vendas_links_publicos',
                 // Eventos (formulários reutilizáveis)
                 'formularios_eventos',
+                // Cadastros com modais/editores próprios: precisam executar os scripts da página.
+                'cadastros_contratos', 'cadastros_tags', 'cadastros_pacotes_produtos', 'cadastros_categorias_financeiras',
+                // Financeiro com modais/importação próprios.
+                'financeiro_cartoes',
                 // Eventos (módulo com includeSidebar — não carregar via AJAX)
                 'eventos', 'eventos_reuniao_final', 'eventos_rascunhos', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores',
                 // Minha conta e gestão de documentos (includeSidebar)
