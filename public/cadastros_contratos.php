@@ -203,7 +203,8 @@ includeSidebar('Contratos');
 .modelo-status.on { background: #dcfce7; color: #166534; }
 .modelo-status.off { background: #fee2e2; color: #991b1b; }
 .contratos-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(15, 23, 42, 0.55); }
-.contratos-modal-backdrop.open { display: flex; }
+.contratos-modal-backdrop.open,
+#contrato-modal:target { display: flex; }
 .contratos-modal { width: min(1120px, 100%); max-height: calc(100vh - 2rem); overflow: auto; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }
 .contratos-modal-header { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 .contratos-modal-title { margin: 0; color: #1e293b; font-weight: 900; font-size: 1.15rem; }
@@ -227,7 +228,7 @@ includeSidebar('Contratos');
         </div>
         <div class="contratos-header-actions">
             <a class="contratos-back" href="index.php?page=cadastros">← Cadastros</a>
-            <a class="contratos-primary" href="index.php?page=cadastros_contratos&novo=1" data-open-contrato-modal>+ Adicionar contrato</a>
+            <a class="contratos-primary" href="index.php?page=cadastros_contratos&novo=1#contrato-modal" data-open-contrato-modal>+ Adicionar contrato</a>
         </div>
     </div>
 
@@ -259,7 +260,7 @@ includeSidebar('Contratos');
                                 <div class="modelo-actions">
                                     <a
                                         class="modelo-action"
-                                        href="index.php?page=cadastros_contratos&edit_id=<?= (int)$modelo['id'] ?>"
+                                        href="index.php?page=cadastros_contratos&edit_id=<?= (int)$modelo['id'] ?>#contrato-modal"
                                         data-edit-contrato
                                         data-id="<?= (int)$modelo['id'] ?>"
                                         data-nome="<?= cadastros_contratos_e((string)$modelo['nome']) ?>"
@@ -373,15 +374,44 @@ window.openContratoModal = openContratoModal;
 window.closeContratoModal = closeContratoModal;
 window.openContratoModalFromButton = openContratoModalFromButton;
 
-document.querySelector('[data-open-contrato-modal]')?.addEventListener('click', () => openContratoModal());
-document.querySelectorAll('[data-close-contrato-modal]').forEach((button) => button.addEventListener('click', closeContratoModal));
+function openContratoModalFromUrl() {
+    const params = new URLSearchParams(window.location.search || '');
+    const editId = params.get('edit_id');
+    if (editId) {
+        const editButton = Array.from(document.querySelectorAll('[data-edit-contrato]')).find((button) => button.dataset.id === editId);
+        if (editButton) {
+            openContratoModalFromButton(editButton);
+            return;
+        }
+    }
+    if (params.has('novo')) {
+        openContratoModal();
+    }
+}
+
+document.querySelector('[data-open-contrato-modal]')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    history.replaceState(null, '', 'index.php?page=cadastros_contratos&novo=1#contrato-modal');
+    openContratoModal();
+});
+document.querySelectorAll('[data-close-contrato-modal]').forEach((button) => button.addEventListener('click', (event) => {
+    event.preventDefault();
+    history.replaceState(null, '', 'index.php?page=cadastros_contratos');
+    closeContratoModal();
+}));
 contratoModal?.addEventListener('click', (event) => {
     if (event.target === contratoModal) closeContratoModal();
 });
 
 document.querySelectorAll('[data-edit-contrato]').forEach((button) => {
-    button.addEventListener('click', () => openContratoModalFromButton(button));
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        history.replaceState(null, '', `index.php?page=cadastros_contratos&edit_id=${button.dataset.id || ''}#contrato-modal`);
+        openContratoModalFromButton(button);
+    });
 });
+
+openContratoModalFromUrl();
 
 if (contratoModal?.classList.contains('open')) {
     initContratoTiny();

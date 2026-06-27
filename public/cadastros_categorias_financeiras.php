@@ -219,7 +219,7 @@ includeSidebar('Categorias Financeiras');
 .cf-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07);overflow:hidden}.cf-card-header{padding:1rem;border-bottom:1px solid #e2e8f0;background:#f8fbff}
 .cf-filters{display:grid;grid-template-columns:1.4fr 1fr 150px auto;gap:.7rem;align-items:end}.cf-field{display:grid;gap:.35rem}.cf-field label{font-weight:800;font-size:.82rem;color:#475569}.cf-field input,.cf-field select,.cf-field textarea{width:100%;border:1px solid #d1d9e6;border-radius:8px;padding:.68rem .78rem;color:#1e293b;background:#fff;font:inherit}.cf-field textarea{min-height:78px}
 .cf-table-wrap{overflow:auto}.cf-table{width:100%;border-collapse:collapse;min-width:920px}.cf-table th,.cf-table td{padding:.82rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.cf-table th{background:#f8fafc;color:#475569;font-size:.78rem;text-transform:uppercase}.cf-name{font-weight:900;color:#1e293b}.cf-muted{color:#64748b;font-size:.86rem}.cf-pill{display:inline-flex;border-radius:999px;padding:.24rem .6rem;font-size:.76rem;font-weight:900}.cf-pill.on{background:#dcfce7;color:#166534}.cf-pill.off{background:#fee2e2;color:#991b1b}.cf-pill.type{background:#e0f2fe;color:#075985}.cf-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cf-action{border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:.42rem .62rem;cursor:pointer;font-weight:800;color:#334155}
-.cf-modal-backdrop{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem;background:rgba(15,23,42,.55)}.cf-modal-backdrop.open{display:flex}.cf-modal{width:min(620px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.cf-modal-header{padding:1rem 1.1rem;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:1rem;align-items:center}.cf-modal-title{margin:0;color:#1e293b;font-weight:900;font-size:1.15rem}.cf-modal-close{width:36px;height:36px;border:none;border-radius:999px;background:#f1f5f9;color:#334155;cursor:pointer;font-size:1.25rem}.cf-form{padding:1rem;display:grid;gap:.85rem}.cf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.cf-full{grid-column:1/-1}.cf-check{display:flex;align-items:center;gap:.5rem;font-weight:800}.cf-check input{width:auto}.cf-modal-actions{display:flex;justify-content:flex-end;gap:.65rem;border-top:1px solid #e2e8f0;padding:1rem}
+.cf-modal-backdrop{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem;background:rgba(15,23,42,.55)}.cf-modal-backdrop.open,#cf-modal:target{display:flex}.cf-modal{width:min(620px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.cf-modal-header{padding:1rem 1.1rem;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:1rem;align-items:center}.cf-modal-title{margin:0;color:#1e293b;font-weight:900;font-size:1.15rem}.cf-modal-close{width:36px;height:36px;border:none;border-radius:999px;background:#f1f5f9;color:#334155;cursor:pointer;font-size:1.25rem;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.cf-form{padding:1rem;display:grid;gap:.85rem}.cf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.cf-full{grid-column:1/-1}.cf-check{display:flex;align-items:center;gap:.5rem;font-weight:800}.cf-check input{width:auto}.cf-modal-actions{display:flex;justify-content:flex-end;gap:.65rem;border-top:1px solid #e2e8f0;padding:1rem}
 @media(max-width:760px){.cf-filters,.cf-grid{grid-template-columns:1fr}.cf-page{padding:1rem}}
 </style>
 
@@ -231,7 +231,7 @@ includeSidebar('Categorias Financeiras');
         </div>
         <div class="cf-actions">
             <a class="cf-btn" href="index.php?page=cadastros">← Cadastros</a>
-            <button class="cf-btn primary" type="button" data-open-cf-modal onclick="cfOpenCategoriaModal()">+ Nova categoria</button>
+            <a class="cf-btn primary" href="index.php?page=cadastros_categorias_financeiras&novo=1#cf-modal" data-open-cf-modal>+ Nova categoria</a>
         </div>
     </div>
 
@@ -261,7 +261,7 @@ includeSidebar('Categorias Financeiras');
                             <td><span class="cf-pill <?= !empty($categoria['ativo']) ? 'on' : 'off' ?>"><?= !empty($categoria['ativo']) ? 'Ativa' : 'Inativa' ?></span></td>
                             <td>
                                 <div class="cf-row-actions">
-                                    <button class="cf-action" type="button" data-edit-cf onclick="cfOpenCategoriaModalFromButton(this)"
+                                    <a class="cf-action" href="index.php?page=cadastros_categorias_financeiras&edit_id=<?= (int)$categoria['id'] ?>#cf-modal" data-edit-cf
                                         data-id="<?= (int)$categoria['id'] ?>"
                                         data-nome="<?= cf_h((string)$categoria['nome']) ?>"
                                         data-grupo="<?= cf_h((string)$categoria['grupo']) ?>"
@@ -269,7 +269,7 @@ includeSidebar('Categorias Financeiras');
                                         data-ordem="<?= (int)$categoria['ordem'] ?>"
                                         data-ativo="<?= !empty($categoria['ativo']) ? '1' : '0' ?>"
                                         data-descricao="<?= cf_h((string)($categoria['descricao'] ?? '')) ?>"
-                                    >Editar</button>
+                                    >Editar</a>
                                     <form method="post">
                                         <input type="hidden" name="action" value="toggle">
                                         <input type="hidden" name="id" value="<?= (int)$categoria['id'] ?>">
@@ -290,7 +290,7 @@ includeSidebar('Categorias Financeiras');
     <div class="cf-modal">
         <div class="cf-modal-header">
             <h2 class="cf-modal-title" id="cf-modal-title">Nova categoria</h2>
-            <button class="cf-modal-close" type="button" data-close-cf-modal onclick="cfCloseCategoriaModal()" aria-label="Fechar">×</button>
+            <a class="cf-modal-close" href="index.php?page=cadastros_categorias_financeiras" data-close-cf-modal aria-label="Fechar">×</a>
         </div>
         <form method="post" class="cf-form">
             <input type="hidden" name="action" value="save">
@@ -304,7 +304,7 @@ includeSidebar('Categorias Financeiras');
                 <div class="cf-field cf-full"><label>Descricao</label><textarea name="descricao" id="cf-descricao"></textarea></div>
             </div>
             <div class="cf-modal-actions">
-                <button class="cf-btn" type="button" data-close-cf-modal onclick="cfCloseCategoriaModal()">Cancelar</button>
+                <a class="cf-btn" href="index.php?page=cadastros_categorias_financeiras" data-close-cf-modal>Cancelar</a>
                 <button class="cf-btn primary" type="submit">Salvar categoria</button>
             </div>
         </form>
@@ -348,6 +348,21 @@ includeSidebar('Categorias Financeiras');
         }
     }
 
+    function openCfModalFromUrl() {
+        const params = new URLSearchParams(window.location.search || '');
+        const editId = params.get('edit_id');
+        if (editId) {
+            const editButton = Array.from(document.querySelectorAll('[data-edit-cf]')).find((button) => button.dataset.id === editId);
+            if (editButton) {
+                openCfModal(editButton.dataset);
+                return;
+            }
+        }
+        if (params.has('novo')) {
+            openCfModal(null);
+        }
+    }
+
     window.cfOpenCategoriaModal = function () {
         openCfModal(null);
     };
@@ -365,6 +380,7 @@ includeSidebar('Categorias Financeiras');
         const openButton = event.target.closest('[data-open-cf-modal]');
         if (openButton) {
             event.preventDefault();
+            history.replaceState(null, '', 'index.php?page=cadastros_categorias_financeiras&novo=1#cf-modal');
             openCfModal(null);
             return;
         }
@@ -372,6 +388,7 @@ includeSidebar('Categorias Financeiras');
         const editButton = event.target.closest('[data-edit-cf]');
         if (editButton) {
             event.preventDefault();
+            history.replaceState(null, '', `index.php?page=cadastros_categorias_financeiras&edit_id=${editButton.dataset.id || ''}#cf-modal`);
             openCfModal(editButton.dataset);
             return;
         }
@@ -379,6 +396,7 @@ includeSidebar('Categorias Financeiras');
         const closeButton = event.target.closest('[data-close-cf-modal]');
         if (closeButton) {
             event.preventDefault();
+            history.replaceState(null, '', 'index.php?page=cadastros_categorias_financeiras');
             closeCfModal();
             return;
         }
@@ -393,6 +411,8 @@ includeSidebar('Categorias Financeiras');
             closeCfModal();
         }
     });
+
+    openCfModalFromUrl();
 })();
 </script>
 

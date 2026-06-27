@@ -353,7 +353,8 @@ $modalIsPacote = $modalCategoria === 'Pacote';
 .pp-icon-btn.edit { background: #f2c94c; }
 .pp-icon-btn.delete { background: #d9534f; }
 .pp-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(15, 23, 42, 0.55); }
-.pp-modal-backdrop.open { display: flex; }
+.pp-modal-backdrop.open,
+#pp-modal:target { display: flex; }
 .pp-modal { width: min(1120px, 100%); max-height: calc(100vh - 2rem); overflow: auto; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }
 .pp-modal-header { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 .pp-modal-title { margin: 0; color: #1e293b; font-weight: 900; font-size: 1.15rem; }
@@ -385,7 +386,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
         </div>
         <div class="pp-actions">
             <a class="pp-btn secondary" href="index.php?page=cadastros">← Cadastros</a>
-            <a class="pp-btn" href="index.php?page=cadastros_pacotes_produtos&novo=1" data-open-pp-modal>+ Adicionar</a>
+            <a class="pp-btn" href="index.php?page=cadastros_pacotes_produtos&novo=1#pp-modal" data-open-pp-modal>+ Adicionar</a>
         </div>
     </div>
 
@@ -425,7 +426,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                                     </form>
                                     <a
                                         class="pp-icon-btn edit"
-                                        href="index.php?page=cadastros_pacotes_produtos&edit_id=<?= (int)$item['id'] ?>"
+                                        href="index.php?page=cadastros_pacotes_produtos&edit_id=<?= (int)$item['id'] ?>#pp-modal"
                                         title="Editar"
                                         data-edit-pp
                                         data-id="<?= (int)$item['id'] ?>"
@@ -655,8 +656,28 @@ function closePpGalleryModal() {
     ppGalleryModal?.classList.remove('open');
 }
 
-document.querySelector('[data-open-pp-modal]')?.addEventListener('click', () => openPpModal());
-document.querySelectorAll('[data-close-pp-modal]').forEach((button) => button.addEventListener('click', closePpModal));
+function openPpModalFromUrl() {
+    const params = new URLSearchParams(window.location.search || '');
+    const editId = params.get('edit_id');
+    if (editId) {
+        openPpModal(getPpItemModalData(editId));
+        return;
+    }
+    if (params.has('novo')) {
+        openPpModal();
+    }
+}
+
+document.querySelector('[data-open-pp-modal]')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos&novo=1#pp-modal');
+    openPpModal();
+});
+document.querySelectorAll('[data-close-pp-modal]').forEach((button) => button.addEventListener('click', (event) => {
+    event.preventDefault();
+    history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos');
+    closePpModal();
+}));
 ppModal?.addEventListener('click', (event) => {
     if (event.target === ppModal) closePpModal();
 });
@@ -667,10 +688,14 @@ document.querySelectorAll('[data-close-pp-gallery]').forEach((button) => button.
 ppCategoria?.addEventListener('change', updateCategoriaFields);
 
 document.querySelectorAll('[data-edit-pp]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        history.replaceState(null, '', `index.php?page=cadastros_pacotes_produtos&edit_id=${button.dataset.id || ''}#pp-modal`);
         openPpModal(getPpItemModalData(button.dataset.id || ''));
     });
 });
+
+openPpModalFromUrl();
 
 if (ppModal?.classList.contains('open')) {
     updateCategoriaFields();
