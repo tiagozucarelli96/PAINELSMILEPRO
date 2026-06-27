@@ -348,13 +348,12 @@ function financeiro_sugerir_descricao(PDO $pdo, string $descricaoNormalizada, st
     return ($best && $bestScore >= 82.0) ? ['match' => 'parecida', 'score' => $bestScore, 'row' => $best] : ['match' => '', 'row' => null];
 }
 
-function financeiro_atualizar_aprendizado(PDO $pdo, array $item, string $banco, string $conta, string $categoria, string $centroCusto): void
+function financeiro_atualizar_aprendizado(PDO $pdo, array $item, string $banco, string $conta, string $categoria): void
 {
     financeiro_salvar_descricao_banco($pdo, $item, $banco, $conta);
     $stmt = $pdo->prepare("
         UPDATE financeiro_ofx_descricoes
         SET categoria = :categoria,
-            centro_custo = :centro_custo,
             destinatario = :destinatario,
             uso_count = uso_count + 1,
             ultimo_uso_em = NOW(),
@@ -365,7 +364,6 @@ function financeiro_atualizar_aprendizado(PDO $pdo, array $item, string $banco, 
     ");
     $stmt->execute([
         ':categoria' => $categoria !== '' ? $categoria : null,
-        ':centro_custo' => $centroCusto !== '' ? $centroCusto : null,
         ':destinatario' => trim((string)($item['destinatario'] ?? '')) ?: null,
         ':descricao_normalizada' => $item['descricao_normalizada'],
         ':banco' => $banco !== '' ? $banco : null,
@@ -524,7 +522,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $item['banco'] = $banco;
                 $item['conta'] = $conta;
                 $item['categoria_sugerida'] = (string)($suggestionRow['categoria'] ?? '');
-                $item['centro_custo_sugerido'] = (string)($suggestionRow['centro_custo'] ?? '');
                 $item['destinatario'] = (string)($suggestionRow['destinatario'] ?? $item['destinatario'] ?? '');
                 $item['sugestao_match'] = (string)($suggestion['match'] ?? '');
                 $item['duplicado'] = financeiro_ofx_duplicate($pdo, $item, $banco, $conta);
@@ -538,7 +535,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['financeiro_ofx_preview'] = [
                     'banco' => $banco,
                     'conta' => $conta,
-                    'centro_custo_padrao' => '',
                     'items' => $items,
                     'created_at' => time(),
                 ];
@@ -559,7 +555,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $selected = is_array($_POST['selected'] ?? null) ? array_map('intval', $_POST['selected']) : [];
         $descricoes = is_array($_POST['descricao'] ?? null) ? $_POST['descricao'] : [];
         $categoriasPost = is_array($_POST['categoria'] ?? null) ? $_POST['categoria'] : [];
-        $centrosPost = is_array($_POST['centro_custo'] ?? null) ? $_POST['centro_custo'] : [];
         $banco = trim((string)($preview['banco'] ?? ''));
         $conta = trim((string)($preview['conta'] ?? ''));
         $imported = 0;
@@ -577,7 +572,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $item = $items[$idx];
                 $item['descricao'] = trim((string)($descricoes[$idx] ?? $item['descricao']));
                 $categoria = trim((string)($categoriasPost[$idx] ?? $item['categoria_sugerida'] ?? ''));
-                $centroCusto = trim((string)($centrosPost[$idx] ?? $item['centro_custo_sugerido'] ?? $preview['centro_custo_padrao'] ?? ''));
 
                 if (($item['tipo'] ?? '') !== 'despesa' || financeiro_ofx_duplicate($pdo, $item, $banco, $conta)) {
                     $blocked++;
@@ -597,13 +591,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':banco' => $banco !== '' ? $banco : null,
                     ':conta' => $conta !== '' ? $conta : null,
                     ':categoria' => $categoria !== '' ? $categoria : null,
-                    ':centro_custo' => $centroCusto !== '' ? $centroCusto : null,
+                    ':centro_custo' => null,
                     ':ofx_fitid' => $item['fitid'],
                     ':payload' => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                     ':destinatario' => trim((string)($item['destinatario'] ?? '')) ?: null,
                     ':created_by' => $userId > 0 ? $userId : null,
                 ]);
-                financeiro_atualizar_aprendizado($pdo, $item, $banco, $conta, $categoria, $centroCusto);
+                financeiro_atualizar_aprendizado($pdo, $item, $banco, $conta, $categoria);
                 $imported++;
             }
             unset($_SESSION['financeiro_ofx_preview']);
@@ -698,6 +692,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
 .badge{display:inline-flex;border-radius:999px;padding:.28rem .65rem;font-size:.76rem;font-weight:900}.badge-pendente{background:#fef3c7;color:#92400e}.badge-pago,.badge-conciliado{background:#dcfce7;color:#166534}.badge-vencido{background:#fee2e2;color:#991b1b}.badge-cancelado{background:#e2e8f0;color:#475569}.badge-receita{background:#58c786;color:#fff}.badge-despesa{background:#e05a43;color:#fff}
 .wallet{font-weight:900;color:#475569}.wallet small{display:block;color:#64748b;font-weight:700;margin-top:.25rem}.muted{color:#64748b;font-size:.88rem}.money{font-weight:900;color:#374151}.money.out{color:#b42318}.event-name{font-weight:900;color:#1d4ed8}.event-meta{display:block;color:#64748b;font-size:.82rem;margin-top:.25rem}
 .ofx-preview{border:1px solid #bae6fd;background:#f0f9ff;border-radius:10px;margin-bottom:1rem;overflow:hidden}.ofx-preview-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;padding:1rem;border-bottom:1px solid #bae6fd}.ofx-preview-title{margin:0;color:#075985;font-size:1.05rem;font-weight:900}.ofx-preview-meta{color:#0f766e;font-weight:800;font-size:.86rem}.ofx-preview-actions{display:flex;gap:.6rem;flex-wrap:wrap}.ofx-table{width:100%;border-collapse:collapse;min-width:1180px;background:#fff}.ofx-table th,.ofx-table td{border-bottom:1px solid #e2e8f0;padding:.72rem;text-align:left;vertical-align:middle}.ofx-table th{background:#e0f2fe;color:#075985;font-size:.76rem;text-transform:uppercase}.ofx-table tr.duplicate{background:#fff7ed}.ofx-table input[type="text"],.ofx-table select{padding:.55rem .62rem;border-radius:7px}.ofx-status{display:inline-flex;border-radius:999px;padding:.24rem .55rem;font-size:.74rem;font-weight:900;background:#dcfce7;color:#166534}.ofx-status.warn{background:#fed7aa;color:#9a3412}.ofx-status.info{background:#e0f2fe;color:#075985}.ofx-small{display:block;color:#64748b;font-size:.78rem;margin-top:.25rem}.ofx-editable-desc{min-width:260px}
+.cat-combo{position:relative;min-width:230px}.cat-combo-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.55rem .62rem;font:inherit;text-align:left;cursor:pointer}.cat-combo-trigger:after{content:'▾';color:#64748b;font-size:.8rem}.cat-combo-panel{position:absolute;z-index:30;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:270px;overflow:auto}.cat-combo.open .cat-combo-panel{display:block}.cat-combo-search-wrap{position:relative;margin-bottom:.45rem}.cat-combo-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem!important}.cat-combo-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cat-combo-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cat-combo-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cat-combo-option:hover,.cat-combo-option.active{background:#334155;color:#fff}.cat-combo-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cat-combo.disabled{opacity:.55;pointer-events:none}
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.modal-backdrop.open{display:flex}
 .modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}
 .modal-header{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:1rem 1.15rem;border-bottom:1px solid #e2e8f0}.modal-title{margin:0;color:#1e293b;font-weight:900}.modal-close{width:38px;height:38px;border:0;border-radius:999px;background:#f1f5f9;color:#334155;font-size:1.25rem;cursor:pointer}
@@ -854,7 +849,6 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                             <th>Valor</th>
                                             <th>Categoria</th>
                                             <th>Status</th>
-                                            <th>Editar antes de importar</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -882,21 +876,27 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                             </td>
                                             <td><span class="money <?= $isDespesa ? 'out' : '' ?>"><?= h(format_currency($item['valor'])) ?></span><span class="ofx-small"><?= h((string)$item['tipo']) ?></span></td>
                                             <td>
-                                                <select name="categoria[<?= (int)$idx ?>]" <?= $canImport ? '' : 'disabled' ?>>
-                                                    <option value="">Selecionar categoria</option>
-                                                    <?php
-                                                    $grupoAtual = null;
-                                                    foreach ($categorias as $categoria):
-                                                        $nomeCategoria = (string)($categoria['nome'] ?? '');
-                                                        $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
-                                                        if ($grupoAtual !== $grupoCategoria):
-                                                            if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
-                                                            <optgroup label="<?= h($grupoCategoria) ?>">
-                                                            <?php $grupoAtual = $grupoCategoria; ?>
-                                                        <?php endif; ?>
-                                                        <option value="<?= h($nomeCategoria) ?>" <?= $suggestedCategory === $nomeCategoria ? 'selected' : '' ?>><?= h($nomeCategoria) ?></option>
-                                                    <?php endforeach; if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
-                                                </select>
+                                                <input type="hidden" name="categoria[<?= (int)$idx ?>]" value="<?= h($suggestedCategory) ?>" data-cat-hidden <?= $canImport ? '' : 'disabled' ?>>
+                                                <div class="cat-combo <?= $canImport ? '' : 'disabled' ?>" data-cat-combo>
+                                                    <button class="cat-combo-trigger" type="button" data-cat-trigger>
+                                                        <span data-cat-label><?= h($suggestedCategory !== '' ? $suggestedCategory : 'Selecionar categoria') ?></span>
+                                                    </button>
+                                                    <div class="cat-combo-panel">
+                                                        <div class="cat-combo-search-wrap"><input class="cat-combo-search" type="text" placeholder="Pesquisar categoria" data-cat-search></div>
+                                                        <?php
+                                                        $grupoAtual = null;
+                                                        foreach ($categorias as $categoria):
+                                                            $nomeCategoria = (string)($categoria['nome'] ?? '');
+                                                            $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
+                                                            if ($grupoAtual !== $grupoCategoria):
+                                                                $grupoAtual = $grupoCategoria; ?>
+                                                                <div class="cat-combo-group" data-cat-group="<?= h($grupoCategoria) ?>"><?= h($grupoCategoria) ?></div>
+                                                            <?php endif; ?>
+                                                            <div class="cat-combo-option <?= $suggestedCategory === $nomeCategoria ? 'active' : '' ?>" data-cat-option data-value="<?= h($nomeCategoria) ?>" data-group="<?= h($grupoCategoria) ?>"><?= h($nomeCategoria) ?></div>
+                                                        <?php endforeach; ?>
+                                                        <div class="cat-combo-empty" data-cat-empty style="display:none">Nenhuma categoria encontrada.</div>
+                                                    </div>
+                                                </div>
                                                 <?php if (!empty($item['sugestao_match'])): ?>
                                                     <span class="ofx-small">Sugestao <?= h((string)$item['sugestao_match']) ?></span>
                                                 <?php endif; ?>
@@ -909,9 +909,6 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                                 <?php else: ?>
                                                     <span class="ofx-status">Pronto para importar</span>
                                                 <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <input type="text" name="centro_custo[<?= (int)$idx ?>]" value="<?= h((string)($item['centro_custo_sugerido'] ?? $ofxPreview['centro_custo_padrao'] ?? '')) ?>" placeholder="Centro de custo" <?= $canImport ? '' : 'disabled' ?>>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -1038,6 +1035,59 @@ document.querySelector('[data-select-all-ofx]')?.addEventListener('change', (eve
     document.querySelectorAll('[data-ofx-row-check]').forEach((checkbox) => {
         if (!checkbox.disabled) checkbox.checked = event.target.checked;
     });
+});
+document.querySelectorAll('[data-cat-combo]').forEach((combo) => {
+    const trigger = combo.querySelector('[data-cat-trigger]');
+    const search = combo.querySelector('[data-cat-search]');
+    const label = combo.querySelector('[data-cat-label]');
+    const hidden = combo.closest('td')?.querySelector('[data-cat-hidden]');
+    const options = Array.from(combo.querySelectorAll('[data-cat-option]'));
+    const groups = Array.from(combo.querySelectorAll('[data-cat-group]'));
+    const empty = combo.querySelector('[data-cat-empty]');
+
+    function filterOptions() {
+        const term = (search?.value || '').trim().toLowerCase();
+        let visibleCount = 0;
+        options.forEach((option) => {
+            const text = `${option.dataset.value || ''} ${option.dataset.group || ''}`.toLowerCase();
+            const visible = term === '' || text.includes(term);
+            option.style.display = visible ? '' : 'none';
+            if (visible) visibleCount++;
+        });
+        groups.forEach((group) => {
+            const groupName = group.dataset.catGroup || '';
+            const hasVisible = options.some((option) => option.dataset.group === groupName && option.style.display !== 'none');
+            group.style.display = hasVisible ? '' : 'none';
+        });
+        if (empty) empty.style.display = visibleCount === 0 ? '' : 'none';
+    }
+
+    trigger?.addEventListener('click', () => {
+        document.querySelectorAll('[data-cat-combo].open').forEach((other) => {
+            if (other !== combo) other.classList.remove('open');
+        });
+        combo.classList.toggle('open');
+        if (combo.classList.contains('open')) {
+            search.value = '';
+            filterOptions();
+            setTimeout(() => search?.focus(), 0);
+        }
+    });
+    search?.addEventListener('input', filterOptions);
+    options.forEach((option) => {
+        option.addEventListener('click', () => {
+            const value = option.dataset.value || '';
+            if (hidden) hidden.value = value;
+            if (label) label.textContent = value || 'Selecionar categoria';
+            options.forEach((item) => item.classList.toggle('active', item === option));
+            combo.classList.remove('open');
+        });
+    });
+});
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('[data-cat-combo]')) {
+        document.querySelectorAll('[data-cat-combo].open').forEach((combo) => combo.classList.remove('open'));
+    }
 });
 </script>
 
