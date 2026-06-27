@@ -232,12 +232,42 @@ function agenda_eventos_format_weekday(?string $iso): string
     return $ts ? dow_pt($ts) : 'Evento';
 }
 
+function agenda_eventos_format_clock(?string $time): string
+{
+    $time = trim((string)$time);
+    if ($time === '') {
+        return '';
+    }
+
+    if (preg_match('/^(\d{1,2}):(\d{2})/', $time, $matches)) {
+        return str_pad($matches[1], 2, '0', STR_PAD_LEFT) . ':' . $matches[2];
+    }
+
+    $ts = strtotime($time);
+    return $ts ? date('H:i', $ts) : '';
+}
+
+function agenda_eventos_infer_end_time(string $horaInicio): string
+{
+    $horaInicio = agenda_eventos_format_clock($horaInicio);
+    if ($horaInicio === '') {
+        return '';
+    }
+
+    $ts = strtotime('2000-01-01 ' . $horaInicio);
+    return $ts ? date('H:i', $ts + (6 * 60 * 60)) : '';
+}
+
 function agenda_eventos_format_time(array $evento): string
 {
-    $horaInicio = trim((string)($evento['hora_inicio'] ?? ''));
-    $horaFim = trim((string)($evento['hora_fim'] ?? ''));
+    $horaInicio = agenda_eventos_format_clock((string)($evento['hora_inicio'] ?? ''));
+    $horaFim = agenda_eventos_format_clock((string)($evento['hora_fim'] ?? ''));
     if ($horaInicio === '') {
         return 'Sem horário informado';
+    }
+
+    if ($horaFim === '') {
+        $horaFim = agenda_eventos_infer_end_time($horaInicio);
     }
 
     return $horaFim !== '' ? $horaInicio . ' às ' . $horaFim : $horaInicio;
@@ -331,7 +361,10 @@ if (!$temTabelaEventos) {
             ? "COALESCE(
                     NULLIF(TRIM(r.me_event_snapshot->>'hora_fim'), ''),
                     NULLIF(TRIM(r.me_event_snapshot->>'horafim'), ''),
-                    NULLIF(TRIM(r.me_event_snapshot->>'horatermino'), '')
+                    NULLIF(TRIM(r.me_event_snapshot->>'horatermino'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'hora_termino'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'horaeventofim'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'fim'), '')
                )"
             : "NULL";
 
@@ -440,7 +473,10 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
             ? "COALESCE(
                     NULLIF(TRIM(r.me_event_snapshot->>'hora_fim'), ''),
                     NULLIF(TRIM(r.me_event_snapshot->>'horafim'), ''),
-                    NULLIF(TRIM(r.me_event_snapshot->>'horatermino'), '')
+                    NULLIF(TRIM(r.me_event_snapshot->>'horatermino'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'hora_termino'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'horaeventofim'), ''),
+                    NULLIF(TRIM(r.me_event_snapshot->>'fim'), '')
                )"
             : "NULL";
 
@@ -1383,12 +1419,7 @@ a.event-function-card:hover {
                                 <?php foreach (array_slice($dayEvents, 0, 3) as $evento): ?>
                                     <?php
                                     $eventClass = agenda_eventos_color_class($evento);
-                                    $horaInicio = trim((string)($evento['hora_inicio'] ?? ''));
-                                    $horaFim = trim((string)($evento['hora_fim'] ?? ''));
-                                    $horario = $horaInicio !== '' ? $horaInicio : 'Sem horário';
-                                    if ($horaInicio !== '' && $horaFim !== '') {
-                                        $horario .= ' - ' . $horaFim;
-                                    }
+                                    $horario = agenda_eventos_format_time($evento);
                                     ?>
                                     <a class="event-chip <?= h($eventClass) ?>" href="index.php?page=agenda_eventos&evento_id=<?= (int)($evento['id'] ?? 0) ?>&mes=<?= h($mesSelecionado->format('Y-m')) ?>">
                                         <div class="event-chip-time"><?= h($horario) ?></div>
