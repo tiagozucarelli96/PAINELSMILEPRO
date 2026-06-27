@@ -375,11 +375,25 @@ function financeiro_atualizar_aprendizado(PDO $pdo, array $item, string $banco, 
     ]);
 }
 
-function financeiro_listar_receitas(PDO $pdo, array $filters): array
+function financeiro_mes_label(DateTimeImmutable $month): string
+{
+    $meses = [
+        1 => 'JANEIRO', 2 => 'FEVEREIRO', 3 => 'MARCO', 4 => 'ABRIL',
+        5 => 'MAIO', 6 => 'JUNHO', 7 => 'JULHO', 8 => 'AGOSTO',
+        9 => 'SETEMBRO', 10 => 'OUTUBRO', 11 => 'NOVEMBRO', 12 => 'DEZEMBRO',
+    ];
+    return $meses[(int)$month->format('n')] . ' - ' . $month->format('Y');
+}
+
+function financeiro_listar_receitas(PDO $pdo, array $filters, string $monthStart, string $monthEnd): array
 {
     eventos_financeiro_ensure_schema($pdo);
-    $where = ["r.status <> 'cancelado'"];
-    $params = [];
+    $where = [
+        "r.status <> 'cancelado'",
+        "COALESCE(r.vencimento, r.created_at::date) >= CAST(:month_start AS DATE)",
+        "COALESCE(r.vencimento, r.created_at::date) < CAST(:month_end AS DATE)",
+    ];
+    $params = [':month_start' => $monthStart, ':month_end' => $monthEnd];
 
     if (($filters['status'] ?? '') !== '') {
         $where[] = 'r.status = :status';
@@ -409,11 +423,15 @@ function financeiro_listar_receitas(PDO $pdo, array $filters): array
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
-function financeiro_listar_despesas(PDO $pdo, array $filters): array
+function financeiro_listar_despesas(PDO $pdo, array $filters, string $monthStart, string $monthEnd): array
 {
     financeiro_ensure_schema($pdo);
-    $where = ["status <> 'cancelado'"];
-    $params = [];
+    $where = [
+        "status <> 'cancelado'",
+        "data_movimento >= CAST(:month_start AS DATE)",
+        "data_movimento < CAST(:month_end AS DATE)",
+    ];
+    $params = [':month_start' => $monthStart, ':month_end' => $monthEnd];
 
     if (($filters['status'] ?? '') !== '') {
         $where[] = 'status = :status';
@@ -443,13 +461,48 @@ function financeiro_listar_despesas(PDO $pdo, array $filters): array
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
-function financeiro_resumo(PDO $pdo): array
+function financeiro_resumo(PDO $pdo, string $monthStart, string $monthEnd): array
 {
     financeiro_ensure_schema($pdo);
-    $receitasTotal = (float)$pdo->query("SELECT COALESCE(SUM(valor), 0) FROM eventos_financeiro_receitas WHERE status <> 'cancelado'")->fetchColumn();
-    $recebido = (float)$pdo->query("SELECT COALESCE(SUM(valor), 0) FROM eventos_financeiro_receitas WHERE status = 'pago'")->fetchColumn();
-    $despesasTotal = (float)$pdo->query("SELECT COALESCE(SUM(valor), 0) FROM financeiro_despesas WHERE status <> 'cancelado'")->fetchColumn();
-    $despesasPagas = (float)$pdo->query("SELECT COALESCE(SUM(valor), 0) FROM financeiro_despesas WHERE status IN ('pago', 'conciliado')")->fetchColumn();
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(valor), 0)
+        FROM eventos_financeiro_receitas
+        WHERE status <> 'cancelado'
+          AND COALESCE(vencimento, created_at::date) >= CAST(:start AS DATE)
+          AND COALESCE(vencimento, created_at::date) < CAST(:end AS DATE)
+    ");
+    $stmt->execute([':start' => $monthStart, ':end' => $monthEnd]);
+    $receitasTotal = (float)$stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(valor), 0)
+        FROM eventos_financeiro_receitas
+        WHERE status = 'pago'
+          AND COALESCE(vencimento, created_at::date) >= CAST(:start AS DATE)
+          AND COALESCE(vencimento, created_at::date) < CAST(:end AS DATE)
+    ");
+    $stmt->execute([':start' => $monthStart, ':end' => $monthEnd]);
+    $recebido = (float)$stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(valor), 0)
+        FROM financeiro_despesas
+        WHERE status <> 'cancelado'
+          AND data_movimento >= CAST(:start AS DATE)
+          AND data_movimento < CAST(:end AS DATE)
+    ");
+    $stmt->execute([':start' => $monthStart, ':end' => $monthEnd]);
+    $despesasTotal = (float)$stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(valor), 0)
+        FROM financeiro_despesas
+        WHERE status IN ('pago', 'conciliado')
+          AND data_movimento >= CAST(:start AS DATE)
+          AND data_movimento < CAST(:end AS DATE)
+    ");
+    $stmt->execute([':start' => $monthStart, ':end' => $monthEnd]);
+    $despesasPagas = (float)$stmt->fetchColumn();
     return [
         'receitas' => $receitasTotal,
         'recebido' => $recebido,
@@ -628,9 +681,20 @@ if (!empty($_SESSION['financeiro_ofx_preview'])) {
     $activeTab = 'despesas';
 }
 
-$resumo = financeiro_resumo($pdo);
-$receitas = financeiro_listar_receitas($pdo, $filters);
-$despesas = financeiro_listar_despesas($pdo, $filters);
+$competenciaRaw = trim((string)($_GET['competencia'] ?? date('Y-m')));
+if (!preg_match('/^\d{4}-\d{2}$/', $competenciaRaw)) {
+    $competenciaRaw = date('Y-m');
+}
+$month = DateTimeImmutable::createFromFormat('Y-m-d', $competenciaRaw . '-01') ?: new DateTimeImmutable('first day of this month');
+$monthStart = $month->format('Y-m-01');
+$monthEnd = $month->modify('+1 month')->format('Y-m-01');
+$prevMonth = $month->modify('-1 month')->format('Y-m');
+$nextMonth = $month->modify('+1 month')->format('Y-m');
+$monthLabel = financeiro_mes_label($month);
+
+$resumo = financeiro_resumo($pdo, $monthStart, $monthEnd);
+$receitas = financeiro_listar_receitas($pdo, $filters, $monthStart, $monthEnd);
+$despesas = financeiro_listar_despesas($pdo, $filters, $monthStart, $monthEnd);
 
 $unidades = [];
 try {
@@ -690,6 +754,7 @@ includeSidebar('Financeiro');
 .summary-card{background:#fff;border:1px solid #e2e8f0;border-left:4px solid #5ebfd4;box-shadow:0 14px 34px rgba(15,23,42,.07);border-radius:8px;padding:1.15rem;min-height:116px}
 .summary-card h3{margin:0 0 .6rem;font-size:.82rem;text-transform:uppercase;color:#64748b}.summary-card .value{font-size:1.55rem;font-weight:900;color:#334155}.summary-card .hint{margin-top:.45rem;color:#64748b;font-size:.84rem}
 .summary-card.receitas{border-left-color:#58c786}.summary-card.despesas{border-left-color:#e05a43}.summary-card.receber{border-left-color:#5ebfd4}.summary-card.saldo{border-left-color:#f4c44e}
+.month-nav{display:flex;align-items:center;justify-content:center;gap:.75rem;margin:.75rem 0 1.25rem;padding-bottom:1rem;border-bottom:1px solid #dbe3ef}.month-nav a,.month-picker-button{display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:34px;border:1px solid #d1d5db;background:#f8fafc;color:#475569;border-radius:4px;text-decoration:none;font-weight:900}.month-title{font-size:1.45rem;font-weight:900;color:#475569;letter-spacing:.02em}.month-picker{position:relative;display:inline-flex;align-items:center}.month-picker input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
 .finance-shell{background:#fff;border:1px solid #e2e8f0;box-shadow:0 16px 38px rgba(15,23,42,.08);border-radius:10px;overflow:hidden}
 .tabs{display:grid;grid-template-columns:1fr 1fr;background:#eef1f5;border-bottom:1px solid #dbe3ef}
 .tab-link{display:flex;align-items:center;justify-content:center;gap:.45rem;padding:1rem;text-decoration:none;color:#64748b;font-weight:900;border-top:3px solid transparent}
@@ -727,22 +792,33 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
     <?php foreach ($messages as $message): ?><div class="alert alert-success"><?= h($message) ?></div><?php endforeach; ?>
 
     <div class="summary-grid">
-        <div class="summary-card receitas"><h3>Receitas</h3><div class="value"><?= h(format_currency($resumo['receitas'])) ?></div><div class="hint">Lancadas nos eventos</div></div>
-        <div class="summary-card despesas"><h3>Despesas</h3><div class="value"><?= h(format_currency($resumo['despesas'])) ?></div><div class="hint">Manuais e OFX</div></div>
+        <div class="summary-card receitas"><h3>Receitas <?= h($month->format('m/Y')) ?></h3><div class="value"><?= h(format_currency($resumo['receitas'])) ?></div><div class="hint">Lancadas no mês</div></div>
+        <div class="summary-card despesas"><h3>Despesas <?= h($month->format('m/Y')) ?></h3><div class="value"><?= h(format_currency($resumo['despesas'])) ?></div><div class="hint">Manuais, OFX e cartões no mês</div></div>
         <div class="summary-card receber"><h3>A receber / pagar</h3><div class="value"><?= h(format_currency($resumo['a_receber'])) ?></div><div class="hint">A pagar: <?= h(format_currency($resumo['a_pagar'])) ?></div></div>
         <div class="summary-card saldo"><h3>Saldo previsto</h3><div class="value"><?= h(format_currency($resumo['saldo_previsto'])) ?></div><div class="hint">Realizado: <?= h(format_currency($resumo['saldo_realizado'])) ?></div></div>
     </div>
 
+    <div class="month-nav">
+        <a href="index.php?page=financeiro&tab=<?= h($activeTab) ?>&competencia=<?= h($prevMonth) ?>" aria-label="Mes anterior">‹</a>
+        <span class="month-title"><?= h($monthLabel) ?></span>
+        <a href="index.php?page=financeiro&tab=<?= h($activeTab) ?>&competencia=<?= h($nextMonth) ?>" aria-label="Proximo mes">›</a>
+        <label class="month-picker">
+            <span class="month-picker-button">▦</span>
+            <input type="month" value="<?= h($month->format('Y-m')) ?>" data-month-picker>
+        </label>
+    </div>
+
     <section class="finance-shell">
         <div class="tabs">
-            <a class="tab-link <?= $activeTab === 'receitas' ? 'active' : '' ?>" href="index.php?page=financeiro&tab=receitas">↑ Receitas</a>
-            <a class="tab-link <?= $activeTab === 'despesas' ? 'active' : '' ?>" href="index.php?page=financeiro&tab=despesas">↓ Despesas</a>
+            <a class="tab-link <?= $activeTab === 'receitas' ? 'active' : '' ?>" href="index.php?page=financeiro&tab=receitas&competencia=<?= h($month->format('Y-m')) ?>">↑ Receitas</a>
+            <a class="tab-link <?= $activeTab === 'despesas' ? 'active' : '' ?>" href="index.php?page=financeiro&tab=despesas&competencia=<?= h($month->format('Y-m')) ?>">↓ Despesas</a>
         </div>
 
         <div class="panel">
             <form method="get" class="filters">
                 <input type="hidden" name="page" value="financeiro">
                 <input type="hidden" name="tab" value="<?= h($activeTab) ?>">
+                <input type="hidden" name="competencia" value="<?= h($month->format('Y-m')) ?>">
                 <div>
                     <label>Status</label>
                     <select name="status">
@@ -1098,6 +1174,14 @@ document.addEventListener('click', (event) => {
     if (!event.target.closest('[data-cat-combo]')) {
         document.querySelectorAll('[data-cat-combo].open').forEach((combo) => combo.classList.remove('open'));
     }
+});
+document.querySelector('[data-month-picker]')?.addEventListener('change', (event) => {
+    if (!event.target.value) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', 'financeiro');
+    url.searchParams.set('tab', <?= json_encode($activeTab) ?>);
+    url.searchParams.set('competencia', event.target.value);
+    window.location.href = url.toString();
 });
 </script>
 
