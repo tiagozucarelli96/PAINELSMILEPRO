@@ -780,6 +780,38 @@ try {
 $ofxPreview = is_array($_SESSION['financeiro_ofx_preview'] ?? null) ? $_SESSION['financeiro_ofx_preview'] : null;
 $ofxPreviewItems = is_array($ofxPreview['items'] ?? null) ? $ofxPreview['items'] : [];
 
+function financeiro_render_categoria_combo(array $categorias, string $name, string $value = '', string $placeholder = 'Selecionar categoria', bool $disabled = false): string
+{
+    ob_start();
+    ?>
+    <div class="cat-combo-field" data-cat-field>
+        <input type="hidden" name="<?= h($name) ?>" value="<?= h($value) ?>" data-cat-hidden <?= $disabled ? 'disabled' : '' ?>>
+        <div class="cat-combo <?= $disabled ? 'disabled' : '' ?>" data-cat-combo>
+            <button class="cat-combo-trigger" type="button" data-cat-trigger <?= $disabled ? 'disabled' : '' ?>>
+                <span data-cat-label><?= h($value !== '' ? $value : $placeholder) ?></span>
+            </button>
+            <div class="cat-combo-panel">
+                <div class="cat-combo-search-wrap"><input class="cat-combo-search" type="text" placeholder="Pesquisar categoria" data-cat-search></div>
+                <div class="cat-combo-option <?= $value === '' ? 'active' : '' ?>" data-cat-option data-value="" data-group=""><?= h($placeholder) ?></div>
+                <?php
+                $grupoAtual = null;
+                foreach ($categorias as $categoria):
+                    $nomeCategoria = (string)($categoria['nome'] ?? '');
+                    $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
+                    if ($grupoAtual !== $grupoCategoria):
+                        $grupoAtual = $grupoCategoria; ?>
+                        <div class="cat-combo-group" data-cat-group="<?= h($grupoCategoria) ?>"><?= h($grupoCategoria) ?></div>
+                    <?php endif; ?>
+                    <div class="cat-combo-option <?= $value === $nomeCategoria ? 'active' : '' ?>" data-cat-option data-value="<?= h($nomeCategoria) ?>" data-group="<?= h($grupoCategoria) ?>"><?= h($nomeCategoria) ?></div>
+                <?php endforeach; ?>
+                <div class="cat-combo-empty" data-cat-empty style="display:none">Nenhuma categoria encontrada.</div>
+            </div>
+        </div>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
 includeSidebar('Financeiro');
 ?>
 
@@ -802,13 +834,14 @@ includeSidebar('Financeiro');
 .tab-link{display:flex;align-items:center;justify-content:center;gap:.45rem;padding:1rem;text-decoration:none;color:#64748b;font-weight:900;border-top:3px solid transparent}
 .tab-link.active{background:#5ebfd4;color:#fff;border-top-color:#20c985}
 .panel{padding:1.25rem}
-.filters{display:grid;grid-template-columns:140px 1fr 1fr 1fr auto;gap:.7rem;align-items:end;margin-bottom:1rem}
+.filters{display:grid;grid-template-columns:140px 1fr 1.15fr 1fr auto;gap:.7rem;align-items:end;margin-bottom:1rem}
 label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.72rem .78rem;font:inherit;background:#fff}textarea{min-height:86px}
 .filter-button{height:43px}.table-wrap{overflow:auto;border:1px solid #e2e8f0;border-radius:8px}.finance-table{width:100%;border-collapse:collapse;background:#fff;min-width:1060px}.finance-table th{background:#64727f;color:#fff;text-align:left;padding:.85rem;font-size:.8rem;text-transform:uppercase}.finance-table td{border-bottom:1px solid #e2e8f0;padding:.85rem;vertical-align:middle}
 .badge{display:inline-flex;border-radius:999px;padding:.28rem .65rem;font-size:.76rem;font-weight:900}.badge-pendente{background:#fef3c7;color:#92400e}.badge-pago,.badge-conciliado{background:#dcfce7;color:#166534}.badge-vencido{background:#fee2e2;color:#991b1b}.badge-cancelado{background:#e2e8f0;color:#475569}.badge-receita{background:#58c786;color:#fff}.badge-despesa{background:#e05a43;color:#fff}
 .wallet{font-weight:900;color:#475569}.wallet small{display:block;color:#64748b;font-weight:700;margin-top:.25rem}.muted{color:#64748b;font-size:.88rem}.money{font-weight:900;color:#374151}.money.out{color:#b42318}.event-name{font-weight:900;color:#1d4ed8}.event-meta{display:block;color:#64748b;font-size:.82rem;margin-top:.25rem}
+.row-actions{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap}.icon-action{width:34px;height:34px;border:0;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-weight:900;color:#fff}.icon-action.edit{background:#f4c44e}.icon-action.delete{background:#e05a43}
 .ofx-preview{border:1px solid #bae6fd;background:#f0f9ff;border-radius:10px;margin-bottom:1rem;overflow:hidden}.ofx-preview-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;padding:1rem;border-bottom:1px solid #bae6fd}.ofx-preview-title{margin:0;color:#075985;font-size:1.05rem;font-weight:900}.ofx-preview-meta{color:#0f766e;font-weight:800;font-size:.86rem}.ofx-preview-actions{display:flex;gap:.6rem;flex-wrap:wrap}.ofx-table{width:100%;border-collapse:collapse;min-width:1180px;background:#fff}.ofx-table th,.ofx-table td{border-bottom:1px solid #e2e8f0;padding:.72rem;text-align:left;vertical-align:middle}.ofx-table th{background:#e0f2fe;color:#075985;font-size:.76rem;text-transform:uppercase}.ofx-table tr.duplicate{background:#fff7ed}.ofx-table input[type="text"],.ofx-table select{padding:.55rem .62rem;border-radius:7px}.ofx-status{display:inline-flex;border-radius:999px;padding:.24rem .55rem;font-size:.74rem;font-weight:900;background:#dcfce7;color:#166534}.ofx-status.warn{background:#fed7aa;color:#9a3412}.ofx-status.info{background:#e0f2fe;color:#075985}.ofx-small{display:block;color:#64748b;font-size:.78rem;margin-top:.25rem}.ofx-editable-desc{min-width:260px}
-.cat-combo{position:relative;min-width:230px}.cat-combo-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.55rem .62rem;font:inherit;text-align:left;cursor:pointer}.cat-combo-trigger:after{content:'▾';color:#64748b;font-size:.8rem}.cat-combo-panel{position:absolute;z-index:30;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:270px;overflow:auto}.cat-combo.open .cat-combo-panel{display:block}.cat-combo-search-wrap{position:relative;margin-bottom:.45rem}.cat-combo-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem!important}.cat-combo-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cat-combo-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cat-combo-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cat-combo-option:hover,.cat-combo-option.active{background:#334155;color:#fff}.cat-combo-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cat-combo.disabled{opacity:.55;pointer-events:none}
+.cat-combo-field{display:grid;gap:.25rem}.cat-label-row{display:flex;justify-content:space-between;gap:.6rem;align-items:center}.cat-add-link{font-size:.82rem;font-weight:900;color:#2878b8;text-decoration:none}.cat-combo{position:relative;min-width:230px}.cat-combo-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.72rem .78rem;font:inherit;text-align:left;cursor:pointer}.cat-combo-trigger:after{content:'▾';color:#64748b;font-size:.8rem}.cat-combo-panel{position:absolute;z-index:80;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:280px;overflow:auto}.cat-combo.open .cat-combo-panel{display:block}.cat-combo-search-wrap{position:relative;margin-bottom:.45rem}.cat-combo-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem!important}.cat-combo-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cat-combo-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cat-combo-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cat-combo-option:hover,.cat-combo-option.active{background:#334155;color:#fff}.cat-combo-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cat-combo.disabled{opacity:.55;pointer-events:none}
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.modal-backdrop.open{display:flex}
 .modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}
 .modal-header{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:1rem 1.15rem;border-bottom:1px solid #e2e8f0}.modal-title{margin:0;color:#1e293b;font-weight:900}.modal-close{width:38px;height:38px;border:0;border-radius:999px;background:#f1f5f9;color:#334155;font-size:1.25rem;cursor:pointer}
@@ -885,23 +918,12 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                     <?php endif; ?>
                 </div>
                 <div>
-                    <label>Categoria</label>
+                    <div class="cat-label-row">
+                        <label>Categoria</label>
+                        <?php if ($activeTab === 'despesas'): ?><a class="cat-add-link" href="index.php?page=cadastros_categorias_financeiras">+ Adicionar</a><?php endif; ?>
+                    </div>
                     <?php if ($activeTab === 'despesas'): ?>
-                        <select name="categoria">
-                            <option value="">Todas categorias</option>
-                            <?php
-                            $grupoAtual = null;
-                            foreach ($categorias as $categoria):
-                                $nomeCategoria = (string)($categoria['nome'] ?? '');
-                                $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
-                                if ($grupoAtual !== $grupoCategoria):
-                                    if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
-                                    <optgroup label="<?= h($grupoCategoria) ?>">
-                                    <?php $grupoAtual = $grupoCategoria; ?>
-                                <?php endif; ?>
-                                <option value="<?= h($nomeCategoria) ?>" <?= $filters['categoria'] === $nomeCategoria ? 'selected' : '' ?>><?= h($nomeCategoria) ?></option>
-                            <?php endforeach; if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
-                        </select>
+                        <?= financeiro_render_categoria_combo($categorias, 'categoria', $filters['categoria'], 'Todas categorias') ?>
                     <?php else: ?>
                         <select disabled><option>Todas categorias</option></select>
                     <?php endif; ?>
@@ -1052,22 +1074,43 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
 
                 <div class="table-wrap">
                     <table class="finance-table">
-                        <thead><tr><th>Acoes</th><th>Data</th><th>Descricao</th><th>Origem</th><th>Valor</th><th>Categoria/Banco</th><th>Centro de custo</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Data</th><th>Descricao</th><th>Origem</th><th>Valor</th><th>Categoria/Banco</th><th>Status</th><th>Ações</th></tr></thead>
                         <tbody>
                         <?php foreach ($despesas as $despesa): ?>
                             <?php $status = (string)($despesa['status'] ?? 'pendente'); ?>
                             <tr>
-                                <td><span class="badge badge-despesa">↓</span></td>
                                 <td><strong><?= h(brDateOnly((string)$despesa['data_movimento'])) ?></strong></td>
                                 <td><?= h((string)$despesa['descricao']) ?></td>
                                 <td><?= h(strtoupper((string)$despesa['origem'])) ?></td>
                                 <td><span class="money out"><?= h(format_currency($despesa['valor'])) ?></span></td>
                                 <td><span class="wallet"><?= h((string)($despesa['categoria'] ?: 'Nao informado')) ?><small><?= h((string)($despesa['banco'] ?: 'Sem banco')) ?><?= !empty($despesa['conta']) ? ' · ' . h((string)$despesa['conta']) : '' ?></small></span></td>
-                                <td><?= h((string)($despesa['centro_custo'] ?: '-')) ?></td>
                                 <td><span class="badge badge-<?= h($status) ?>"><?= h(financeiro_status_label($status)) ?></span></td>
+                                <td>
+                                    <div class="row-actions">
+                                        <button
+                                            class="icon-action edit"
+                                            type="button"
+                                            title="Editar"
+                                            data-edit-despesa
+                                            data-id="<?= (int)$despesa['id'] ?>"
+                                            data-descricao="<?= h((string)$despesa['descricao']) ?>"
+                                            data-data="<?= h((string)$despesa['data_movimento']) ?>"
+                                            data-valor="<?= h((string)$despesa['valor']) ?>"
+                                            data-banco="<?= h((string)($despesa['banco'] ?? '')) ?>"
+                                            data-conta="<?= h((string)($despesa['conta'] ?? '')) ?>"
+                                            data-categoria="<?= h((string)($despesa['categoria'] ?? '')) ?>"
+                                            data-status="<?= h($status) ?>"
+                                        >✎</button>
+                                        <form method="post" onsubmit="return confirm('Remover esta despesa da listagem?');">
+                                            <input type="hidden" name="action" value="delete_despesa">
+                                            <input type="hidden" name="id" value="<?= (int)$despesa['id'] ?>">
+                                            <button class="icon-action delete" type="submit" title="Excluir">🗑</button>
+                                        </form>
+                                    </div>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
-                        <?php if (!$despesas): ?><tr><td colspan="8" class="muted">Nenhuma despesa encontrada.</td></tr><?php endif; ?>
+                        <?php if (!$despesas): ?><tr><td colspan="7" class="muted">Nenhuma despesa encontrada.</td></tr><?php endif; ?>
                         </tbody>
                     </table>
                 </div>
@@ -1082,32 +1125,24 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
             <h2 class="modal-title" id="despesa-title">Nova despesa</h2>
             <button class="modal-close" type="button" data-close-modal>×</button>
         </div>
-        <form method="post">
-            <input type="hidden" name="action" value="add_despesa">
+        <form method="post" id="despesa-form">
+            <input type="hidden" name="action" value="save_despesa">
+            <input type="hidden" name="id" id="despesa-id" value="0">
             <div class="modal-body">
                 <div class="form-grid">
-                    <div class="field full"><label>Descricao</label><input name="descricao" required placeholder="Ex: Pagamento fornecedor"></div>
-                    <div><label>Data</label><input type="date" name="data_movimento" value="<?= h(date('Y-m-d')) ?>" required></div>
-                    <div><label>Valor</label><input name="valor" inputmode="decimal" placeholder="R$ 0,00" required></div>
-                    <div><label>Banco</label><input name="banco" placeholder="Ex: Santander"></div>
-                    <div><label>Conta</label><input name="conta" placeholder="Ex: Conta principal"></div>
-                    <div><label>Categoria</label><select name="categoria">
-                        <option value="">Selecionar categoria</option>
-                        <?php
-                        $grupoAtual = null;
-                        foreach ($categorias as $categoria):
-                            $nomeCategoria = (string)($categoria['nome'] ?? '');
-                            $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
-                            if ($grupoAtual !== $grupoCategoria):
-                                if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
-                                <optgroup label="<?= h($grupoCategoria) ?>">
-                                <?php $grupoAtual = $grupoCategoria; ?>
-                            <?php endif; ?>
-                            <option value="<?= h($nomeCategoria) ?>"><?= h($nomeCategoria) ?></option>
-                        <?php endforeach; if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
-                    </select></div>
-                    <div><label>Centro de custo</label><input name="centro_custo" placeholder="Ex: Eventos"></div>
-                    <div><label>Status</label><select name="status"><option value="pendente">Pendente</option><option value="pago">Pago</option><option value="conciliado">Conciliado</option></select></div>
+                    <div class="field full"><label>Descricao</label><input name="descricao" id="despesa-descricao" required placeholder="Ex: Pagamento fornecedor"></div>
+                    <div><label>Data</label><input type="date" name="data_movimento" id="despesa-data" value="<?= h(date('Y-m-d')) ?>" required></div>
+                    <div><label>Valor</label><input name="valor" id="despesa-valor" inputmode="decimal" placeholder="R$ 0,00" required></div>
+                    <div><label>Banco</label><input name="banco" id="despesa-banco" placeholder="Ex: Santander"></div>
+                    <div><label>Conta</label><input name="conta" id="despesa-conta" placeholder="Ex: Conta principal"></div>
+                    <div>
+                        <div class="cat-label-row">
+                            <label>Categoria</label>
+                            <a class="cat-add-link" href="index.php?page=cadastros_categorias_financeiras">+ Adicionar</a>
+                        </div>
+                        <?= financeiro_render_categoria_combo($categorias, 'categoria', '', 'Selecionar categoria') ?>
+                    </div>
+                    <div><label>Status</label><select name="status" id="despesa-status"><option value="pendente">Pendente</option><option value="pago">Pago</option><option value="conciliado">Conciliado</option></select></div>
                 </div>
             </div>
             <div class="modal-actions">
@@ -1143,6 +1178,9 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
 <script>
 document.querySelectorAll('[data-open-modal]').forEach((button) => {
     button.addEventListener('click', () => {
+        if (button.dataset.openModal === 'despesa-modal') {
+            resetDespesaModal();
+        }
         document.getElementById(button.dataset.openModal)?.classList.add('open');
     });
 });
@@ -1164,11 +1202,49 @@ document.querySelector('[data-select-all-ofx]')?.addEventListener('change', (eve
         if (!checkbox.disabled) checkbox.checked = event.target.checked;
     });
 });
+
+function setCategoriaCombo(combo, value, placeholder = 'Selecionar categoria') {
+    const field = combo?.closest('[data-cat-field]') || combo?.closest('td');
+    const hidden = field?.querySelector('[data-cat-hidden]');
+    const label = combo?.querySelector('[data-cat-label]');
+    const options = Array.from(combo?.querySelectorAll('[data-cat-option]') || []);
+    if (hidden) hidden.value = value || '';
+    if (label) label.textContent = value || placeholder;
+    options.forEach((item) => item.classList.toggle('active', (item.dataset.value || '') === (value || '')));
+}
+
+function resetDespesaModal() {
+    document.getElementById('despesa-title').textContent = 'Nova despesa';
+    document.getElementById('despesa-id').value = '0';
+    document.getElementById('despesa-descricao').value = '';
+    document.getElementById('despesa-data').value = <?= json_encode(date('Y-m-d')) ?>;
+    document.getElementById('despesa-valor').value = '';
+    document.getElementById('despesa-banco').value = '';
+    document.getElementById('despesa-conta').value = '';
+    document.getElementById('despesa-status').value = 'pendente';
+    setCategoriaCombo(document.querySelector('#despesa-modal [data-cat-combo]'), '', 'Selecionar categoria');
+}
+
+document.querySelectorAll('[data-edit-despesa]').forEach((button) => {
+    button.addEventListener('click', () => {
+        document.getElementById('despesa-title').textContent = 'Editar despesa';
+        document.getElementById('despesa-id').value = button.dataset.id || '0';
+        document.getElementById('despesa-descricao').value = button.dataset.descricao || '';
+        document.getElementById('despesa-data').value = button.dataset.data || '';
+        document.getElementById('despesa-valor').value = button.dataset.valor || '';
+        document.getElementById('despesa-banco').value = button.dataset.banco || '';
+        document.getElementById('despesa-conta').value = button.dataset.conta || '';
+        document.getElementById('despesa-status').value = button.dataset.status || 'pendente';
+        setCategoriaCombo(document.querySelector('#despesa-modal [data-cat-combo]'), button.dataset.categoria || '', 'Selecionar categoria');
+        document.getElementById('despesa-modal')?.classList.add('open');
+    });
+});
+
 document.querySelectorAll('[data-cat-combo]').forEach((combo) => {
     const trigger = combo.querySelector('[data-cat-trigger]');
     const search = combo.querySelector('[data-cat-search]');
     const label = combo.querySelector('[data-cat-label]');
-    const hidden = combo.closest('td')?.querySelector('[data-cat-hidden]');
+    const hidden = (combo.closest('[data-cat-field]') || combo.closest('td'))?.querySelector('[data-cat-hidden]');
     const options = Array.from(combo.querySelectorAll('[data-cat-option]'));
     const groups = Array.from(combo.querySelectorAll('[data-cat-group]'));
     const empty = combo.querySelector('[data-cat-empty]');
