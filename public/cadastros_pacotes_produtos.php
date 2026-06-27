@@ -528,15 +528,15 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                     <input type="text" name="valor_venda" id="pp-valor-venda" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_venda']) ?>">
                 </div>
                 <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
-                    <label for="pp-valor-pacote">Valor do pacote</label>
+                    <label for="pp-valor-pacote">Valor Base</label>
                     <input type="text" name="valor_pacote" id="pp-valor-pacote" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_pacote']) ?>">
                 </div>
                 <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
-                    <label for="pp-pessoas-base">Quantia de pessoas base</label>
+                    <label for="pp-pessoas-base">Quantia de convidados base</label>
                     <input type="number" name="pessoas_base" id="pp-pessoas-base" min="0" step="1" value="<?= cadastros_pp_e((string)$modalItem['pessoas_base']) ?>">
                 </div>
                 <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
-                    <label for="pp-valor-convidado-adicional">Valor convidado adicional</label>
+                    <label for="pp-valor-convidado-adicional">Convidado adicional</label>
                     <input type="text" name="valor_convidado_adicional" id="pp-valor-convidado-adicional" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_convidado_adicional']) ?>">
                 </div>
                 <div class="pp-field full">
