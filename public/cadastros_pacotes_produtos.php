@@ -529,7 +529,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                 </div>
                 <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
                     <label for="pp-valor-pacote">Valor Base</label>
-                    <input type="text" name="valor_pacote" id="pp-valor-pacote" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_pacote']) ?>">
+                    <input type="text" name="valor_pacote" id="pp-valor-pacote" inputmode="decimal" placeholder="R$ 0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_pacote']) ?>">
                 </div>
                 <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
                     <label for="pp-pessoas-base">Quantia de convidados base</label>
@@ -537,7 +537,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                 </div>
                 <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
                     <label for="pp-valor-convidado-adicional">Convidado adicional</label>
-                    <input type="text" name="valor_convidado_adicional" id="pp-valor-convidado-adicional" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_convidado_adicional']) ?>">
+                    <input type="text" name="valor_convidado_adicional" id="pp-valor-convidado-adicional" inputmode="decimal" placeholder="R$ 0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_convidado_adicional']) ?>">
                 </div>
                 <div class="pp-field full">
                     <label for="pp-descricao">Descrição</label>
@@ -590,11 +590,33 @@ const ppGalleryModal = document.getElementById('pp-gallery-modal');
 const ppForm = document.getElementById('pp-form');
 const ppCategoria = document.getElementById('pp-categoria');
 const ppDescricao = document.getElementById('pp-descricao');
+const ppPackageMoneyFieldIds = ['pp-valor-pacote', 'pp-valor-convidado-adicional'];
 let ppItems = {};
 try {
     ppItems = JSON.parse(document.getElementById('pp-items-json')?.textContent || '{}');
 } catch (error) {
     ppItems = {};
+}
+
+function ppFormatMoneyValue(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return '';
+    const amount = Number.parseInt(digits, 10) / 100;
+    return amount.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+function ppFormatMoneyField(field) {
+    if (!field) return;
+    field.value = ppFormatMoneyValue(field.value);
+}
+
+function ppFormatPackageMoneyFields() {
+    ppPackageMoneyFieldIds.forEach((id) => ppFormatMoneyField(document.getElementById(id)));
 }
 
 function initPpTiny() {
@@ -670,6 +692,7 @@ function openPpModal(data = null) {
     document.getElementById('pp-valor-pacote').value = data?.valorPacote || '';
     document.getElementById('pp-pessoas-base').value = data?.pessoasBase || '';
     document.getElementById('pp-valor-convidado-adicional').value = data?.valorConvidadoAdicional || '';
+    ppFormatPackageMoneyFields();
     updateCategoriaFields();
     ppModal.classList.add('open');
     initPpTiny();
@@ -759,6 +782,13 @@ ppForm?.addEventListener('submit', () => {
     if (typeof tinymce !== 'undefined') {
         tinymce.triggerSave();
     }
+    ppFormatPackageMoneyFields();
+});
+
+ppPackageMoneyFieldIds.forEach((id) => {
+    const field = document.getElementById(id);
+    field?.addEventListener('input', () => ppFormatMoneyField(field));
+    field?.addEventListener('blur', () => ppFormatMoneyField(field));
 });
 
 document.querySelectorAll('[data-gallery-image]').forEach((button) => {
@@ -829,6 +859,9 @@ document.addEventListener('keydown', (event) => {
         setField('pp-pessoas-base', data?.pessoasBase || '');
         setField('pp-valor-convidado-adicional', data?.valorConvidadoAdicional || '');
         setField('pp-descricao', data?.descricao || '');
+        if (typeof ppFormatPackageMoneyFields === 'function') {
+            ppFormatPackageMoneyFields();
+        }
         syncCategory();
         modal.classList.add('open');
     }
