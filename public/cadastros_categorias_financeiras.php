@@ -231,7 +231,7 @@ includeSidebar('Categorias Financeiras');
         </div>
         <div class="cf-actions">
             <a class="cf-btn" href="index.php?page=cadastros">← Cadastros</a>
-            <button class="cf-btn primary" type="button" data-open-cf-modal>+ Nova categoria</button>
+            <button class="cf-btn primary" type="button" data-open-cf-modal onclick="cfOpenCategoriaModal()">+ Nova categoria</button>
         </div>
     </div>
 
@@ -261,7 +261,7 @@ includeSidebar('Categorias Financeiras');
                             <td><span class="cf-pill <?= !empty($categoria['ativo']) ? 'on' : 'off' ?>"><?= !empty($categoria['ativo']) ? 'Ativa' : 'Inativa' ?></span></td>
                             <td>
                                 <div class="cf-row-actions">
-                                    <button class="cf-action" type="button" data-edit-cf
+                                    <button class="cf-action" type="button" data-edit-cf onclick="cfOpenCategoriaModalFromButton(this)"
                                         data-id="<?= (int)$categoria['id'] ?>"
                                         data-nome="<?= cf_h((string)$categoria['nome']) ?>"
                                         data-grupo="<?= cf_h((string)$categoria['grupo']) ?>"
@@ -290,7 +290,7 @@ includeSidebar('Categorias Financeiras');
     <div class="cf-modal">
         <div class="cf-modal-header">
             <h2 class="cf-modal-title" id="cf-modal-title">Nova categoria</h2>
-            <button class="cf-modal-close" type="button" data-close-cf-modal aria-label="Fechar">×</button>
+            <button class="cf-modal-close" type="button" data-close-cf-modal onclick="cfCloseCategoriaModal()" aria-label="Fechar">×</button>
         </div>
         <form method="post" class="cf-form">
             <input type="hidden" name="action" value="save">
@@ -304,7 +304,7 @@ includeSidebar('Categorias Financeiras');
                 <div class="cf-field cf-full"><label>Descricao</label><textarea name="descricao" id="cf-descricao"></textarea></div>
             </div>
             <div class="cf-modal-actions">
-                <button class="cf-btn" type="button" data-close-cf-modal>Cancelar</button>
+                <button class="cf-btn" type="button" data-close-cf-modal onclick="cfCloseCategoriaModal()">Cancelar</button>
                 <button class="cf-btn primary" type="submit">Salvar categoria</button>
             </div>
         </form>
@@ -347,6 +347,19 @@ includeSidebar('Categorias Financeiras');
             cfModal.classList.remove('open');
         }
     }
+
+    window.cfOpenCategoriaModal = function () {
+        openCfModal(null);
+    };
+
+    window.cfOpenCategoriaModalFromButton = function (button) {
+        if (!button) {
+            return;
+        }
+        openCfModal(button.dataset);
+    };
+
+    window.cfCloseCategoriaModal = closeCfModal;
 
     document.addEventListener('click', function (event) {
         const openButton = event.target.closest('[data-open-cf-modal]');
