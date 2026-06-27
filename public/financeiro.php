@@ -77,7 +77,6 @@ function financeiro_ensure_schema(PDO $pdo): void
             destinatario VARCHAR(180) NULL,
             categoria VARCHAR(120) NULL,
             centro_custo VARCHAR(120) NULL,
-            evento_id BIGINT NULL,
             banco VARCHAR(120) NULL,
             conta VARCHAR(120) NULL,
             tipo_movimento VARCHAR(30) NULL,
@@ -349,38 +348,13 @@ function financeiro_sugerir_descricao(PDO $pdo, string $descricaoNormalizada, st
     return ($best && $bestScore >= 82.0) ? ['match' => 'parecida', 'score' => $bestScore, 'row' => $best] : ['match' => '', 'row' => null];
 }
 
-function financeiro_sugerir_evento(PDO $pdo, string $descricaoNormalizada, string $data): ?array
-{
-    try {
-        $stmt = $pdo->prepare("
-            SELECT id, COALESCE(nome_evento, 'Evento') AS nome_evento, data_evento::text AS data_evento
-            FROM logistica_eventos_espelho
-            WHERE data_evento BETWEEN CAST(:data AS DATE) - INTERVAL '180 days'
-                                AND CAST(:data AS DATE) + INTERVAL '180 days'
-            ORDER BY ABS(data_evento - CAST(:data AS DATE)) ASC
-            LIMIT 80
-        ");
-        $stmt->execute([':data' => $data]);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $evento) {
-            $nomeNormalizado = financeiro_normalizar_descricao((string)$evento['nome_evento']);
-            if ($nomeNormalizado !== '' && strlen($nomeNormalizado) >= 6 && str_contains($descricaoNormalizada, $nomeNormalizado)) {
-                return $evento;
-            }
-        }
-    } catch (Throwable $e) {
-        return null;
-    }
-    return null;
-}
-
-function financeiro_atualizar_aprendizado(PDO $pdo, array $item, string $banco, string $conta, string $categoria, string $centroCusto, ?int $eventoId): void
+function financeiro_atualizar_aprendizado(PDO $pdo, array $item, string $banco, string $conta, string $categoria, string $centroCusto): void
 {
     financeiro_salvar_descricao_banco($pdo, $item, $banco, $conta);
     $stmt = $pdo->prepare("
         UPDATE financeiro_ofx_descricoes
         SET categoria = :categoria,
             centro_custo = :centro_custo,
-            evento_id = :evento_id,
             destinatario = :destinatario,
             uso_count = uso_count + 1,
             ultimo_uso_em = NOW(),
@@ -392,7 +366,6 @@ function financeiro_atualizar_aprendizado(PDO $pdo, array $item, string $banco, 
     $stmt->execute([
         ':categoria' => $categoria !== '' ? $categoria : null,
         ':centro_custo' => $centroCusto !== '' ? $centroCusto : null,
-        ':evento_id' => $eventoId && $eventoId > 0 ? $eventoId : null,
         ':destinatario' => trim((string)($item['destinatario'] ?? '')) ?: null,
         ':descricao_normalizada' => $item['descricao_normalizada'],
         ':banco' => $banco !== '' ? $banco : null,
@@ -548,15 +521,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 financeiro_salvar_descricao_banco($pdo, $item, $banco, $conta);
                 $suggestion = financeiro_sugerir_descricao($pdo, (string)$item['descricao_normalizada'], $banco, $conta);
                 $suggestionRow = is_array($suggestion['row'] ?? null) ? $suggestion['row'] : [];
-                $evento = financeiro_sugerir_evento($pdo, (string)$item['descricao_normalizada'], (string)$item['data']);
                 $item['banco'] = $banco;
                 $item['conta'] = $conta;
                 $item['categoria_sugerida'] = (string)($suggestionRow['categoria'] ?? '');
                 $item['centro_custo_sugerido'] = (string)($suggestionRow['centro_custo'] ?? '');
                 $item['destinatario'] = (string)($suggestionRow['destinatario'] ?? $item['destinatario'] ?? '');
                 $item['sugestao_match'] = (string)($suggestion['match'] ?? '');
-                $item['evento_id_sugerido'] = (int)($suggestionRow['evento_id'] ?? ($evento['id'] ?? 0));
-                $item['evento_nome_sugerido'] = (string)($evento['nome_evento'] ?? '');
                 $item['duplicado'] = financeiro_ofx_duplicate($pdo, $item, $banco, $conta);
                 $item['recorrencia_sugerida'] = (($normalizedCounts[(string)$item['descricao_normalizada']] ?? 0) > 1);
                 $items[] = $item;
@@ -633,7 +603,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':destinatario' => trim((string)($item['destinatario'] ?? '')) ?: null,
                     ':created_by' => $userId > 0 ? $userId : null,
                 ]);
-                financeiro_atualizar_aprendizado($pdo, $item, $banco, $conta, $categoria, $centroCusto, (int)($item['evento_id_sugerido'] ?? 0));
+                financeiro_atualizar_aprendizado($pdo, $item, $banco, $conta, $categoria, $centroCusto);
                 $imported++;
             }
             unset($_SESSION['financeiro_ofx_preview']);
@@ -910,9 +880,6 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                                 <?php endif; ?>
                                                 <?php if (!empty($item['recorrencia_sugerida'])): ?>
                                                     <span class="ofx-small">Possivel recorrencia no arquivo</span>
-                                                <?php endif; ?>
-                                                <?php if (!empty($item['evento_nome_sugerido'])): ?>
-                                                    <span class="ofx-small">Evento sugerido: <?= h((string)$item['evento_nome_sugerido']) ?></span>
                                                 <?php endif; ?>
                                             </td>
                                             <td><span class="money <?= $isDespesa ? 'out' : '' ?>"><?= h(format_currency($item['valor'])) ?></span><span class="ofx-small"><?= h((string)$item['tipo']) ?></span></td>

@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS financeiro_ofx_descricoes (
     destinatario VARCHAR(180) NULL,
     categoria VARCHAR(120) NULL,
     centro_custo VARCHAR(120) NULL,
-    evento_id BIGINT NULL,
     banco VARCHAR(120) NULL,
     conta VARCHAR(120) NULL,
     tipo_movimento VARCHAR(30) NULL,
