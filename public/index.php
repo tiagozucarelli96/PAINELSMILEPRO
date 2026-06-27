@@ -217,6 +217,7 @@ $routes = [
   'cadastros_contratos' => 'cadastros_contratos.php',
   'cadastros_tags' => 'cadastros_tags.php',
   'cadastros_pacotes_produtos' => 'cadastros_pacotes_produtos.php',
+  'cadastros_categorias_financeiras' => 'cadastros_categorias_financeiras.php',
   'financeiro' => 'financeiro.php',
   'administrativo' => 'administrativo.php',
   'administrativo_avisos' => 'administrativo_avisos.php',

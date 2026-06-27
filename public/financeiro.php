@@ -52,6 +52,43 @@ function financeiro_ensure_schema(PDO $pdo): void
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_financeiro_despesas_data ON financeiro_despesas(data_movimento)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_financeiro_despesas_status ON financeiro_despesas(status)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_financeiro_despesas_ofx_fitid ON financeiro_despesas(banco, conta, ofx_fitid) WHERE ofx_fitid IS NOT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS financeiro_despesas ADD COLUMN IF NOT EXISTS destinatario VARCHAR(180) NULL");
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS financeiro_categorias (
+            id BIGSERIAL PRIMARY KEY,
+            nome VARCHAR(180) NOT NULL,
+            grupo VARCHAR(120) NOT NULL DEFAULT 'Geral',
+            tipo VARCHAR(20) NOT NULL DEFAULT 'despesa',
+            ordem INTEGER NOT NULL DEFAULT 0,
+            ativo BOOLEAN NOT NULL DEFAULT TRUE,
+            descricao TEXT NULL,
+            created_by INTEGER NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE (tipo, grupo, nome)
+        )
+    ");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_financeiro_categorias_ativo ON financeiro_categorias(tipo, ativo, grupo, ordem, nome)");
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS financeiro_ofx_descricoes (
+            id BIGSERIAL PRIMARY KEY,
+            descricao_banco TEXT NOT NULL,
+            descricao_normalizada VARCHAR(220) NOT NULL,
+            destinatario VARCHAR(180) NULL,
+            categoria VARCHAR(120) NULL,
+            centro_custo VARCHAR(120) NULL,
+            evento_id BIGINT NULL,
+            banco VARCHAR(120) NULL,
+            conta VARCHAR(120) NULL,
+            tipo_movimento VARCHAR(30) NULL,
+            uso_count INTEGER NOT NULL DEFAULT 0,
+            ultimo_uso_em TIMESTAMP NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    ");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_financeiro_ofx_descricoes_norm ON financeiro_ofx_descricoes(descricao_normalizada)");
+    $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_financeiro_ofx_descricoes_unique ON financeiro_ofx_descricoes(descricao_normalizada, COALESCE(banco, ''), COALESCE(conta, ''))");
     $done = true;
 }
 
@@ -111,6 +148,53 @@ function financeiro_parse_ofx_amount(string $value): float
     return round((float)$value, 2);
 }
 
+function financeiro_normalizar_descricao(string $descricao): string
+{
+    $descricao = trim($descricao);
+    $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $descricao);
+    if ($ascii !== false) {
+        $descricao = $ascii;
+    }
+    $descricao = strtoupper($descricao);
+    $descricao = preg_replace('/[^A-Z0-9 ]+/', ' ', $descricao);
+    $descricao = preg_replace('/\s+/', ' ', (string)$descricao);
+    return trim((string)$descricao);
+}
+
+function financeiro_destinatario_from_descricao(string $descricao): string
+{
+    $texto = financeiro_normalizar_descricao($descricao);
+    $texto = preg_replace('/^(PIX|TED|DOC|TEF|PAGAMENTO|PGTO|TRANSFERENCIA|TRANSF|COMPRA|DEBITO|ENVIO|ENVIADO|RECEBIDO)\s+/i', '', $texto);
+    $texto = preg_replace('/^(PIX|TED|DOC)\s+(ENVIADO|RECEBIDO|PARA|DE)\s+/i', '', (string)$texto);
+    $texto = preg_replace('/\s+/', ' ', (string)$texto);
+    return trim((string)$texto);
+}
+
+function financeiro_tipo_movimento_ofx(string $trnType, float $amount): string
+{
+    $type = strtoupper(trim($trnType));
+    if ($type !== '') {
+        if (in_array($type, ['CREDIT', 'DEP', 'DIRECTDEP', 'INT', 'DIV'], true)) {
+            return 'receita';
+        }
+        if (in_array($type, ['DEBIT', 'PAYMENT', 'CHECK', 'FEE', 'SRVCHG', 'ATM', 'POS', 'XFER'], true)) {
+            return 'despesa';
+        }
+    }
+    return $amount < 0 ? 'despesa' : 'receita';
+}
+
+function financeiro_detectar_parcela(string $descricao): string
+{
+    if (preg_match('/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/', $descricao, $m)) {
+        return (int)$m[1] . '/' . (int)$m[2];
+    }
+    if (preg_match('/\bPARC(?:ELA)?\s*(\d{1,2})\s*(?:DE|\/)\s*(\d{1,2})\b/i', $descricao, $m)) {
+        return (int)$m[1] . '/' . (int)$m[2];
+    }
+    return '';
+}
+
 function financeiro_parse_ofx(string $content): array
 {
     $content = str_replace(["\r\n", "\r"], "\n", $content);
@@ -121,8 +205,10 @@ function financeiro_parse_ofx(string $content): array
         $date = financeiro_parse_ofx_date(financeiro_ofx_tag($block, 'DTPOSTED') ?: financeiro_ofx_tag($block, 'DTUSER'));
         $name = financeiro_ofx_tag($block, 'NAME');
         $memo = financeiro_ofx_tag($block, 'MEMO');
+        $trnType = financeiro_ofx_tag($block, 'TRNTYPE');
         $fitid = financeiro_ofx_tag($block, 'FITID');
         $description = trim($memo !== '' ? $memo : $name);
+        $tipo = financeiro_tipo_movimento_ofx($trnType, $amount);
 
         if ($date === null || abs($amount) < 0.01) {
             continue;
@@ -131,13 +217,187 @@ function financeiro_parse_ofx(string $content): array
         $items[] = [
             'data' => $date,
             'descricao' => $description !== '' ? $description : 'Lancamento OFX',
+            'descricao_normalizada' => financeiro_normalizar_descricao($description !== '' ? $description : 'Lancamento OFX'),
+            'destinatario' => financeiro_destinatario_from_descricao($description !== '' ? $description : 'Lancamento OFX'),
             'valor_original' => $amount,
             'valor' => abs($amount),
-            'tipo' => $amount < 0 ? 'despesa' : 'receita',
+            'tipo' => $tipo,
+            'trn_type' => $trnType,
+            'parcela_sugerida' => financeiro_detectar_parcela($description),
             'fitid' => $fitid !== '' ? $fitid : 'ofx_' . sha1($date . '|' . $amount . '|' . $description . '|' . $idx),
         ];
     }
     return $items;
+}
+
+function financeiro_ofx_duplicate(PDO $pdo, array $item, string $banco, string $conta): bool
+{
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM financeiro_despesas
+        WHERE COALESCE(banco, '') = COALESCE(:banco, '')
+          AND COALESCE(conta, '') = COALESCE(:conta, '')
+          AND (
+            (ofx_fitid IS NOT NULL AND ofx_fitid = :ofx_fitid)
+            OR (
+                data_movimento = :data_movimento
+                AND ABS(valor - :valor) < 0.01
+                AND financeiro_despesas.descricao = :descricao
+            )
+          )
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':banco' => $banco !== '' ? $banco : null,
+        ':conta' => $conta !== '' ? $conta : null,
+        ':ofx_fitid' => $item['fitid'],
+        ':data_movimento' => $item['data'],
+        ':valor' => $item['valor'],
+        ':descricao' => $item['descricao'],
+    ]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function financeiro_salvar_descricao_banco(PDO $pdo, array $item, string $banco, string $conta): void
+{
+    $lookup = $pdo->prepare("
+        SELECT id
+        FROM financeiro_ofx_descricoes
+        WHERE descricao_normalizada = :descricao_normalizada
+          AND COALESCE(banco, '') = COALESCE(:banco, '')
+          AND COALESCE(conta, '') = COALESCE(:conta, '')
+        LIMIT 1
+    ");
+    $lookup->execute([
+        ':descricao_normalizada' => $item['descricao_normalizada'],
+        ':banco' => $banco !== '' ? $banco : null,
+        ':conta' => $conta !== '' ? $conta : null,
+    ]);
+    $id = (int)($lookup->fetchColumn() ?: 0);
+    if ($id > 0) {
+        $stmt = $pdo->prepare("
+            UPDATE financeiro_ofx_descricoes
+            SET descricao_banco = :descricao_banco,
+                destinatario = COALESCE(destinatario, :destinatario),
+                tipo_movimento = :tipo_movimento,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':id' => $id,
+            ':descricao_banco' => $item['descricao'],
+            ':destinatario' => $item['destinatario'] ?: null,
+            ':tipo_movimento' => $item['tipo'],
+        ]);
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO financeiro_ofx_descricoes
+            (descricao_banco, descricao_normalizada, destinatario, banco, conta, tipo_movimento, updated_at)
+        VALUES
+            (:descricao_banco, :descricao_normalizada, :destinatario, :banco, :conta, :tipo_movimento, NOW())
+    ");
+    $stmt->execute([
+        ':descricao_banco' => $item['descricao'],
+        ':descricao_normalizada' => $item['descricao_normalizada'],
+        ':destinatario' => $item['destinatario'] ?: null,
+        ':banco' => $banco !== '' ? $banco : null,
+        ':conta' => $conta !== '' ? $conta : null,
+        ':tipo_movimento' => $item['tipo'],
+    ]);
+}
+
+function financeiro_sugerir_descricao(PDO $pdo, string $descricaoNormalizada, string $banco, string $conta): array
+{
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM financeiro_ofx_descricoes
+        WHERE descricao_normalizada = :descricao
+          AND COALESCE(banco, '') = COALESCE(:banco, '')
+          AND COALESCE(conta, '') = COALESCE(:conta, '')
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':descricao' => $descricaoNormalizada,
+        ':banco' => $banco !== '' ? $banco : null,
+        ':conta' => $conta !== '' ? $conta : null,
+    ]);
+    $exact = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($exact && trim((string)($exact['categoria'] ?? '')) !== '') {
+        return ['match' => 'igual', 'row' => $exact];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM financeiro_ofx_descricoes
+        WHERE COALESCE(categoria, '') <> ''
+          AND (COALESCE(banco, '') = COALESCE(:banco, '') OR COALESCE(banco, '') = '')
+        ORDER BY ultimo_uso_em DESC NULLS LAST, updated_at DESC
+        LIMIT 500
+    ");
+    $stmt->execute([':banco' => $banco !== '' ? $banco : null]);
+    $best = null;
+    $bestScore = 0.0;
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        similar_text($descricaoNormalizada, (string)$row['descricao_normalizada'], $score);
+        if ($score > $bestScore) {
+            $bestScore = $score;
+            $best = $row;
+        }
+    }
+    return ($best && $bestScore >= 82.0) ? ['match' => 'parecida', 'score' => $bestScore, 'row' => $best] : ['match' => '', 'row' => null];
+}
+
+function financeiro_sugerir_evento(PDO $pdo, string $descricaoNormalizada, string $data): ?array
+{
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, COALESCE(nome_evento, 'Evento') AS nome_evento, data_evento::text AS data_evento
+            FROM logistica_eventos_espelho
+            WHERE data_evento BETWEEN CAST(:data AS DATE) - INTERVAL '180 days'
+                                AND CAST(:data AS DATE) + INTERVAL '180 days'
+            ORDER BY ABS(data_evento - CAST(:data AS DATE)) ASC
+            LIMIT 80
+        ");
+        $stmt->execute([':data' => $data]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $evento) {
+            $nomeNormalizado = financeiro_normalizar_descricao((string)$evento['nome_evento']);
+            if ($nomeNormalizado !== '' && strlen($nomeNormalizado) >= 6 && str_contains($descricaoNormalizada, $nomeNormalizado)) {
+                return $evento;
+            }
+        }
+    } catch (Throwable $e) {
+        return null;
+    }
+    return null;
+}
+
+function financeiro_atualizar_aprendizado(PDO $pdo, array $item, string $banco, string $conta, string $categoria, string $centroCusto, ?int $eventoId): void
+{
+    financeiro_salvar_descricao_banco($pdo, $item, $banco, $conta);
+    $stmt = $pdo->prepare("
+        UPDATE financeiro_ofx_descricoes
+        SET categoria = :categoria,
+            centro_custo = :centro_custo,
+            evento_id = :evento_id,
+            destinatario = :destinatario,
+            uso_count = uso_count + 1,
+            ultimo_uso_em = NOW(),
+            updated_at = NOW()
+        WHERE descricao_normalizada = :descricao_normalizada
+          AND COALESCE(banco, '') = COALESCE(:banco, '')
+          AND COALESCE(conta, '') = COALESCE(:conta, '')
+    ");
+    $stmt->execute([
+        ':categoria' => $categoria !== '' ? $categoria : null,
+        ':centro_custo' => $centroCusto !== '' ? $centroCusto : null,
+        ':evento_id' => $eventoId && $eventoId > 0 ? $eventoId : null,
+        ':destinatario' => trim((string)($item['destinatario'] ?? '')) ?: null,
+        ':descricao_normalizada' => $item['descricao_normalizada'],
+        ':banco' => $banco !== '' ? $banco : null,
+        ':conta' => $conta !== '' ? $conta : null,
+    ]);
 }
 
 function financeiro_listar_receitas(PDO $pdo, array $filters): array
@@ -267,45 +527,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($action === 'import_ofx') {
+    if ($action === 'preview_ofx') {
         $banco = trim((string)($_POST['banco'] ?? ''));
         $conta = trim((string)($_POST['conta'] ?? ''));
         if (empty($_FILES['ofx_file']['tmp_name']) || !is_uploaded_file($_FILES['ofx_file']['tmp_name'])) {
             $errors[] = 'Selecione um arquivo OFX.';
         } else {
             $content = (string)file_get_contents($_FILES['ofx_file']['tmp_name']);
-            $items = financeiro_parse_ofx($content);
-            $imported = 0;
-            $skipped = 0;
+            $items = [];
+            $parsedItems = financeiro_parse_ofx($content);
+            $normalizedCounts = [];
+            foreach ($parsedItems as $parsedItem) {
+                $norm = (string)($parsedItem['descricao_normalizada'] ?? '');
+                if ($norm !== '') {
+                    $normalizedCounts[$norm] = ($normalizedCounts[$norm] ?? 0) + 1;
+                }
+            }
 
-            foreach ($items as $item) {
-                if ($item['tipo'] !== 'despesa') {
-                    $skipped++;
+            foreach ($parsedItems as $item) {
+                financeiro_salvar_descricao_banco($pdo, $item, $banco, $conta);
+                $suggestion = financeiro_sugerir_descricao($pdo, (string)$item['descricao_normalizada'], $banco, $conta);
+                $suggestionRow = is_array($suggestion['row'] ?? null) ? $suggestion['row'] : [];
+                $evento = financeiro_sugerir_evento($pdo, (string)$item['descricao_normalizada'], (string)$item['data']);
+                $item['banco'] = $banco;
+                $item['conta'] = $conta;
+                $item['categoria_sugerida'] = (string)($suggestionRow['categoria'] ?? '');
+                $item['centro_custo_sugerido'] = (string)($suggestionRow['centro_custo'] ?? '');
+                $item['destinatario'] = (string)($suggestionRow['destinatario'] ?? $item['destinatario'] ?? '');
+                $item['sugestao_match'] = (string)($suggestion['match'] ?? '');
+                $item['evento_id_sugerido'] = (int)($suggestionRow['evento_id'] ?? ($evento['id'] ?? 0));
+                $item['evento_nome_sugerido'] = (string)($evento['nome_evento'] ?? '');
+                $item['duplicado'] = financeiro_ofx_duplicate($pdo, $item, $banco, $conta);
+                $item['recorrencia_sugerida'] = (($normalizedCounts[(string)$item['descricao_normalizada']] ?? 0) > 1);
+                $items[] = $item;
+            }
+
+            if (!$items) {
+                $errors[] = 'Nenhuma transacao valida encontrada no OFX.';
+            } else {
+                $_SESSION['financeiro_ofx_preview'] = [
+                    'banco' => $banco,
+                    'conta' => $conta,
+                    'centro_custo_padrao' => trim((string)($_POST['centro_custo'] ?? '')),
+                    'items' => $items,
+                    'created_at' => time(),
+                ];
+                $activeTab = 'despesas';
+                $messages[] = count($items) . ' transacao(oes) lida(s). Revise a pre-visualizacao antes de importar.';
+            }
+        }
+    }
+
+    if ($action === 'cancel_ofx_preview') {
+        unset($_SESSION['financeiro_ofx_preview']);
+        $messages[] = 'Pre-visualizacao OFX descartada.';
+    }
+
+    if ($action === 'confirm_ofx') {
+        $preview = $_SESSION['financeiro_ofx_preview'] ?? null;
+        $items = is_array($preview['items'] ?? null) ? $preview['items'] : [];
+        $selected = is_array($_POST['selected'] ?? null) ? array_map('intval', $_POST['selected']) : [];
+        $descricoes = is_array($_POST['descricao'] ?? null) ? $_POST['descricao'] : [];
+        $categoriasPost = is_array($_POST['categoria'] ?? null) ? $_POST['categoria'] : [];
+        $centrosPost = is_array($_POST['centro_custo'] ?? null) ? $_POST['centro_custo'] : [];
+        $banco = trim((string)($preview['banco'] ?? ''));
+        $conta = trim((string)($preview['conta'] ?? ''));
+        $imported = 0;
+        $blocked = 0;
+
+        if (!$items) {
+            $errors[] = 'A pre-visualizacao OFX expirou. Envie o arquivo novamente.';
+        } elseif (!$selected) {
+            $errors[] = 'Selecione pelo menos uma transacao para importar.';
+        } else {
+            foreach ($selected as $idx) {
+                if (!isset($items[$idx]) || !is_array($items[$idx])) {
                     continue;
                 }
-                $existsStmt = $pdo->prepare("
-                    SELECT 1
-                    FROM financeiro_despesas
-                    WHERE COALESCE(banco, '') = COALESCE(:banco, '')
-                      AND COALESCE(conta, '') = COALESCE(:conta, '')
-                      AND ofx_fitid = :ofx_fitid
-                    LIMIT 1
-                ");
-                $existsStmt->execute([
-                    ':banco' => $banco !== '' ? $banco : null,
-                    ':conta' => $conta !== '' ? $conta : null,
-                    ':ofx_fitid' => $item['fitid'],
-                ]);
-                if ($existsStmt->fetchColumn()) {
-                    $skipped++;
+                $item = $items[$idx];
+                $item['descricao'] = trim((string)($descricoes[$idx] ?? $item['descricao']));
+                $categoria = trim((string)($categoriasPost[$idx] ?? $item['categoria_sugerida'] ?? ''));
+                $centroCusto = trim((string)($centrosPost[$idx] ?? $item['centro_custo_sugerido'] ?? $preview['centro_custo_padrao'] ?? ''));
+
+                if (($item['tipo'] ?? '') !== 'despesa' || financeiro_ofx_duplicate($pdo, $item, $banco, $conta)) {
+                    $blocked++;
                     continue;
                 }
 
                 $stmt = $pdo->prepare("
                     INSERT INTO financeiro_despesas
-                        (data_movimento, descricao, valor, banco, conta, categoria, centro_custo, status, origem, ofx_fitid, ofx_payload, created_by)
+                        (data_movimento, descricao, valor, banco, conta, categoria, centro_custo, status, origem, ofx_fitid, ofx_payload, destinatario, created_by)
                     VALUES
-                        (:data_movimento, :descricao, :valor, :banco, :conta, :categoria, :centro_custo, 'conciliado', 'ofx', :ofx_fitid, CAST(:payload AS JSONB), :created_by)
+                        (:data_movimento, :descricao, :valor, :banco, :conta, :categoria, :centro_custo, 'conciliado', 'ofx', :ofx_fitid, CAST(:payload AS JSONB), :destinatario, :created_by)
                 ");
                 $stmt->execute([
                     ':data_movimento' => $item['data'],
@@ -313,15 +626,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':valor' => $item['valor'],
                     ':banco' => $banco !== '' ? $banco : null,
                     ':conta' => $conta !== '' ? $conta : null,
-                    ':categoria' => trim((string)($_POST['categoria'] ?? '')) ?: null,
-                    ':centro_custo' => trim((string)($_POST['centro_custo'] ?? '')) ?: null,
+                    ':categoria' => $categoria !== '' ? $categoria : null,
+                    ':centro_custo' => $centroCusto !== '' ? $centroCusto : null,
                     ':ofx_fitid' => $item['fitid'],
                     ':payload' => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    ':destinatario' => trim((string)($item['destinatario'] ?? '')) ?: null,
                     ':created_by' => $userId > 0 ? $userId : null,
                 ]);
+                financeiro_atualizar_aprendizado($pdo, $item, $banco, $conta, $categoria, $centroCusto, (int)($item['evento_id_sugerido'] ?? 0));
                 $imported++;
             }
-            $messages[] = $imported . ' despesa(s) importada(s) do OFX. ' . $skipped . ' lancamento(s) ignorado(s).';
+            unset($_SESSION['financeiro_ofx_preview']);
+            $messages[] = $imported . ' despesa(s) importada(s) do OFX. ' . $blocked . ' transacao(oes) bloqueada(s) por duplicidade ou tipo incompatível.';
         }
     }
 }
@@ -335,6 +651,9 @@ $filters = [
 ];
 $activeTab = (string)($_GET['tab'] ?? 'receitas');
 $activeTab = in_array($activeTab, ['receitas', 'despesas'], true) ? $activeTab : 'receitas';
+if (!empty($_SESSION['financeiro_ofx_preview'])) {
+    $activeTab = 'despesas';
+}
 
 $resumo = financeiro_resumo($pdo);
 $receitas = financeiro_listar_receitas($pdo, $filters);
@@ -364,11 +683,23 @@ try {
 
 $categorias = [];
 try {
-    $stmt = $pdo->query("SELECT DISTINCT categoria FROM financeiro_despesas WHERE TRIM(COALESCE(categoria, '')) <> '' ORDER BY categoria");
-    $categorias = array_values(array_filter(array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [])));
+    $stmt = $pdo->query("
+        SELECT nome, grupo
+        FROM financeiro_categorias
+        WHERE ativo IS TRUE AND tipo IN ('despesa', 'ambos')
+        ORDER BY grupo ASC, ordem ASC, nome ASC
+    ");
+    $categorias = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    if (!$categorias) {
+        $stmt = $pdo->query("SELECT DISTINCT categoria AS nome, 'Usadas' AS grupo FROM financeiro_despesas WHERE TRIM(COALESCE(categoria, '')) <> '' ORDER BY categoria");
+        $categorias = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
 } catch (Throwable $e) {
     $categorias = [];
 }
+
+$ofxPreview = is_array($_SESSION['financeiro_ofx_preview'] ?? null) ? $_SESSION['financeiro_ofx_preview'] : null;
+$ofxPreviewItems = is_array($ofxPreview['items'] ?? null) ? $ofxPreview['items'] : [];
 
 includeSidebar('Financeiro');
 ?>
@@ -396,6 +727,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
 .filter-button{height:43px}.table-wrap{overflow:auto;border:1px solid #e2e8f0;border-radius:8px}.finance-table{width:100%;border-collapse:collapse;background:#fff;min-width:1060px}.finance-table th{background:#64727f;color:#fff;text-align:left;padding:.85rem;font-size:.8rem;text-transform:uppercase}.finance-table td{border-bottom:1px solid #e2e8f0;padding:.85rem;vertical-align:middle}
 .badge{display:inline-flex;border-radius:999px;padding:.28rem .65rem;font-size:.76rem;font-weight:900}.badge-pendente{background:#fef3c7;color:#92400e}.badge-pago,.badge-conciliado{background:#dcfce7;color:#166534}.badge-vencido{background:#fee2e2;color:#991b1b}.badge-cancelado{background:#e2e8f0;color:#475569}.badge-receita{background:#58c786;color:#fff}.badge-despesa{background:#e05a43;color:#fff}
 .wallet{font-weight:900;color:#475569}.wallet small{display:block;color:#64748b;font-weight:700;margin-top:.25rem}.muted{color:#64748b;font-size:.88rem}.money{font-weight:900;color:#374151}.money.out{color:#b42318}.event-name{font-weight:900;color:#1d4ed8}.event-meta{display:block;color:#64748b;font-size:.82rem;margin-top:.25rem}
+.ofx-preview{border:1px solid #bae6fd;background:#f0f9ff;border-radius:10px;margin-bottom:1rem;overflow:hidden}.ofx-preview-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;padding:1rem;border-bottom:1px solid #bae6fd}.ofx-preview-title{margin:0;color:#075985;font-size:1.05rem;font-weight:900}.ofx-preview-meta{color:#0f766e;font-weight:800;font-size:.86rem}.ofx-preview-actions{display:flex;gap:.6rem;flex-wrap:wrap}.ofx-table{width:100%;border-collapse:collapse;min-width:1180px;background:#fff}.ofx-table th,.ofx-table td{border-bottom:1px solid #e2e8f0;padding:.72rem;text-align:left;vertical-align:middle}.ofx-table th{background:#e0f2fe;color:#075985;font-size:.76rem;text-transform:uppercase}.ofx-table tr.duplicate{background:#fff7ed}.ofx-table input[type="text"],.ofx-table select{padding:.55rem .62rem;border-radius:7px}.ofx-status{display:inline-flex;border-radius:999px;padding:.24rem .55rem;font-size:.74rem;font-weight:900;background:#dcfce7;color:#166534}.ofx-status.warn{background:#fed7aa;color:#9a3412}.ofx-status.info{background:#e0f2fe;color:#075985}.ofx-small{display:block;color:#64748b;font-size:.78rem;margin-top:.25rem}.ofx-editable-desc{min-width:260px}
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.modal-backdrop.open{display:flex}
 .modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}
 .modal-header{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:1rem 1.15rem;border-bottom:1px solid #e2e8f0}.modal-title{margin:0;color:#1e293b;font-weight:900}.modal-close{width:38px;height:38px;border:0;border-radius:999px;background:#f1f5f9;color:#334155;font-size:1.25rem;cursor:pointer}
@@ -464,7 +796,18 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                     <?php if ($activeTab === 'despesas'): ?>
                         <select name="categoria">
                             <option value="">Todas categorias</option>
-                            <?php foreach ($categorias as $categoria): ?><option value="<?= h($categoria) ?>" <?= $filters['categoria'] === $categoria ? 'selected' : '' ?>><?= h($categoria) ?></option><?php endforeach; ?>
+                            <?php
+                            $grupoAtual = null;
+                            foreach ($categorias as $categoria):
+                                $nomeCategoria = (string)($categoria['nome'] ?? '');
+                                $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
+                                if ($grupoAtual !== $grupoCategoria):
+                                    if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
+                                    <optgroup label="<?= h($grupoCategoria) ?>">
+                                    <?php $grupoAtual = $grupoCategoria; ?>
+                                <?php endif; ?>
+                                <option value="<?= h($nomeCategoria) ?>" <?= $filters['categoria'] === $nomeCategoria ? 'selected' : '' ?>><?= h($nomeCategoria) ?></option>
+                            <?php endforeach; if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
                         </select>
                     <?php else: ?>
                         <select disabled><option>Todas categorias</option></select>
@@ -513,6 +856,110 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                     </table>
                 </div>
             <?php else: ?>
+                <?php if ($ofxPreviewItems): ?>
+                    <section class="ofx-preview">
+                        <div class="ofx-preview-head">
+                            <div>
+                                <h2 class="ofx-preview-title">Pre-visualizacao OFX</h2>
+                                <div class="ofx-preview-meta">
+                                    Banco: <?= h((string)($ofxPreview['banco'] ?? '')) ?: 'Nao informado' ?> ·
+                                    Conta: <?= h((string)($ofxPreview['conta'] ?? '')) ?: 'Nao informada' ?> ·
+                                    <?= count($ofxPreviewItems) ?> transacao(oes)
+                                </div>
+                            </div>
+                            <div class="ofx-preview-actions">
+                                <form method="post">
+                                    <input type="hidden" name="action" value="cancel_ofx_preview">
+                                    <button class="btn btn-ghost" type="submit">Descartar pre-visualizacao</button>
+                                </form>
+                            </div>
+                        </div>
+                        <form method="post">
+                            <input type="hidden" name="action" value="confirm_ofx">
+                            <div class="table-wrap" style="border:0;border-radius:0">
+                                <table class="ofx-table">
+                                    <thead>
+                                        <tr>
+                                            <th><input type="checkbox" data-select-all-ofx checked></th>
+                                            <th>Data</th>
+                                            <th>Descricao</th>
+                                            <th>Valor</th>
+                                            <th>Categoria</th>
+                                            <th>Status</th>
+                                            <th>Editar antes de importar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($ofxPreviewItems as $idx => $item): ?>
+                                        <?php
+                                        $isDespesa = (string)($item['tipo'] ?? '') === 'despesa';
+                                        $isDuplicate = !empty($item['duplicado']);
+                                        $canImport = $isDespesa && !$isDuplicate;
+                                        $suggestedCategory = (string)($item['categoria_sugerida'] ?? '');
+                                        ?>
+                                        <tr class="<?= $isDuplicate ? 'duplicate' : '' ?>">
+                                            <td>
+                                                <input type="checkbox" name="selected[]" value="<?= (int)$idx ?>" <?= $canImport ? 'checked' : 'disabled' ?> data-ofx-row-check>
+                                            </td>
+                                            <td><strong><?= h(brDateOnly((string)$item['data'])) ?></strong></td>
+                                            <td>
+                                                <input class="ofx-editable-desc" type="text" name="descricao[<?= (int)$idx ?>]" value="<?= h((string)$item['descricao']) ?>">
+                                                <span class="ofx-small">Destinatario: <?= h((string)($item['destinatario'] ?: 'Nao identificado')) ?></span>
+                                                <?php if (!empty($item['parcela_sugerida'])): ?>
+                                                    <span class="ofx-small">Possivel parcela: <?= h((string)$item['parcela_sugerida']) ?></span>
+                                                <?php endif; ?>
+                                                <?php if (!empty($item['recorrencia_sugerida'])): ?>
+                                                    <span class="ofx-small">Possivel recorrencia no arquivo</span>
+                                                <?php endif; ?>
+                                                <?php if (!empty($item['evento_nome_sugerido'])): ?>
+                                                    <span class="ofx-small">Evento sugerido: <?= h((string)$item['evento_nome_sugerido']) ?></span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><span class="money <?= $isDespesa ? 'out' : '' ?>"><?= h(format_currency($item['valor'])) ?></span><span class="ofx-small"><?= h((string)$item['tipo']) ?></span></td>
+                                            <td>
+                                                <select name="categoria[<?= (int)$idx ?>]" <?= $canImport ? '' : 'disabled' ?>>
+                                                    <option value="">Selecionar categoria</option>
+                                                    <?php
+                                                    $grupoAtual = null;
+                                                    foreach ($categorias as $categoria):
+                                                        $nomeCategoria = (string)($categoria['nome'] ?? '');
+                                                        $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
+                                                        if ($grupoAtual !== $grupoCategoria):
+                                                            if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
+                                                            <optgroup label="<?= h($grupoCategoria) ?>">
+                                                            <?php $grupoAtual = $grupoCategoria; ?>
+                                                        <?php endif; ?>
+                                                        <option value="<?= h($nomeCategoria) ?>" <?= $suggestedCategory === $nomeCategoria ? 'selected' : '' ?>><?= h($nomeCategoria) ?></option>
+                                                    <?php endforeach; if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
+                                                </select>
+                                                <?php if (!empty($item['sugestao_match'])): ?>
+                                                    <span class="ofx-small">Sugestao <?= h((string)$item['sugestao_match']) ?></span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($isDuplicate): ?>
+                                                    <span class="ofx-status warn">Possivel duplicidade</span>
+                                                <?php elseif (!$isDespesa): ?>
+                                                    <span class="ofx-status info">Nao e despesa</span>
+                                                <?php else: ?>
+                                                    <span class="ofx-status">Pronto para importar</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <input type="text" name="centro_custo[<?= (int)$idx ?>]" value="<?= h((string)($item['centro_custo_sugerido'] ?? $ofxPreview['centro_custo_padrao'] ?? '')) ?>" placeholder="Centro de custo" <?= $canImport ? '' : 'disabled' ?>>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="modal-actions">
+                                <button class="btn btn-blue" type="submit">Importar selecionadas</button>
+                            </div>
+                        </form>
+                    </section>
+                <?php endif; ?>
+
                 <div class="table-wrap">
                     <table class="finance-table">
                         <thead><tr><th>Acoes</th><th>Data</th><th>Descricao</th><th>Origem</th><th>Valor</th><th>Categoria/Banco</th><th>Centro de custo</th><th>Status</th></tr></thead>
@@ -554,7 +1001,21 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                     <div><label>Valor</label><input name="valor" inputmode="decimal" placeholder="R$ 0,00" required></div>
                     <div><label>Banco</label><input name="banco" placeholder="Ex: Santander"></div>
                     <div><label>Conta</label><input name="conta" placeholder="Ex: Conta principal"></div>
-                    <div><label>Categoria</label><input name="categoria" placeholder="Ex: Fornecedores"></div>
+                    <div><label>Categoria</label><select name="categoria">
+                        <option value="">Selecionar categoria</option>
+                        <?php
+                        $grupoAtual = null;
+                        foreach ($categorias as $categoria):
+                            $nomeCategoria = (string)($categoria['nome'] ?? '');
+                            $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
+                            if ($grupoAtual !== $grupoCategoria):
+                                if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
+                                <optgroup label="<?= h($grupoCategoria) ?>">
+                                <?php $grupoAtual = $grupoCategoria; ?>
+                            <?php endif; ?>
+                            <option value="<?= h($nomeCategoria) ?>"><?= h($nomeCategoria) ?></option>
+                        <?php endforeach; if ($grupoAtual !== null): ?></optgroup><?php endif; ?>
+                    </select></div>
                     <div><label>Centro de custo</label><input name="centro_custo" placeholder="Ex: Eventos"></div>
                     <div><label>Status</label><select name="status"><option value="pendente">Pendente</option><option value="pago">Pago</option><option value="conciliado">Conciliado</option></select></div>
                 </div>
@@ -574,20 +1035,19 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
             <button class="modal-close" type="button" data-close-modal>×</button>
         </div>
         <form method="post" enctype="multipart/form-data">
-            <input type="hidden" name="action" value="import_ofx">
+            <input type="hidden" name="action" value="preview_ofx">
             <div class="modal-body">
                 <div class="form-grid">
                     <div><label>Banco</label><input name="banco" placeholder="Ex: Santander" required></div>
                     <div><label>Conta</label><input name="conta" placeholder="Ex: 0358 Smile"></div>
-                    <div><label>Categoria padrao</label><input name="categoria" placeholder="Ex: Despesas bancarias"></div>
                     <div><label>Centro de custo padrao</label><input name="centro_custo" placeholder="Ex: Administrativo"></div>
                     <div class="field full"><label>Arquivo OFX</label><input type="file" name="ofx_file" accept=".ofx,.OFX,application/x-ofx,text/plain,application/octet-stream" required></div>
-                    <div class="field full muted">Somente lancamentos negativos do OFX entram como despesas. Lancamentos repetidos sao ignorados pelo banco, conta e FITID.</div>
+                    <div class="field full muted">O arquivo sera lido primeiro em uma pre-visualizacao. Nenhuma transacao sera lancada sem sua confirmacao.</div>
                 </div>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-ghost" type="button" data-close-modal>Cancelar</button>
-                <button class="btn btn-blue" type="submit">Importar despesas</button>
+                <button class="btn btn-blue" type="submit">Pre-visualizar OFX</button>
             </div>
         </form>
     </div>
@@ -611,6 +1071,11 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         document.querySelectorAll('.modal-backdrop.open').forEach((modal) => modal.classList.remove('open'));
     }
+});
+document.querySelector('[data-select-all-ofx]')?.addEventListener('change', (event) => {
+    document.querySelectorAll('[data-ofx-row-check]').forEach((checkbox) => {
+        if (!checkbox.disabled) checkbox.checked = event.target.checked;
+    });
 });
 </script>
 

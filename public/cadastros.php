@@ -178,6 +178,15 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <a href="index.php?page=cadastros_categorias_financeiras" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #14b8a6);">
+                <span class="funcionalidade-card-icon">💳</span>
+                <div class="funcionalidade-card-title">Categorias Financeiras</div>
+                <div class="funcionalidade-card-subtitle">Criar, editar e desativar categorias dos lançamentos</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         
         <!-- REMOVIDO: Insumos (módulo desativado) -->
         <!-- REMOVIDO: Categorias (módulo desativado) -->
