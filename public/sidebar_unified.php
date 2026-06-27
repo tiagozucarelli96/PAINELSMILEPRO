@@ -1595,4 +1595,4 @@ if ($current_page === 'dashboard') {
             eventosCancelamentoPopups: <?= json_encode($eventos_cancelamento_popups, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
         };
     </script>
-    <script src="assets/js/sidebar_unified.js"></script>
+    <script src="assets/js/sidebar_unified.js?v=<?= (int)@filemtime(__DIR__ . '/assets/js/sidebar_unified.js') ?>"></script>
