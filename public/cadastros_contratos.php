@@ -28,6 +28,13 @@ contratos_modelos_ensure_schema($pdo);
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $success = '';
 $errors = [];
+$modalOpen = isset($_GET['novo']);
+$editId = (int)($_GET['edit_id'] ?? 0);
+$modalModelo = [
+    'id' => 0,
+    'nome' => '',
+    'conteudo_html' => '',
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? 'save');
@@ -97,6 +104,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if (!empty($_SESSION['cadastros_contratos_success'])) {
     $success = (string)$_SESSION['cadastros_contratos_success'];
     unset($_SESSION['cadastros_contratos_success']);
+}
+
+if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? 'save') !== 'toggle')) {
+    $modalOpen = true;
+    $modalModelo = [
+        'id' => (int)($_POST['id'] ?? 0),
+        'nome' => trim((string)($_POST['nome'] ?? '')),
+        'conteudo_html' => trim((string)($_POST['conteudo_html'] ?? '')),
+    ];
+} elseif ($editId > 0) {
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM contrato_modelos WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $editId]);
+        $modeloEdicao = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($modeloEdicao) {
+            $modalOpen = true;
+            $modalModelo = [
+                'id' => (int)$modeloEdicao['id'],
+                'nome' => (string)$modeloEdicao['nome'],
+                'conteudo_html' => (string)$modeloEdicao['conteudo_html'],
+            ];
+        } else {
+            $errors[] = 'Modelo não encontrado para edição.';
+        }
+    } catch (Throwable $e) {
+        error_log('cadastros_contratos edit: ' . $e->getMessage());
+        $errors[] = 'Não foi possível carregar o modelo para edição.';
+    }
 }
 
 try {
@@ -169,7 +204,7 @@ includeSidebar('Contratos');
         </div>
         <div class="contratos-header-actions">
             <a class="contratos-back" href="index.php?page=cadastros">← Cadastros</a>
-            <button class="contratos-primary" type="button" data-open-contrato-modal onclick="openContratoModal()">+ Adicionar contrato</button>
+            <a class="contratos-primary" href="index.php?page=cadastros_contratos&novo=1" data-open-contrato-modal>+ Adicionar contrato</a>
         </div>
     </div>
 
@@ -199,15 +234,14 @@ includeSidebar('Contratos');
                             <td><?= cadastros_contratos_e(date('d/m/Y H:i', strtotime((string)$modelo['updated_at']))) ?></td>
                             <td>
                                 <div class="modelo-actions">
-                                    <button
+                                    <a
                                         class="modelo-action"
-                                        type="button"
+                                        href="index.php?page=cadastros_contratos&edit_id=<?= (int)$modelo['id'] ?>"
                                         data-edit-contrato
-                                        onclick="openContratoModalFromButton(this)"
                                         data-id="<?= (int)$modelo['id'] ?>"
                                         data-nome="<?= cadastros_contratos_e((string)$modelo['nome']) ?>"
                                         data-conteudo="<?= cadastros_contratos_e((string)$modelo['conteudo_html']) ?>"
-                                    >Editar</button>
+                                    >Editar</a>
                                     <form method="post">
                                         <input type="hidden" name="action" value="toggle">
                                         <input type="hidden" name="id" value="<?= (int)$modelo['id'] ?>">
@@ -226,22 +260,22 @@ includeSidebar('Contratos');
     </section>
 </main>
 
-<div class="contratos-modal-backdrop" id="contrato-modal" role="dialog" aria-modal="true" aria-labelledby="contrato-modal-title">
+<div class="contratos-modal-backdrop <?= $modalOpen ? 'open' : '' ?>" id="contrato-modal" role="dialog" aria-modal="true" aria-labelledby="contrato-modal-title">
     <div class="contratos-modal">
         <div class="contratos-modal-header">
-            <h2 class="contratos-modal-title" id="contrato-modal-title">Adicionar contrato</h2>
-            <button class="contratos-modal-close" type="button" data-close-contrato-modal onclick="closeContratoModal()" aria-label="Fechar">×</button>
+            <h2 class="contratos-modal-title" id="contrato-modal-title"><?= (int)$modalModelo['id'] > 0 ? 'Editar contrato' : 'Adicionar contrato' ?></h2>
+            <a class="contratos-modal-close" href="index.php?page=cadastros_contratos" data-close-contrato-modal aria-label="Fechar">×</a>
         </div>
         <form method="post" class="contratos-form" id="contrato-form">
             <input type="hidden" name="action" value="save">
-            <input type="hidden" name="id" id="contrato_id" value="0">
+            <input type="hidden" name="id" id="contrato_id" value="<?= (int)$modalModelo['id'] ?>">
             <div class="contratos-field">
                 <label for="nome">Nome do modelo</label>
-                <input type="text" name="nome" id="nome" maxlength="180" required placeholder="CONTRATO BUFFET INFANTIL LISBON">
+                <input type="text" name="nome" id="nome" maxlength="180" required placeholder="CONTRATO BUFFET INFANTIL LISBON" value="<?= cadastros_contratos_e((string)$modalModelo['nome']) ?>">
             </div>
             <div class="contratos-field">
                 <label for="conteudo_html">Texto do contrato</label>
-                <textarea name="conteudo_html" id="conteudo_html" rows="18"></textarea>
+                <textarea name="conteudo_html" id="conteudo_html" rows="18"><?= cadastros_contratos_e((string)$modalModelo['conteudo_html']) ?></textarea>
             </div>
         </form>
         <div class="tags-help" aria-label="Tags disponíveis">
@@ -251,7 +285,7 @@ includeSidebar('Contratos');
         </div>
         <div class="contratos-modal-actions">
             <a class="contratos-btn secondary" href="index.php?page=cadastros_tags">Gerenciar tags</a>
-            <button class="contratos-btn secondary" type="button" data-close-contrato-modal onclick="closeContratoModal()">Cancelar</button>
+            <a class="contratos-btn secondary" href="index.php?page=cadastros_contratos" data-close-contrato-modal>Cancelar</a>
             <button class="contratos-btn" type="submit" form="contrato-form">Salvar modelo</button>
         </div>
     </div>
@@ -325,6 +359,11 @@ contratoModal?.addEventListener('click', (event) => {
 document.querySelectorAll('[data-edit-contrato]').forEach((button) => {
     button.addEventListener('click', () => openContratoModalFromButton(button));
 });
+
+if (contratoModal?.classList.contains('open')) {
+    initContratoTiny();
+    window.setTimeout(() => setEditorContent(contratoTextarea?.value || ''), 120);
+}
 
 document.getElementById('contrato-form')?.addEventListener('submit', () => {
     if (typeof tinymce !== 'undefined') {
