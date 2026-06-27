@@ -303,7 +303,7 @@ includeSidebar('Pacotes, Serviços e Produtos');
         </div>
         <div class="pp-actions">
             <a class="pp-btn secondary" href="index.php?page=cadastros">← Cadastros</a>
-            <button class="pp-btn" type="button" data-open-pp-modal>+ Adicionar</button>
+            <button class="pp-btn" type="button" data-open-pp-modal onclick="ppOpenCadastroModal()">+ Adicionar</button>
         </div>
     </div>
 
@@ -346,6 +346,7 @@ includeSidebar('Pacotes, Serviços e Produtos');
                                         type="button"
                                         title="Editar"
                                         data-edit-pp
+                                        onclick="ppOpenCadastroModalFromButton(this)"
                                         data-id="<?= (int)$item['id'] ?>"
                                     >✎</button>
                                     <form method="post" onsubmit="return confirm('Arquivar este cadastro?');">
@@ -370,7 +371,7 @@ includeSidebar('Pacotes, Serviços e Produtos');
     <div class="pp-modal">
         <div class="pp-modal-header">
             <h2 class="pp-modal-title" id="pp-modal-title">Adicionar cadastro</h2>
-            <button class="pp-modal-close" type="button" data-close-pp-modal aria-label="Fechar">×</button>
+            <button class="pp-modal-close" type="button" data-close-pp-modal onclick="ppCloseCadastroModal()" aria-label="Fechar">×</button>
         </div>
         <form method="post" class="pp-form" id="pp-form">
             <input type="hidden" name="action" value="save">
@@ -411,7 +412,7 @@ includeSidebar('Pacotes, Serviços e Produtos');
             </div>
         </form>
         <div class="pp-modal-actions">
-            <button class="pp-btn secondary" type="button" data-close-pp-modal>Cancelar</button>
+            <button class="pp-btn secondary" type="button" data-close-pp-modal onclick="ppCloseCadastroModal()">Cancelar</button>
             <button class="pp-btn" type="submit" form="pp-form">Salvar</button>
         </div>
     </div>
@@ -545,6 +546,30 @@ function closePpModal() {
     ppModal?.classList.remove('open');
 }
 
+function getPpItemModalData(id) {
+    const item = ppItems[id || ''] || {};
+    return {
+        id: item.id || id || '0',
+        categoria: item.categoria || 'Pacote',
+        nome: item.nome || '',
+        valorVenda: item.valor_venda || '',
+        valorPacote: item.valor_pacote || '',
+        pessoasBase: item.pessoas_base || '',
+        valorConvidadoAdicional: item.valor_convidado_adicional || '',
+        descricao: item.descricao || '',
+    };
+}
+
+window.ppOpenCadastroModal = function () {
+    openPpModal();
+};
+
+window.ppOpenCadastroModalFromButton = function (button) {
+    openPpModal(getPpItemModalData(button?.dataset?.id || ''));
+};
+
+window.ppCloseCadastroModal = closePpModal;
+
 function closePpGalleryModal() {
     ppGalleryModal?.classList.remove('open');
 }
@@ -562,17 +587,7 @@ ppCategoria?.addEventListener('change', updateCategoriaFields);
 
 document.querySelectorAll('[data-edit-pp]').forEach((button) => {
     button.addEventListener('click', () => {
-        const item = ppItems[button.dataset.id || ''] || {};
-        openPpModal({
-            id: item.id || button.dataset.id || '0',
-            categoria: item.categoria || 'Pacote',
-            nome: item.nome || '',
-            valorVenda: item.valor_venda || '',
-            valorPacote: item.valor_pacote || '',
-            pessoasBase: item.pessoas_base || '',
-            valorConvidadoAdicional: item.valor_convidado_adicional || '',
-            descricao: item.descricao || '',
-        });
+        openPpModal(getPpItemModalData(button.dataset.id || ''));
     });
 });
 

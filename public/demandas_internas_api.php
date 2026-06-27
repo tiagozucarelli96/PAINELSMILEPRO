@@ -136,11 +136,16 @@ function demandasInternasLog(PDO $pdo, int $demandaId, int $userId, string $acao
     ]);
 }
 
-function demandasInternasBuildUrl(): string
+function demandasInternasBuildUrl(int $demandaId = 0): string
 {
+    $path = '/index.php?page=demandas';
+    if ($demandaId > 0) {
+        $path .= '&demanda_id=' . $demandaId;
+    }
+
     $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
     if ($host === '') {
-        return 'index.php?page=demandas';
+        return ltrim($path, '/');
     }
 
     $proto = trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
@@ -148,7 +153,7 @@ function demandasInternasBuildUrl(): string
         $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     }
 
-    return $proto . '://' . $host . '/index.php?page=demandas';
+    return $proto . '://' . $host . $path;
 }
 
 function demandasInternasUsuariosDestino(PDO $pdo, string $responsavelTipo, int $responsavelId, string $responsavelSetor): array
@@ -188,7 +193,7 @@ function demandasInternasNotificarCriacao(
             return;
         }
 
-        $url = demandasInternasBuildUrl();
+        $url = demandasInternasBuildUrl($demandaId);
         $mensagem = "Nova demanda criada: {$titulo}";
         if ($prazo !== '') {
             $prazoFormatado = $prazo;
@@ -212,13 +217,53 @@ function demandasInternasNotificarCriacao(
             'mensagem' => $mensagem,
             'url_destino' => $url,
             'email_assunto' => 'Nova demanda interna: ' . $titulo,
+            'push_titulo' => 'Nova demanda interna',
+            'push_mensagem' => $titulo,
         ], [
             'internal' => true,
+            'push' => true,
             'email' => true,
             'whatsapp' => true,
         ]);
     } catch (Throwable $e) {
         error_log('[DEMANDAS INTERNAS] Falha ao notificar criação da demanda #' . $demandaId . ': ' . $e->getMessage());
+    }
+}
+
+function demandasInternasNotificarMencoes(PDO $pdo, int $demandaId, array $destinatarios, int $autorId, bool $isNovaDemanda): void
+{
+    $destinatarios = array_values(array_unique(array_filter(array_map('intval', $destinatarios), static fn($id) => $id > 0 && $id !== $autorId)));
+    if (empty($destinatarios)) {
+        return;
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT titulo FROM demandas_internas WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $demandaId]);
+        $tituloDemanda = trim((string)$stmt->fetchColumn());
+        if ($tituloDemanda === '') {
+            $tituloDemanda = 'demanda';
+        }
+
+        $titulo = $isNovaDemanda ? 'Você foi citado em uma nova demanda' : 'Você foi citado em uma demanda';
+        $mensagem = $titulo . ': ' . $tituloDemanda;
+        $url = demandasInternasBuildUrl($demandaId);
+
+        $dispatcher = new NotificationDispatcher($pdo);
+        $dispatcher->dispatch($destinatarios, [
+            'tipo' => 'demanda_interna_mencao',
+            'referencia_id' => $demandaId,
+            'titulo' => $titulo,
+            'mensagem' => $mensagem,
+            'url_destino' => $url,
+            'push_titulo' => $titulo,
+            'push_mensagem' => $tituloDemanda,
+        ], [
+            'internal' => true,
+            'push' => true,
+        ]);
+    } catch (Throwable $e) {
+        error_log('[DEMANDAS INTERNAS] Falha ao notificar menções da demanda #' . $demandaId . ': ' . $e->getMessage());
     }
 }
 
@@ -286,6 +331,7 @@ function demandasInternasParseMentions(PDO $pdo, int $demandaId, int $mensagemId
 
     $usuarios = $pdo->query("SELECT id, nome FROM usuarios ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
     $setores = $pdo->query("SELECT DISTINCT cargo FROM usuarios WHERE cargo IS NOT NULL AND TRIM(cargo) <> '' ORDER BY cargo")->fetchAll(PDO::FETCH_COLUMN);
+    $destinatariosMencao = [];
 
     foreach ($matches[1] as $rawMention) {
         $mention = mb_strtolower(trim((string)$rawMention));
@@ -304,6 +350,7 @@ function demandasInternasParseMentions(PDO $pdo, int $demandaId, int $mensagemId
                     ':citado_por' => $autorId ?: null,
                 ]);
                 demandasInternasLog($pdo, $demandaId, $autorId, 'usuario_citado', '@' . $usuario['nome'] . ' foi citado.');
+                $destinatariosMencao[] = (int)$usuario['id'];
                 $matched = true;
                 break;
             }
@@ -324,11 +371,16 @@ function demandasInternasParseMentions(PDO $pdo, int $demandaId, int $mensagemId
                         ':citado_por' => $autorId ?: null,
                     ]);
                     demandasInternasLog($pdo, $demandaId, $autorId, 'setor_citado', '@' . $setor . ' foi citado.');
+                    foreach (demandasInternasUsuariosDestino($pdo, 'setor', 0, (string)$setor) as $usuarioDestino) {
+                        $destinatariosMencao[] = (int)($usuarioDestino['id'] ?? 0);
+                    }
                     break;
                 }
             }
         }
     }
+
+    demandasInternasNotificarMencoes($pdo, $demandaId, $destinatariosMencao, $autorId, $mensagemId <= 0);
 }
 
 function demandasInternasList(PDO $pdo, int $userId, bool $isAdmin): void

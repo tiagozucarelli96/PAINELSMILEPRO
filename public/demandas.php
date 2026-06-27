@@ -564,6 +564,7 @@ const API = 'demandas_internas_api.php';
 const state = {
     tab: 'todas',
     selectedId: null,
+    initialDemandId: Number(new URLSearchParams(window.location.search).get('demanda_id') || 0),
     demandas: [],
     usuarios: [],
     setores: [],
@@ -663,6 +664,9 @@ async function bootstrap() {
     state.isAdmin = !!data.is_admin;
     fillSelects();
     await loadDemandas();
+    if (state.initialDemandId > 0) {
+        await openDetail(state.initialDemandId);
+    }
 }
 
 async function loadDemandas() {

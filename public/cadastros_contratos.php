@@ -169,7 +169,7 @@ includeSidebar('Contratos');
         </div>
         <div class="contratos-header-actions">
             <a class="contratos-back" href="index.php?page=cadastros">← Cadastros</a>
-            <button class="contratos-primary" type="button" data-open-contrato-modal>+ Adicionar contrato</button>
+            <button class="contratos-primary" type="button" data-open-contrato-modal onclick="openContratoModal()">+ Adicionar contrato</button>
         </div>
     </div>
 
@@ -203,6 +203,7 @@ includeSidebar('Contratos');
                                         class="modelo-action"
                                         type="button"
                                         data-edit-contrato
+                                        onclick="openContratoModalFromButton(this)"
                                         data-id="<?= (int)$modelo['id'] ?>"
                                         data-nome="<?= cadastros_contratos_e((string)$modelo['nome']) ?>"
                                         data-conteudo="<?= cadastros_contratos_e((string)$modelo['conteudo_html']) ?>"
@@ -229,7 +230,7 @@ includeSidebar('Contratos');
     <div class="contratos-modal">
         <div class="contratos-modal-header">
             <h2 class="contratos-modal-title" id="contrato-modal-title">Adicionar contrato</h2>
-            <button class="contratos-modal-close" type="button" data-close-contrato-modal aria-label="Fechar">×</button>
+            <button class="contratos-modal-close" type="button" data-close-contrato-modal onclick="closeContratoModal()" aria-label="Fechar">×</button>
         </div>
         <form method="post" class="contratos-form" id="contrato-form">
             <input type="hidden" name="action" value="save">
@@ -250,7 +251,7 @@ includeSidebar('Contratos');
         </div>
         <div class="contratos-modal-actions">
             <a class="contratos-btn secondary" href="index.php?page=cadastros_tags">Gerenciar tags</a>
-            <button class="contratos-btn secondary" type="button" data-close-contrato-modal>Cancelar</button>
+            <button class="contratos-btn secondary" type="button" data-close-contrato-modal onclick="closeContratoModal()">Cancelar</button>
             <button class="contratos-btn" type="submit" form="contrato-form">Salvar modelo</button>
         </div>
     </div>
@@ -302,6 +303,19 @@ function closeContratoModal() {
     contratoModal?.classList.remove('open');
 }
 
+function openContratoModalFromButton(button) {
+    if (!button) return;
+    openContratoModal({
+        id: button.dataset.id || '0',
+        nome: button.dataset.nome || '',
+        conteudo: button.dataset.conteudo || '',
+    });
+}
+
+window.openContratoModal = openContratoModal;
+window.closeContratoModal = closeContratoModal;
+window.openContratoModalFromButton = openContratoModalFromButton;
+
 document.querySelector('[data-open-contrato-modal]')?.addEventListener('click', () => openContratoModal());
 document.querySelectorAll('[data-close-contrato-modal]').forEach((button) => button.addEventListener('click', closeContratoModal));
 contratoModal?.addEventListener('click', (event) => {
@@ -309,11 +323,7 @@ contratoModal?.addEventListener('click', (event) => {
 });
 
 document.querySelectorAll('[data-edit-contrato]').forEach((button) => {
-    button.addEventListener('click', () => openContratoModal({
-        id: button.dataset.id || '0',
-        nome: button.dataset.nome || '',
-        conteudo: button.dataset.conteudo || '',
-    }));
+    button.addEventListener('click', () => openContratoModalFromButton(button));
 });
 
 document.getElementById('contrato-form')?.addEventListener('submit', () => {

@@ -74,7 +74,7 @@ function cf_seed_defaults(PDO $pdo): void
     $stmt = $pdo->prepare("
         INSERT INTO financeiro_categorias (grupo, nome, tipo, ordem, ativo, updated_at)
         VALUES (:grupo, :nome, 'despesa', :ordem, TRUE, NOW())
-        ON CONFLICT (tipo, grupo, nome) DO UPDATE SET ativo = TRUE, ordem = EXCLUDED.ordem, updated_at = NOW()
+        ON CONFLICT (tipo, grupo, nome) DO NOTHING
     ");
     $ordens = [];
     foreach ($defaults as $item) {
