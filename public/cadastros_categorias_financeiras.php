@@ -415,5 +415,67 @@ includeSidebar('Categorias Financeiras');
     openCfModalFromUrl();
 })();
 </script>
+<script>
+(function () {
+    const modal = document.getElementById('cf-modal');
+    if (!modal) return;
+
+    function setValue(id, value) {
+        const field = document.getElementById(id);
+        if (field) field.value = value || '';
+    }
+
+    function open(data) {
+        const isEditing = !!data;
+        document.getElementById('cf-modal-title').textContent = isEditing ? 'Editar categoria' : 'Nova categoria';
+        setValue('cf-id', isEditing ? data.id : '0');
+        setValue('cf-nome', isEditing ? data.nome : '');
+        setValue('cf-grupo', isEditing ? (data.grupo || 'Geral') : 'Geral');
+        setValue('cf-tipo', isEditing ? (data.tipo || 'despesa') : 'despesa');
+        setValue('cf-ordem', isEditing ? (data.ordem || '0') : '0');
+        setValue('cf-descricao', isEditing ? data.descricao : '');
+        const ativo = document.getElementById('cf-ativo');
+        if (ativo) ativo.checked = isEditing ? data.ativo === '1' : true;
+        modal.classList.add('open');
+    }
+
+    function close() {
+        modal.classList.remove('open');
+        history.replaceState(null, '', 'index.php?page=cadastros_categorias_financeiras');
+    }
+
+    document.addEventListener('click', function (event) {
+        const add = event.target.closest('[data-open-cf-modal]');
+        if (add) {
+            event.preventDefault();
+            history.replaceState(null, '', 'index.php?page=cadastros_categorias_financeiras&novo=1#cf-modal');
+            open(null);
+            return;
+        }
+
+        const edit = event.target.closest('[data-edit-cf]');
+        if (edit) {
+            event.preventDefault();
+            history.replaceState(null, '', `index.php?page=cadastros_categorias_financeiras&edit_id=${edit.dataset.id || ''}#cf-modal`);
+            open(edit.dataset);
+            return;
+        }
+
+        if (event.target.closest('[data-close-cf-modal]')) {
+            event.preventDefault();
+            close();
+        }
+    });
+
+    const params = new URLSearchParams(window.location.search || '');
+    const editId = params.get('edit_id');
+    if (editId) {
+        const editButton = Array.from(document.querySelectorAll('[data-edit-cf]')).find((button) => button.dataset.id === editId);
+        if (editButton) open(editButton.dataset);
+    } else if (params.has('novo')) {
+        open(null);
+    }
+})();
+</script>
 
 <?php endSidebar(); ?>

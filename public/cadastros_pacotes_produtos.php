@@ -728,3 +728,94 @@ document.addEventListener('keydown', (event) => {
     }
 });
 </script>
+<script>
+(function () {
+    const modal = document.getElementById('pp-modal');
+    if (!modal) return;
+
+    function readItems() {
+        try {
+            return JSON.parse(document.getElementById('pp-items-json')?.textContent || '{}');
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function itemData(id) {
+        const item = readItems()[id || ''] || {};
+        return {
+            id: item.id || id || '0',
+            categoria: item.categoria || 'Pacote',
+            nome: item.nome || '',
+            valorVenda: item.valor_venda || '',
+            valorPacote: item.valor_pacote || '',
+            pessoasBase: item.pessoas_base || '',
+            valorConvidadoAdicional: item.valor_convidado_adicional || '',
+            descricao: item.descricao || '',
+        };
+    }
+
+    function setField(id, value) {
+        const field = document.getElementById(id);
+        if (field) field.value = value || '';
+    }
+
+    function syncCategory() {
+        const categoria = document.getElementById('pp-categoria')?.value || 'Pacote';
+        const isPacote = categoria === 'Pacote';
+        document.querySelectorAll('.pp-package-fields').forEach((el) => el.classList.toggle('hidden', !isPacote));
+        document.querySelectorAll('.pp-service-fields').forEach((el) => el.classList.toggle('hidden', isPacote));
+    }
+
+    function open(data) {
+        document.getElementById('pp-modal-title').textContent = data ? 'Editar cadastro' : 'Adicionar cadastro';
+        setField('pp-id', data?.id || '0');
+        setField('pp-categoria', data?.categoria || 'Pacote');
+        setField('pp-nome', data?.nome || '');
+        setField('pp-valor-venda', data?.valorVenda || '');
+        setField('pp-valor-pacote', data?.valorPacote || '');
+        setField('pp-pessoas-base', data?.pessoasBase || '');
+        setField('pp-valor-convidado-adicional', data?.valorConvidadoAdicional || '');
+        setField('pp-descricao', data?.descricao || '');
+        syncCategory();
+        modal.classList.add('open');
+    }
+
+    function close() {
+        modal.classList.remove('open');
+        history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos');
+    }
+
+    document.addEventListener('click', function (event) {
+        const add = event.target.closest('[data-open-pp-modal]');
+        if (add) {
+            event.preventDefault();
+            history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos&novo=1#pp-modal');
+            open(null);
+            return;
+        }
+
+        const edit = event.target.closest('[data-edit-pp]');
+        if (edit) {
+            event.preventDefault();
+            history.replaceState(null, '', `index.php?page=cadastros_pacotes_produtos&edit_id=${edit.dataset.id || ''}#pp-modal`);
+            open(itemData(edit.dataset.id || ''));
+            return;
+        }
+
+        if (event.target.closest('[data-close-pp-modal]')) {
+            event.preventDefault();
+            close();
+        }
+    });
+
+    document.getElementById('pp-categoria')?.addEventListener('change', syncCategory);
+
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.get('edit_id')) {
+        open(itemData(params.get('edit_id')));
+    } else if (params.has('novo')) {
+        open(null);
+    }
+})();
+</script>

@@ -444,3 +444,72 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeContratoModal();
 });
 </script>
+<script>
+(function () {
+    const modal = document.getElementById('contrato-modal');
+    if (!modal) return;
+
+    function setEditor(html) {
+        const textarea = document.getElementById('conteudo_html');
+        if (textarea) textarea.value = html || '';
+        if (typeof tinymce !== 'undefined' && tinymce.get('conteudo_html')) {
+            tinymce.get('conteudo_html').setContent(html || '');
+        }
+    }
+
+    function open(data) {
+        document.getElementById('contrato-modal-title').textContent = data ? 'Editar contrato' : 'Adicionar contrato';
+        const id = document.getElementById('contrato_id');
+        const nome = document.getElementById('nome');
+        if (id) id.value = data?.id || '0';
+        if (nome) nome.value = data?.nome || '';
+        setEditor(data?.conteudo || '');
+        modal.classList.add('open');
+    }
+
+    function close() {
+        modal.classList.remove('open');
+        history.replaceState(null, '', 'index.php?page=cadastros_contratos');
+    }
+
+    function dataFromButton(button) {
+        return {
+            id: button?.dataset?.id || '0',
+            nome: button?.dataset?.nome || '',
+            conteudo: button?.dataset?.conteudo || '',
+        };
+    }
+
+    document.addEventListener('click', function (event) {
+        const add = event.target.closest('[data-open-contrato-modal]');
+        if (add) {
+            event.preventDefault();
+            history.replaceState(null, '', 'index.php?page=cadastros_contratos&novo=1#contrato-modal');
+            open(null);
+            return;
+        }
+
+        const edit = event.target.closest('[data-edit-contrato]');
+        if (edit) {
+            event.preventDefault();
+            history.replaceState(null, '', `index.php?page=cadastros_contratos&edit_id=${edit.dataset.id || ''}#contrato-modal`);
+            open(dataFromButton(edit));
+            return;
+        }
+
+        if (event.target.closest('[data-close-contrato-modal]')) {
+            event.preventDefault();
+            close();
+        }
+    });
+
+    const params = new URLSearchParams(window.location.search || '');
+    const editId = params.get('edit_id');
+    if (editId) {
+        const editButton = Array.from(document.querySelectorAll('[data-edit-contrato]')).find((button) => button.dataset.id === editId);
+        if (editButton) open(dataFromButton(editButton));
+    } else if (params.has('novo')) {
+        open(null);
+    }
+})();
+</script>
