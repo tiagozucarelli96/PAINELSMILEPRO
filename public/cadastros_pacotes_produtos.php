@@ -402,7 +402,8 @@ $modalIsPacote = $modalCategoria === 'Pacote';
 .pp-modal { width: min(1040px, 100%); max-height: calc(100dvh - 2rem); overflow: hidden; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); display: flex; flex-direction: column; }
 .pp-modal-header { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 .pp-modal-title { margin: 0; color: #1e293b; font-weight: 900; font-size: 1.15rem; }
-.pp-modal-close { width: 36px; height: 36px; border: none; border-radius: 999px; background: #f1f5f9; color: #334155; cursor: pointer; font-size: 1.25rem; }
+.pp-modal-close { width: 36px; height: 36px; border: none; border-radius: 999px; background: #f1f5f9; color: #334155; cursor: pointer; font-size: 1.25rem; line-height: 1; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pp-modal-close:hover { background: #e2e8f0; color: #0f172a; }
 .pp-form { padding: 1rem; display: grid; gap: 0.9rem; overflow: auto; min-height: 0; }
 .pp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
 .pp-field { display: grid; gap: 0.35rem; }
@@ -505,7 +506,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
     <div class="pp-modal">
         <div class="pp-modal-header">
             <h2 class="pp-modal-title" id="pp-modal-title"><?= (int)$modalItem['id'] > 0 ? 'Editar cadastro' : 'Adicionar cadastro' ?></h2>
-            <a class="pp-modal-close" href="index.php?page=cadastros_pacotes_produtos" data-close-pp-modal aria-label="Fechar">×</a>
+            <button class="pp-modal-close" type="button" data-close-pp-modal aria-label="Fechar">×</button>
         </div>
         <form method="post" class="pp-form" id="pp-form">
             <input type="hidden" name="action" value="save">
@@ -694,13 +695,17 @@ function openPpModal(data = null) {
     document.getElementById('pp-valor-convidado-adicional').value = data?.valorConvidadoAdicional || '';
     ppFormatPackageMoneyFields();
     updateCategoriaFields();
+    ppModal.style.display = 'flex';
     ppModal.classList.add('open');
     initPpTiny();
     window.setTimeout(() => setTinyContent(data?.descricao || ''), 120);
 }
 
 function closePpModal() {
-    ppModal?.classList.remove('open');
+    if (!ppModal) return;
+    ppModal.classList.remove('open');
+    ppModal.style.display = 'none';
+    history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos');
 }
 
 function getPpItemModalData(id) {
@@ -750,7 +755,6 @@ document.querySelector('[data-open-pp-modal]')?.addEventListener('click', (event
 });
 document.querySelectorAll('[data-close-pp-modal]').forEach((button) => button.addEventListener('click', (event) => {
     event.preventDefault();
-    history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos');
     closePpModal();
 }));
 ppModal?.addEventListener('click', (event) => {
@@ -863,11 +867,13 @@ document.addEventListener('keydown', (event) => {
             ppFormatPackageMoneyFields();
         }
         syncCategory();
+        modal.style.display = 'flex';
         modal.classList.add('open');
     }
 
     function close() {
         modal.classList.remove('open');
+        modal.style.display = 'none';
         history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos');
     }
 
