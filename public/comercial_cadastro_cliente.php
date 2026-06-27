@@ -157,7 +157,7 @@ function comercial_cadastro_cliente_recentes(PDO $pdo, string $search = ''): arr
         $responsavelExpr = comercial_cadastro_cliente_has_column($pdo, 'usuarios', 'nome')
             ? "u.nome"
             : (comercial_cadastro_cliente_has_column($pdo, 'usuarios', 'email') ? "u.email" : "NULL");
-        $where = ['ativo IS TRUE'];
+        $where = ['c.ativo IS TRUE'];
         $params = [];
         if ($search !== '') {
             $where[] = "(nome_completo ILIKE :search OR email ILIKE :search OR telefone_whatsapp ILIKE :search OR documento_numero ILIKE :search)";
@@ -180,18 +180,60 @@ function comercial_cadastro_cliente_recentes(PDO $pdo, string $search = ''): arr
     }
 }
 
+function comercial_cadastro_cliente_buscar(PDO $pdo, int $id): ?array
+{
+    if ($id <= 0) {
+        return null;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM comercial_cadastro_clientes
+            WHERE id = :id
+              AND ativo IS TRUE
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    } catch (Throwable $e) {
+        error_log('comercial_cadastro_cliente_buscar: ' . $e->getMessage());
+        return null;
+    }
+}
+
 function comercial_cadastro_cliente_old(string $key, string $default = ''): string
 {
     return (string)($_POST[$key] ?? $default);
 }
 
+function comercial_cadastro_cliente_value(string $key, ?array $clienteAtual = null, string $default = ''): string
+{
+    if (array_key_exists($key, $_POST)) {
+        return (string)$_POST[$key];
+    }
+    if (is_array($clienteAtual) && array_key_exists($key, $clienteAtual) && $clienteAtual[$key] !== null) {
+        return (string)$clienteAtual[$key];
+    }
+    return $default;
+}
+
 comercial_cadastro_cliente_ensure_schema($pdo);
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+$clienteId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+$clienteAtual = comercial_cadastro_cliente_buscar($pdo, $clienteId);
+$isEditing = $clienteAtual !== null;
 $errors = [];
 $success = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($clienteId > 0 && !$isEditing && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $errors[] = 'Cliente não encontrado ou inativo.';
+}
+
+$requestMethod = (string)($_SERVER['REQUEST_METHOD'] ?? 'GET');
+if ($requestMethod === 'POST') {
     $tipoPessoa = strtoupper(trim((string)($_POST['tipo_pessoa'] ?? 'PF')));
     $tipoPessoa = in_array($tipoPessoa, ['PF', 'PJ'], true) ? $tipoPessoa : 'PF';
     $documentoTipo = $tipoPessoa === 'PJ' ? 'CNPJ' : 'CPF';
@@ -224,16 +266,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($payload['nome_completo'] === '') {
         $errors[] = 'Informe o nome completo do cliente.';
     }
-    if ($payload['telefone_whatsapp'] === '') {
-        $errors[] = 'Informe o telefone/WhatsApp.';
-    }
-    if ($payload['email'] === '' || !filter_var($payload['email'], FILTER_VALIDATE_EMAIL)) {
+    if ($payload['email'] !== '' && !filter_var($payload['email'], FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Informe um e-mail válido.';
     }
-    if ($documentoTipo === 'CPF' && strlen($documentoNumero) !== 11) {
+    if ($documentoTipo === 'CPF' && $documentoNumero !== '' && strlen($documentoNumero) !== 11) {
         $errors[] = 'Informe um CPF com 11 dígitos.';
     }
-    if ($documentoTipo === 'CNPJ' && strlen($documentoNumero) !== 14) {
+    if ($documentoTipo === 'CNPJ' && $documentoNumero !== '' && strlen($documentoNumero) !== 14) {
         $errors[] = 'Informe um CNPJ com 14 dígitos.';
     }
     if ($cep !== '' && strlen($cep) !== 8) {
@@ -248,20 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($errors)) {
         try {
-            $stmt = $pdo->prepare("
-                INSERT INTO comercial_cadastro_clientes (
-                    tipo_pessoa, nome_completo, email, telefone_whatsapp, documento_tipo, documento_numero, rg,
-                    cep, endereco_logradouro, endereco_numero, endereco_complemento, endereco_bairro,
-                    endereco_cidade, endereco_estado, origem_cliente, responsavel_usuario_id, tipo_interesse,
-                    data_desejada, unidade_interesse, observacoes, created_by, created_at, updated_at
-                ) VALUES (
-                    :tipo_pessoa, :nome_completo, :email, :telefone_whatsapp, :documento_tipo, :documento_numero, :rg,
-                    :cep, :endereco_logradouro, :endereco_numero, :endereco_complemento, :endereco_bairro,
-                    :endereco_cidade, :endereco_estado, :origem_cliente, :responsavel_usuario_id, :tipo_interesse,
-                    :data_desejada, :unidade_interesse, :observacoes, :created_by, NOW(), NOW()
-                )
-            ");
-            $stmt->execute([
+            $params = [
                 ':tipo_pessoa' => $payload['tipo_pessoa'],
                 ':nome_completo' => $payload['nome_completo'],
                 ':email' => $payload['email'],
@@ -282,8 +308,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':data_desejada' => $payload['data_desejada'] !== '' ? $payload['data_desejada'] : null,
                 ':unidade_interesse' => $payload['unidade_interesse'] !== '' ? $payload['unidade_interesse'] : null,
                 ':observacoes' => $payload['observacoes'] !== '' ? $payload['observacoes'] : null,
-                ':created_by' => $userId > 0 ? $userId : null,
-            ]);
+            ];
+
+            if ($isEditing) {
+                $stmt = $pdo->prepare("
+                    UPDATE comercial_cadastro_clientes
+                    SET tipo_pessoa = :tipo_pessoa,
+                        nome_completo = :nome_completo,
+                        email = :email,
+                        telefone_whatsapp = :telefone_whatsapp,
+                        documento_tipo = :documento_tipo,
+                        documento_numero = :documento_numero,
+                        rg = :rg,
+                        cep = :cep,
+                        endereco_logradouro = :endereco_logradouro,
+                        endereco_numero = :endereco_numero,
+                        endereco_complemento = :endereco_complemento,
+                        endereco_bairro = :endereco_bairro,
+                        endereco_cidade = :endereco_cidade,
+                        endereco_estado = :endereco_estado,
+                        origem_cliente = :origem_cliente,
+                        responsavel_usuario_id = :responsavel_usuario_id,
+                        tipo_interesse = :tipo_interesse,
+                        data_desejada = :data_desejada,
+                        unidade_interesse = :unidade_interesse,
+                        observacoes = :observacoes,
+                        updated_at = NOW()
+                    WHERE id = :id
+                      AND ativo IS TRUE
+                ");
+                $params[':id'] = (int)$clienteAtual['id'];
+                $stmt->execute($params);
+
+                $_SESSION['comercial_cadastro_cliente_success'] = 'Cliente atualizado com sucesso.';
+                header('Location: index.php?page=comercial_cadastro_cliente&id=' . (int)$clienteAtual['id']);
+                exit;
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO comercial_cadastro_clientes (
+                    tipo_pessoa, nome_completo, email, telefone_whatsapp, documento_tipo, documento_numero, rg,
+                    cep, endereco_logradouro, endereco_numero, endereco_complemento, endereco_bairro,
+                    endereco_cidade, endereco_estado, origem_cliente, responsavel_usuario_id, tipo_interesse,
+                    data_desejada, unidade_interesse, observacoes, created_by, created_at, updated_at
+                ) VALUES (
+                    :tipo_pessoa, :nome_completo, :email, :telefone_whatsapp, :documento_tipo, :documento_numero, :rg,
+                    :cep, :endereco_logradouro, :endereco_numero, :endereco_complemento, :endereco_bairro,
+                    :endereco_cidade, :endereco_estado, :origem_cliente, :responsavel_usuario_id, :tipo_interesse,
+                    :data_desejada, :unidade_interesse, :observacoes, :created_by, NOW(), NOW()
+                )
+            ");
+            $params[':created_by'] = $userId > 0 ? $userId : null;
+            $stmt->execute($params);
 
             $_SESSION['comercial_cadastro_cliente_success'] = 'Cliente cadastrado com sucesso.';
             header('Location: index.php?page=comercial_cadastro_cliente');
@@ -530,10 +606,13 @@ includeSidebar('Cadastro do cliente');
 <div class="cliente-page">
     <div class="cliente-header">
         <div>
-            <h1 class="cliente-title">Cadastro do cliente</h1>
+            <h1 class="cliente-title"><?= $isEditing ? 'Editar cliente' : 'Cadastro do cliente' ?></h1>
             <p class="cliente-subtitle">Dados principais para contrato, atendimento comercial e organização do evento.</p>
         </div>
-        <a class="cliente-back" href="index.php?page=comercial">← Comercial</a>
+        <div style="display:flex; gap:.6rem; flex-wrap:wrap;">
+            <a class="cliente-back" href="index.php?page=comercial_clientes_cadastrados">Clientes cadastrados</a>
+            <a class="cliente-back" href="index.php?page=comercial">← Comercial</a>
+        </div>
     </div>
 
     <?php if ($success !== ''): ?>
@@ -546,40 +625,43 @@ includeSidebar('Cadastro do cliente');
     <div class="cliente-layout">
         <section class="cliente-card">
             <div class="cliente-card-header">
-                <h2 class="cliente-card-title">Novo cliente</h2>
-                <p class="cliente-card-subtitle">Preencha somente os dados necessários para contrato e contato.</p>
+                <h2 class="cliente-card-title"><?= $isEditing ? 'Editar cadastro' : 'Novo cliente' ?></h2>
+                <p class="cliente-card-subtitle"><?= $isEditing ? 'Altere os dados necessários e salve o cadastro.' : 'Preencha somente os dados necessários para contrato e contato.' ?></p>
             </div>
 
             <form method="post" class="cliente-form" id="clienteForm" autocomplete="off">
+                <?php if ($isEditing): ?>
+                    <input type="hidden" name="id" value="<?= (int)$clienteAtual['id'] ?>">
+                <?php endif; ?>
                 <div class="cliente-section">
                     <div class="cliente-section-title">Dados do cliente</div>
                     <div class="cliente-grid">
                         <div class="cliente-field">
                             <label for="tipo_pessoa">Tipo</label>
                             <select name="tipo_pessoa" id="tipo_pessoa" required>
-                                <option value="PF" <?= comercial_cadastro_cliente_old('tipo_pessoa', 'PF') === 'PF' ? 'selected' : '' ?>>Pessoa física</option>
-                                <option value="PJ" <?= comercial_cadastro_cliente_old('tipo_pessoa') === 'PJ' ? 'selected' : '' ?>>Pessoa jurídica</option>
+                                <option value="PF" <?= comercial_cadastro_cliente_value('tipo_pessoa', $clienteAtual, 'PF') === 'PF' ? 'selected' : '' ?>>Pessoa física</option>
+                                <option value="PJ" <?= comercial_cadastro_cliente_value('tipo_pessoa', $clienteAtual) === 'PJ' ? 'selected' : '' ?>>Pessoa jurídica</option>
                             </select>
                         </div>
                         <div class="cliente-field">
                             <label for="documento_numero" id="documentoLabel">CPF</label>
-                            <input type="text" name="documento_numero" id="documento_numero" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('documento_numero')) ?>" required>
+                            <input type="text" name="documento_numero" id="documento_numero" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('documento_numero', $clienteAtual)) ?>">
                         </div>
                         <div class="cliente-field full">
                             <label for="nome_completo">Nome completo</label>
-                            <input type="text" name="nome_completo" id="nome_completo" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('nome_completo')) ?>" maxlength="180" required>
+                            <input type="text" name="nome_completo" id="nome_completo" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('nome_completo', $clienteAtual)) ?>" maxlength="180" required>
                         </div>
                         <div class="cliente-field">
                             <label for="rg">RG</label>
-                            <input type="text" name="rg" id="rg" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('rg')) ?>" maxlength="30">
+                            <input type="text" name="rg" id="rg" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('rg', $clienteAtual)) ?>" maxlength="30">
                         </div>
                         <div class="cliente-field">
                             <label for="telefone_whatsapp">Telefone / WhatsApp</label>
-                            <input type="text" name="telefone_whatsapp" id="telefone_whatsapp" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('telefone_whatsapp')) ?>" required>
+                            <input type="text" name="telefone_whatsapp" id="telefone_whatsapp" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('telefone_whatsapp', $clienteAtual)) ?>">
                         </div>
                         <div class="cliente-field full">
                             <label for="email">E-mail</label>
-                            <input type="email" name="email" id="email" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('email')) ?>" maxlength="180" required>
+                            <input type="email" name="email" id="email" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('email', $clienteAtual)) ?>" maxlength="180">
                         </div>
                     </div>
                 </div>
@@ -589,34 +671,34 @@ includeSidebar('Cadastro do cliente');
                     <div class="cliente-grid three">
                         <div class="cliente-field">
                             <label for="cep">CEP</label>
-                            <input type="text" name="cep" id="cep" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('cep')) ?>">
+                            <input type="text" name="cep" id="cep" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('cep', $clienteAtual)) ?>">
                             <div class="cep-status" id="cepStatus"></div>
                         </div>
                         <div class="cliente-field">
                             <label for="endereco_numero">Número</label>
-                            <input type="text" name="endereco_numero" id="endereco_numero" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('endereco_numero')) ?>" maxlength="30">
+                            <input type="text" name="endereco_numero" id="endereco_numero" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('endereco_numero', $clienteAtual)) ?>" maxlength="30">
                         </div>
                         <div class="cliente-field">
                             <label for="endereco_complemento">Complemento</label>
-                            <input type="text" name="endereco_complemento" id="endereco_complemento" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('endereco_complemento')) ?>" maxlength="120">
+                            <input type="text" name="endereco_complemento" id="endereco_complemento" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('endereco_complemento', $clienteAtual)) ?>" maxlength="120">
                         </div>
                     </div>
                     <div class="cliente-grid">
                         <div class="cliente-field full">
                             <label for="endereco_logradouro">Rua</label>
-                            <input type="text" name="endereco_logradouro" id="endereco_logradouro" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('endereco_logradouro')) ?>" maxlength="180">
+                            <input type="text" name="endereco_logradouro" id="endereco_logradouro" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('endereco_logradouro', $clienteAtual)) ?>" maxlength="180">
                         </div>
                         <div class="cliente-field">
                             <label for="endereco_bairro">Bairro</label>
-                            <input type="text" name="endereco_bairro" id="endereco_bairro" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('endereco_bairro')) ?>" maxlength="120">
+                            <input type="text" name="endereco_bairro" id="endereco_bairro" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('endereco_bairro', $clienteAtual)) ?>" maxlength="120">
                         </div>
                         <div class="cliente-field">
                             <label for="endereco_cidade">Cidade</label>
-                            <input type="text" name="endereco_cidade" id="endereco_cidade" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('endereco_cidade')) ?>" maxlength="120">
+                            <input type="text" name="endereco_cidade" id="endereco_cidade" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('endereco_cidade', $clienteAtual)) ?>" maxlength="120">
                         </div>
                         <div class="cliente-field">
                             <label for="endereco_estado">Estado</label>
-                            <input type="text" name="endereco_estado" id="endereco_estado" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('endereco_estado')) ?>" maxlength="2">
+                            <input type="text" name="endereco_estado" id="endereco_estado" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('endereco_estado', $clienteAtual)) ?>" maxlength="2">
                         </div>
                     </div>
                 </div>
@@ -632,7 +714,7 @@ includeSidebar('Cadastro do cliente');
                                 foreach ($origens as $origem):
                                     $label = $origem !== '' ? $origem : 'Selecione...';
                                 ?>
-                                    <option value="<?= comercial_cadastro_cliente_e($origem) ?>" <?= comercial_cadastro_cliente_old('origem_cliente') === $origem ? 'selected' : '' ?>><?= comercial_cadastro_cliente_e($label) ?></option>
+                                    <option value="<?= comercial_cadastro_cliente_e($origem) ?>" <?= comercial_cadastro_cliente_value('origem_cliente', $clienteAtual) === $origem ? 'selected' : '' ?>><?= comercial_cadastro_cliente_e($label) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -641,7 +723,7 @@ includeSidebar('Cadastro do cliente');
                             <select name="responsavel_usuario_id" id="responsavel_usuario_id">
                                 <option value="">Selecione...</option>
                                 <?php foreach ($usuarios as $usuario): ?>
-                                    <option value="<?= (int)$usuario['id'] ?>" <?= (int)comercial_cadastro_cliente_old('responsavel_usuario_id') === (int)$usuario['id'] ? 'selected' : '' ?>>
+                                    <option value="<?= (int)$usuario['id'] ?>" <?= (int)comercial_cadastro_cliente_value('responsavel_usuario_id', $clienteAtual) === (int)$usuario['id'] ? 'selected' : '' ?>>
                                         <?= comercial_cadastro_cliente_e((string)$usuario['nome']) ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -655,28 +737,28 @@ includeSidebar('Cadastro do cliente');
                                 foreach ($interesses as $interesse):
                                     $label = $interesse !== '' ? $interesse : 'Selecione...';
                                 ?>
-                                    <option value="<?= comercial_cadastro_cliente_e($interesse) ?>" <?= comercial_cadastro_cliente_old('tipo_interesse') === $interesse ? 'selected' : '' ?>><?= comercial_cadastro_cliente_e($label) ?></option>
+                                    <option value="<?= comercial_cadastro_cliente_e($interesse) ?>" <?= comercial_cadastro_cliente_value('tipo_interesse', $clienteAtual) === $interesse ? 'selected' : '' ?>><?= comercial_cadastro_cliente_e($label) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="cliente-field">
                             <label for="data_desejada">Data desejada</label>
-                            <input type="date" name="data_desejada" id="data_desejada" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('data_desejada')) ?>">
+                            <input type="date" name="data_desejada" id="data_desejada" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('data_desejada', $clienteAtual)) ?>">
                         </div>
                         <div class="cliente-field full">
                             <label for="unidade_interesse">Unidade de interesse</label>
-                            <input type="text" name="unidade_interesse" id="unidade_interesse" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('unidade_interesse')) ?>" maxlength="120" placeholder="Ex: Lisbon 1, Diverkids, Garden, Cristal">
+                            <input type="text" name="unidade_interesse" id="unidade_interesse" value="<?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('unidade_interesse', $clienteAtual)) ?>" maxlength="120" placeholder="Ex: Lisbon 1, Diverkids, Garden, Cristal">
                         </div>
                         <div class="cliente-field full">
                             <label for="observacoes">Observações internas</label>
-                            <textarea name="observacoes" id="observacoes"><?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_old('observacoes')) ?></textarea>
+                            <textarea name="observacoes" id="observacoes"><?= comercial_cadastro_cliente_e(comercial_cadastro_cliente_value('observacoes', $clienteAtual)) ?></textarea>
                         </div>
                     </div>
                 </div>
 
                 <div class="cliente-actions">
-                    <a class="cliente-btn secondary" href="index.php?page=comercial">Cancelar</a>
-                    <button type="submit" class="cliente-btn primary">Salvar cliente</button>
+                    <a class="cliente-btn secondary" href="<?= $isEditing ? 'index.php?page=comercial_clientes_cadastrados' : 'index.php?page=comercial' ?>">Cancelar</a>
+                    <button type="submit" class="cliente-btn primary"><?= $isEditing ? 'Salvar alterações' : 'Salvar cliente' ?></button>
                 </div>
             </form>
         </section>

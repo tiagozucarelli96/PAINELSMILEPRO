@@ -64,6 +64,7 @@ return [
     'comercial_degust_inscricoes' => 'perm_comercial',
     'comercial_degustacao_editar' => 'perm_comercial',
     'comercial_cadastro_cliente' => 'perm_comercial',
+    'comercial_clientes_cadastrados' => 'perm_comercial',
     'comercial_clientes' => 'perm_comercial',
     'comercial_pagamento' => 'perm_comercial',
     'comercial_inscritos_cadastrados' => 'perm_comercial',
