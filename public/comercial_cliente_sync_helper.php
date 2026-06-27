@@ -168,7 +168,7 @@ if (!function_exists('comercial_cliente_sync_ensure_schema')) {
 }
 
 if (!function_exists('comercial_cliente_sync_payload')) {
-    function comercial_cliente_sync_payload(array $eventoData): array
+    function comercial_cliente_sync_payload(array $eventoData, bool $allowEventNameFallback = true): array
     {
         $meEventId = (int)comercial_cliente_sync_pick($eventoData, ['id', 'id_evento', 'idevento'], '0');
         $meClienteId = (int)comercial_cliente_sync_pick($eventoData, ['idcliente', 'id_cliente', 'cliente.id', 'client_id'], '0');
@@ -181,7 +181,7 @@ if (!function_exists('comercial_cliente_sync_payload')) {
             'cliente_nome',
             'responsavel',
         ]);
-        if ($nome === '') {
+        if ($nome === '' && $allowEventNameFallback) {
             $nomeEvento = comercial_cliente_sync_pick($eventoData, ['nomeevento', 'nome_evento', 'nome']);
             $nome = preg_replace('/\s*-\s*(15 anos|casamento|infantil|evento).*$/i', '', $nomeEvento) ?: $nomeEvento;
             $nome = trim((string)$nome);
@@ -249,11 +249,11 @@ if (!function_exists('comercial_cliente_sync_payload')) {
 }
 
 if (!function_exists('comercial_cliente_sync_upsert_from_event')) {
-    function comercial_cliente_sync_upsert_from_event(PDO $pdo, array $eventoData, string $origem = 'me_webhook'): array
+    function comercial_cliente_sync_upsert_from_event(PDO $pdo, array $eventoData, string $origem = 'me_webhook', bool $allowEventNameFallback = true): array
     {
         comercial_cliente_sync_ensure_schema($pdo);
 
-        $payload = comercial_cliente_sync_payload($eventoData);
+        $payload = comercial_cliente_sync_payload($eventoData, $allowEventNameFallback);
         if ((int)$payload['me_event_id'] <= 0) {
             return ['ok' => false, 'error' => 'Evento ME sem id.'];
         }
@@ -424,6 +424,7 @@ if (!function_exists('comercial_cliente_sync_future_from_local')) {
 
         try {
             $hasWebhook = comercial_cliente_sync_table_exists($pdo, 'me_eventos_webhook');
+            $hasReunioes = comercial_cliente_sync_table_exists($pdo, 'eventos_reunioes');
             $webhookJoin = $hasWebhook
                 ? "
                     LEFT JOIN LATERAL (
@@ -436,11 +437,24 @@ if (!function_exists('comercial_cliente_sync_future_from_local')) {
                 "
                 : '';
             $webhookSelect = $hasWebhook ? 'w.webhook_data' : 'NULL::text AS webhook_data';
+            $reuniaoJoin = $hasReunioes
+                ? "
+                    LEFT JOIN LATERAL (
+                        SELECT me_event_snapshot
+                        FROM eventos_reunioes r
+                        WHERE r.me_event_id = e.me_event_id
+                        ORDER BY r.updated_at DESC NULLS LAST, r.id DESC
+                        LIMIT 1
+                    ) r ON TRUE
+                "
+                : '';
+            $reuniaoSelect = $hasReunioes ? 'r.me_event_snapshot' : 'NULL::jsonb AS me_event_snapshot';
 
             $stmt = $pdo->prepare("
-                SELECT e.*, {$webhookSelect}
+                SELECT e.*, {$webhookSelect}, {$reuniaoSelect}
                 FROM logistica_eventos_espelho e
                 {$webhookJoin}
+                {$reuniaoJoin}
                 WHERE COALESCE(e.arquivado, FALSE) = FALSE
                   AND e.data_evento >= CURRENT_DATE
                   AND e.cliente_cadastro_id IS NULL
@@ -460,6 +474,10 @@ if (!function_exists('comercial_cliente_sync_future_from_local')) {
                         $payload = [];
                     }
                 }
+                $snapshot = json_decode((string)($row['me_event_snapshot'] ?? ''), true);
+                if (is_array($snapshot)) {
+                    $payload = array_replace_recursive($payload, $snapshot);
+                }
 
                 $payload = array_merge($payload, [
                     'id' => (string)($row['me_event_id'] ?? ''),
@@ -470,7 +488,7 @@ if (!function_exists('comercial_cliente_sync_future_from_local')) {
                     'whatsapp' => (string)($row['whatsapp_cliente'] ?? ''),
                 ]);
 
-                $result = comercial_cliente_sync_upsert_from_event($pdo, $payload, 'me_local_backfill');
+                $result = comercial_cliente_sync_upsert_from_event($pdo, $payload, 'me_local_backfill', false);
                 if (!empty($result['ok'])) {
                     $linked++;
                 }

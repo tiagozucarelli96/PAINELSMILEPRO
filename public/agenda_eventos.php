@@ -134,6 +134,45 @@ function agenda_eventos_clamp_month(
     return $mesSelecionado;
 }
 
+function agenda_eventos_date_bounds(PDO $pdo, bool $isSuperadmin, array $spacesUsuario): array
+{
+    try {
+        $params = [];
+        $sql = "
+            SELECT MIN(e.data_evento)::text AS min_data,
+                   MAX(e.data_evento)::text AS max_data
+            FROM logistica_eventos_espelho e
+            WHERE COALESCE(e.arquivado, FALSE) = FALSE
+        ";
+
+        if (!$isSuperadmin) {
+            if (empty($spacesUsuario)) {
+                return ['min' => null, 'max' => null];
+            }
+
+            $placeholders = [];
+            foreach ($spacesUsuario as $index => $space) {
+                $key = ':space_bound_' . $index;
+                $placeholders[] = $key;
+                $params[$key] = $space;
+            }
+            $sql .= ' AND TRIM(COALESCE(e.space_visivel, \'\')) IN (' . implode(', ', $placeholders) . ')';
+        }
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'min' => !empty($row['min_data']) ? (string)$row['min_data'] : null,
+            'max' => !empty($row['max_data']) ? (string)$row['max_data'] : null,
+        ];
+    } catch (Throwable $e) {
+        error_log('[AGENDA_EVENTOS_BOUNDS] ' . $e->getMessage());
+        return ['min' => null, 'max' => null];
+    }
+}
+
 function agenda_eventos_normalize_label(string $value): string
 {
     $value = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value;
@@ -210,16 +249,33 @@ $spacesUsuario = $isSuperadmin ? [] : agenda_eventos_fetch_user_spaces($pdo, $us
 $eventoSelecionadoId = isset($_GET['evento_id']) ? (int)$_GET['evento_id'] : 0;
 $eventoSelecionado = null;
 
+$temTabelaEventos = agenda_eventos_has_table($pdo, 'logistica_eventos_espelho');
+$temColunaNomeEvento = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
+$temTabelaReunioes = agenda_eventos_has_table($pdo, 'eventos_reunioes');
+$temColunaClienteCadastro = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
+$temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
+
 $mesAtual = new DateTimeImmutable('first day of this month');
-$mesLimiteInicial = $mesAtual;
-$mesLimiteFinal = $mesAtual->modify('+2 months');
+$boundsEventos = $temTabelaEventos ? agenda_eventos_date_bounds($pdo, $isSuperadmin, $spacesUsuario) : ['min' => null, 'max' => null];
+$primeiraDataEvento = !empty($boundsEventos['min'])
+    ? DateTimeImmutable::createFromFormat('!Y-m-d', (string)$boundsEventos['min'])
+    : null;
+$ultimaDataEvento = !empty($boundsEventos['max'])
+    ? DateTimeImmutable::createFromFormat('!Y-m-d', (string)$boundsEventos['max'])
+    : null;
+$mesLimiteInicial = $primeiraDataEvento instanceof DateTimeImmutable
+    ? $primeiraDataEvento->modify('first day of this month')
+    : $mesAtual;
+$mesLimiteFinal = $ultimaDataEvento instanceof DateTimeImmutable
+    ? $ultimaDataEvento->modify('first day of this month')
+    : $mesAtual;
 $hojeIso = (new DateTimeImmutable('today'))->format('Y-m-d');
 
 $mesSelecionadoParam = trim((string)($_GET['mes'] ?? 'atual'));
 $mesSelecionado = agenda_eventos_parse_month($mesSelecionadoParam, $mesAtual)->modify('first day of this month');
 $mesSelecionado = agenda_eventos_clamp_month($mesSelecionado, $mesLimiteInicial, $mesLimiteFinal);
-$inicioPeriodo = $mesLimiteInicial;
-$fimPeriodo = $mesLimiteFinal->modify('last day of this month');
+$inicioPeriodo = $primeiraDataEvento instanceof DateTimeImmutable ? $primeiraDataEvento : $mesLimiteInicial;
+$fimPeriodo = $ultimaDataEvento instanceof DateTimeImmutable ? $ultimaDataEvento : $mesLimiteFinal->modify('last day of this month');
 $inicioConsulta = $mesSelecionado;
 $fimConsulta = $mesSelecionado->modify('last day of this month');
 $mesAnteriorLink = $mesSelecionado > $mesLimiteInicial ? $mesSelecionado->modify('-1 month')->format('Y-m') : null;
@@ -228,12 +284,6 @@ $weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 $eventos = [];
 $eventosPorData = [];
 $errors = [];
-
-$temTabelaEventos = agenda_eventos_has_table($pdo, 'logistica_eventos_espelho');
-$temColunaNomeEvento = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
-$temTabelaReunioes = agenda_eventos_has_table($pdo, 'eventos_reunioes');
-$temColunaClienteCadastro = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
-$temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
 
 if ($temTabelaEventos) {
     $lastClienteSync = (int)($_SESSION['agenda_eventos_cliente_sync_at'] ?? 0);
@@ -1139,7 +1189,7 @@ a.event-function-card:hover {
         <div class="agenda-eventos-header">
             <div>
                 <h1 class="agenda-eventos-title">Agenda Geral</h1>
-                <p class="agenda-eventos-subtitle">Calendário mensal dos eventos importados da ME, filtrado pelas unidades marcadas no usuário.</p>
+                <p class="agenda-eventos-subtitle">Calendário mensal com todos os eventos importados da ME, filtrado pelas unidades marcadas no usuário.</p>
             </div>
             <div class="agenda-eventos-badges">
                 <div class="agenda-badge">Período: <?= h($inicioPeriodo->format('d/m/Y')) ?> até <?= h($fimPeriodo->format('d/m/Y')) ?></div>
@@ -1290,7 +1340,7 @@ a.event-function-card:hover {
         <div class="calendar-toolbar">
             <div>
                 <h2 class="calendar-toolbar-title"><?= h(agenda_eventos_month_label($mesSelecionado)) ?></h2>
-                <p class="calendar-toolbar-subtitle">Exibindo um mês por vez dentro da janela de 3 meses.</p>
+                <p class="calendar-toolbar-subtitle">Exibindo um mês por vez dentro de todo o período importado.</p>
             </div>
             <div class="calendar-nav">
                 <a href="index.php?page=agenda_eventos<?= $mesAnteriorLink !== null ? '&mes=' . urlencode($mesAnteriorLink) : '' ?>" class="calendar-nav-btn<?= $mesAnteriorLink === null ? ' is-disabled' : '' ?>" aria-label="Mês anterior"<?= $mesAnteriorLink === null ? ' aria-disabled="true" tabindex="-1"' : '' ?>>←</a>
@@ -1370,7 +1420,7 @@ a.event-function-card:hover {
 
         <?php if (empty($eventos)): ?>
             <div class="agenda-empty">
-                Nenhum evento encontrado para as unidades selecionadas no período atual.
+                Nenhum evento encontrado para as unidades selecionadas neste mês.
             </div>
         <?php endif; ?>
     <?php endif; ?>
