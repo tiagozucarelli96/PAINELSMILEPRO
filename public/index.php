@@ -61,7 +61,7 @@ error_reporting($debug ? E_ALL : (E_ALL & ~E_NOTICE));
 if (isset($_GET['ping'])) {
   header('Content-Type: text/plain; charset=utf-8');
   echo "PONG\nPHP ".PHP_VERSION."\n";
-  echo "BUILD modal-route-fix-20260627\n";
+  echo "BUILD catalog-modal-direct-route-20260627\n";
   exit;
 }
 if (isset($_GET['diag'])) {
@@ -648,6 +648,23 @@ if (!$file && $page) {
 }
 
 if ($path && is_file($path)) {
+  $modalRoutePages = [
+    'cadastros_contratos',
+    'cadastros_pacotes_produtos',
+    'cadastros_categorias_financeiras',
+  ];
+  $hasModalRoute = array_key_exists('novo', $_GET) || array_key_exists('edit_id', $_GET);
+  if ($_SERVER['REQUEST_METHOD'] === 'GET' && $hasModalRoute && in_array($page, $modalRoutePages, true)) {
+    $redirectQuery = $_GET;
+    unset($redirectQuery['page']);
+    $redirectUrl = $file;
+    if (!empty($redirectQuery)) {
+      $redirectUrl .= '?' . http_build_query($redirectQuery);
+    }
+    header('Location: ' . $redirectUrl);
+    exit;
+  }
+
   $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] = $_GET;
   $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] = (string)($_SERVER['QUERY_STRING'] ?? '');
   $GLOBALS['PAINEL_CURRENT_ROUTE_URI'] = (string)($_SERVER['REQUEST_URI'] ?? '');
