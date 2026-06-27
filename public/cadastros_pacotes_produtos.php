@@ -396,20 +396,20 @@ $modalIsPacote = $modalCategoria === 'Pacote';
 .pp-icon-btn.copy { background: #263747; }
 .pp-icon-btn.edit { background: #f2c94c; }
 .pp-icon-btn.delete { background: #d9534f; }
-.pp-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(15, 23, 42, 0.55); }
+.pp-modal-backdrop { position: fixed; inset: 0; z-index: 1300; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(15, 23, 42, 0.55); }
 .pp-modal-backdrop.open,
 #pp-modal:target { display: flex; }
-.pp-modal { width: min(1120px, 100%); max-height: calc(100vh - 2rem); overflow: auto; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }
+.pp-modal { width: min(1040px, 100%); max-height: calc(100dvh - 2rem); overflow: hidden; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); display: flex; flex-direction: column; }
 .pp-modal-header { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 .pp-modal-title { margin: 0; color: #1e293b; font-weight: 900; font-size: 1.15rem; }
 .pp-modal-close { width: 36px; height: 36px; border: none; border-radius: 999px; background: #f1f5f9; color: #334155; cursor: pointer; font-size: 1.25rem; }
-.pp-form { padding: 1rem; display: grid; gap: 0.9rem; }
+.pp-form { padding: 1rem; display: grid; gap: 0.9rem; overflow: auto; min-height: 0; }
 .pp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
 .pp-field { display: grid; gap: 0.35rem; }
 .pp-field.full { grid-column: 1 / -1; }
 .pp-field label { color: #334155; font-size: 0.82rem; font-weight: 800; }
 .pp-field input, .pp-field select, .pp-field textarea { width: 100%; border: 1px solid #d1d9e6; border-radius: 10px; padding: 0.68rem 0.78rem; color: #1e293b; background: #fff; }
-.pp-modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; border-top: 1px solid #e2e8f0; padding: 1rem; }
+.pp-modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; border-top: 1px solid #e2e8f0; padding: 1rem; flex-shrink: 0; background: #fff; }
 .pp-service-fields.hidden, .pp-package-fields.hidden { display: none; }
 .pp-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.8rem; padding: 1rem; }
 .pp-gallery-item { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: hidden; display: grid; text-align: left; cursor: pointer; }
@@ -419,7 +419,15 @@ $modalIsPacote = $modalCategoria === 'Pacote';
 .pp-gallery-name { font-weight: 900; color: #1e293b; font-size: 0.86rem; }
 .pp-gallery-meta { color: #64748b; font-size: 0.76rem; }
 .pp-gallery-empty { padding: 1rem; color: #64748b; }
+@media (min-width: 769px) {
+    .pp-modal-backdrop { left: 280px; }
+    .main-content.expanded .pp-modal-backdrop { left: 0; }
+}
 @media (max-width: 900px) { .pp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 768px) {
+    .pp-modal-backdrop { padding: 0.75rem; }
+    .pp-modal { width: 100%; max-height: calc(100dvh - 1.5rem); border-radius: 12px; }
+}
 </style>
 
 <main class="pp-page">
@@ -600,7 +608,7 @@ function initPpTiny() {
         promotion: false,
         plugins: 'lists link image table code fullscreen',
         toolbar: 'undo redo | bold italic underline strikethrough | alignleft aligncenter alignright | bullist numlist outdent indent | link image galeriaSmile table | removeformat | code fullscreen',
-        height: 420,
+        height: 340,
         paste_data_images: true,
         automatic_uploads: true,
         setup: function(editor) {
