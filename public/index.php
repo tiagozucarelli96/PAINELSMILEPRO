@@ -61,6 +61,7 @@ error_reporting($debug ? E_ALL : (E_ALL & ~E_NOTICE));
 if (isset($_GET['ping'])) {
   header('Content-Type: text/plain; charset=utf-8');
   echo "PONG\nPHP ".PHP_VERSION."\n";
+  echo "BUILD modal-route-fix-20260627\n";
   exit;
 }
 if (isset($_GET['diag'])) {
