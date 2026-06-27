@@ -18,6 +18,10 @@ if (empty($_SESSION['perm_cadastros']) && empty($_SESSION['perm_superadmin'])) {
     exit;
 }
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 function cadastros_pp_e(string $value): string
 {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
@@ -61,6 +65,40 @@ function cadastros_pp_query_params(): array
     return $params;
 }
 
+function cadastros_pp_route_has_param(string $name, array $params): bool
+{
+    if (array_key_exists($name, $params)) {
+        return true;
+    }
+
+    $needle = preg_quote($name, '/');
+    foreach ([$_SERVER['QUERY_STRING'] ?? '', $_SERVER['REQUEST_URI'] ?? ''] as $source) {
+        $source = str_replace('&amp;', '&', (string)$source);
+        if (preg_match('/(?:^|[?&])' . $needle . '(?:=|&|$)/', $source)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function cadastros_pp_route_int_param(string $name, array $params): int
+{
+    if (isset($params[$name])) {
+        return (int)$params[$name];
+    }
+
+    $needle = preg_quote($name, '/');
+    foreach ([$_SERVER['QUERY_STRING'] ?? '', $_SERVER['REQUEST_URI'] ?? ''] as $source) {
+        $source = str_replace('&amp;', '&', (string)$source);
+        if (preg_match('/(?:^|[?&])' . $needle . '=([^&#]*)/', $source, $match)) {
+            return (int)urldecode((string)$match[1]);
+        }
+    }
+
+    return 0;
+}
+
 function cadastros_pp_ensure_schema(PDO $pdo): void
 {
     pacotes_evento_ensure_schema($pdo);
@@ -82,8 +120,8 @@ $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario
 $success = '';
 $errors = [];
 $queryParams = cadastros_pp_query_params();
-$modalOpen = array_key_exists('novo', $queryParams);
-$editId = (int)($queryParams['edit_id'] ?? 0);
+$modalOpen = cadastros_pp_route_has_param('novo', $queryParams);
+$editId = cadastros_pp_route_int_param('edit_id', $queryParams);
 $modalItem = [
     'id' => 0,
     'categoria' => 'Pacote',
@@ -449,7 +487,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
     </section>
 </main>
 
-<div class="pp-modal-backdrop <?= $modalOpen ? 'open' : '' ?>" id="pp-modal" role="dialog" aria-modal="true" aria-labelledby="pp-modal-title">
+<div class="pp-modal-backdrop <?= $modalOpen ? 'open' : '' ?>" id="pp-modal" role="dialog" aria-modal="true" aria-labelledby="pp-modal-title"<?= $modalOpen ? ' style="display:flex"' : '' ?>>
     <div class="pp-modal">
         <div class="pp-modal-header">
             <h2 class="pp-modal-title" id="pp-modal-title"><?= (int)$modalItem['id'] > 0 ? 'Editar cadastro' : 'Adicionar cadastro' ?></h2>

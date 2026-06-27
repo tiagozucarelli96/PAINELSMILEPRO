@@ -17,9 +17,69 @@ if (empty($_SESSION['perm_cadastros']) && empty($_SESSION['perm_superadmin'])) {
     exit;
 }
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 function cf_h(string $value): string
 {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+}
+
+function cf_query_params(): array
+{
+    $params = $_GET;
+    $queryString = (string)($_SERVER['QUERY_STRING'] ?? '');
+    if ($queryString !== '') {
+        parse_str(str_replace('&amp;', '&', $queryString), $parsed);
+        if (is_array($parsed)) {
+            $params = array_merge($parsed, $params);
+        }
+    }
+
+    $requestQuery = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
+    if ($requestQuery !== '') {
+        parse_str(str_replace('&amp;', '&', $requestQuery), $parsed);
+        if (is_array($parsed)) {
+            $params = array_merge($parsed, $params);
+        }
+    }
+
+    return $params;
+}
+
+function cf_route_has_param(string $name, array $params): bool
+{
+    if (array_key_exists($name, $params)) {
+        return true;
+    }
+
+    $needle = preg_quote($name, '/');
+    foreach ([$_SERVER['QUERY_STRING'] ?? '', $_SERVER['REQUEST_URI'] ?? ''] as $source) {
+        $source = str_replace('&amp;', '&', (string)$source);
+        if (preg_match('/(?:^|[?&])' . $needle . '(?:=|&|$)/', $source)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function cf_route_int_param(string $name, array $params): int
+{
+    if (isset($params[$name])) {
+        return (int)$params[$name];
+    }
+
+    $needle = preg_quote($name, '/');
+    foreach ([$_SERVER['QUERY_STRING'] ?? '', $_SERVER['REQUEST_URI'] ?? ''] as $source) {
+        $source = str_replace('&amp;', '&', (string)$source);
+        if (preg_match('/(?:^|[?&])' . $needle . '=([^&#]*)/', $source, $match)) {
+            return (int)urldecode((string)$match[1]);
+        }
+    }
+
+    return 0;
 }
 
 function cf_ensure_schema(PDO $pdo): void
@@ -90,6 +150,18 @@ cf_seed_defaults($pdo);
 $success = '';
 $errors = [];
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+$queryParams = cf_query_params();
+$modalOpen = cf_route_has_param('novo', $queryParams);
+$editId = cf_route_int_param('edit_id', $queryParams);
+$modalCategoria = [
+    'id' => 0,
+    'nome' => '',
+    'grupo' => 'Geral',
+    'tipo' => 'despesa',
+    'ordem' => 0,
+    'ativo' => true,
+    'descricao' => '',
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? 'save');
@@ -176,9 +248,43 @@ if (!empty($_SESSION['cf_success'])) {
     unset($_SESSION['cf_success']);
 }
 
-$q = trim((string)($_GET['q'] ?? ''));
-$grupoFiltro = trim((string)($_GET['grupo'] ?? ''));
-$statusFiltro = trim((string)($_GET['status'] ?? ''));
+if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? 'save') !== 'toggle')) {
+    $modalOpen = true;
+    $modalCategoria = [
+        'id' => (int)($_POST['id'] ?? 0),
+        'nome' => trim((string)($_POST['nome'] ?? '')),
+        'grupo' => trim((string)($_POST['grupo'] ?? 'Geral')) ?: 'Geral',
+        'tipo' => trim((string)($_POST['tipo'] ?? 'despesa')) ?: 'despesa',
+        'ordem' => (int)($_POST['ordem'] ?? 0),
+        'ativo' => !empty($_POST['ativo']),
+        'descricao' => trim((string)($_POST['descricao'] ?? '')),
+    ];
+} elseif ($editId > 0) {
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM financeiro_categorias WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $editId]);
+        $categoriaEdicao = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($categoriaEdicao) {
+            $modalOpen = true;
+            $modalCategoria = [
+                'id' => (int)$categoriaEdicao['id'],
+                'nome' => (string)$categoriaEdicao['nome'],
+                'grupo' => (string)$categoriaEdicao['grupo'],
+                'tipo' => (string)$categoriaEdicao['tipo'],
+                'ordem' => (int)$categoriaEdicao['ordem'],
+                'ativo' => !empty($categoriaEdicao['ativo']),
+                'descricao' => (string)($categoriaEdicao['descricao'] ?? ''),
+            ];
+        }
+    } catch (Throwable $e) {
+        error_log('categorias financeiras edit: ' . $e->getMessage());
+        $errors[] = 'Nao foi possivel carregar a categoria para edicao.';
+    }
+}
+
+$q = trim((string)($queryParams['q'] ?? ''));
+$grupoFiltro = trim((string)($queryParams['grupo'] ?? ''));
+$statusFiltro = trim((string)($queryParams['status'] ?? ''));
 
 $where = [];
 $params = [];
@@ -218,7 +324,7 @@ includeSidebar('Categorias Financeiras');
 .cf-alert{margin-bottom:1rem;border-radius:8px;padding:.85rem 1rem;font-weight:800}.cf-alert.success{background:#ecfdf5;color:#166534;border:1px solid #a7f3d0}.cf-alert.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
 .cf-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07);overflow:hidden}.cf-card-header{padding:1rem;border-bottom:1px solid #e2e8f0;background:#f8fbff}
 .cf-filters{display:grid;grid-template-columns:1.4fr 1fr 150px auto;gap:.7rem;align-items:end}.cf-field{display:grid;gap:.35rem}.cf-field label{font-weight:800;font-size:.82rem;color:#475569}.cf-field input,.cf-field select,.cf-field textarea{width:100%;border:1px solid #d1d9e6;border-radius:8px;padding:.68rem .78rem;color:#1e293b;background:#fff;font:inherit}.cf-field textarea{min-height:78px}
-.cf-table-wrap{overflow:auto}.cf-table{width:100%;border-collapse:collapse;min-width:920px}.cf-table th,.cf-table td{padding:.82rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.cf-table th{background:#f8fafc;color:#475569;font-size:.78rem;text-transform:uppercase}.cf-name{font-weight:900;color:#1e293b}.cf-muted{color:#64748b;font-size:.86rem}.cf-pill{display:inline-flex;border-radius:999px;padding:.24rem .6rem;font-size:.76rem;font-weight:900}.cf-pill.on{background:#dcfce7;color:#166534}.cf-pill.off{background:#fee2e2;color:#991b1b}.cf-pill.type{background:#e0f2fe;color:#075985}.cf-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cf-action{border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:.42rem .62rem;cursor:pointer;font-weight:800;color:#334155}
+.cf-table-wrap{overflow:auto}.cf-table{width:100%;border-collapse:collapse;min-width:920px}.cf-table th,.cf-table td{padding:.82rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.cf-table th{background:#f8fafc;color:#475569;font-size:.78rem;text-transform:uppercase}.cf-name{font-weight:900;color:#1e293b}.cf-muted{color:#64748b;font-size:.86rem}.cf-pill{display:inline-flex;border-radius:999px;padding:.24rem .6rem;font-size:.76rem;font-weight:900}.cf-pill.on{background:#dcfce7;color:#166534}.cf-pill.off{background:#fee2e2;color:#991b1b}.cf-pill.type{background:#e0f2fe;color:#075985}.cf-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cf-action{border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:.42rem .62rem;cursor:pointer;font-weight:800;color:#334155;text-decoration:none}
 .cf-modal-backdrop{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem;background:rgba(15,23,42,.55)}.cf-modal-backdrop.open,#cf-modal:target{display:flex}.cf-modal{width:min(620px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.cf-modal-header{padding:1rem 1.1rem;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:1rem;align-items:center}.cf-modal-title{margin:0;color:#1e293b;font-weight:900;font-size:1.15rem}.cf-modal-close{width:36px;height:36px;border:none;border-radius:999px;background:#f1f5f9;color:#334155;cursor:pointer;font-size:1.25rem;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.cf-form{padding:1rem;display:grid;gap:.85rem}.cf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.cf-full{grid-column:1/-1}.cf-check{display:flex;align-items:center;gap:.5rem;font-weight:800}.cf-check input{width:auto}.cf-modal-actions{display:flex;justify-content:flex-end;gap:.65rem;border-top:1px solid #e2e8f0;padding:1rem}
 @media(max-width:760px){.cf-filters,.cf-grid{grid-template-columns:1fr}.cf-page{padding:1rem}}
 </style>
@@ -286,22 +392,22 @@ includeSidebar('Categorias Financeiras');
     </section>
 </main>
 
-<div class="cf-modal-backdrop" id="cf-modal" role="dialog" aria-modal="true" aria-labelledby="cf-modal-title">
+<div class="cf-modal-backdrop <?= $modalOpen ? 'open' : '' ?>" id="cf-modal" role="dialog" aria-modal="true" aria-labelledby="cf-modal-title"<?= $modalOpen ? ' style="display:flex"' : '' ?>>
     <div class="cf-modal">
         <div class="cf-modal-header">
-            <h2 class="cf-modal-title" id="cf-modal-title">Nova categoria</h2>
+            <h2 class="cf-modal-title" id="cf-modal-title"><?= (int)$modalCategoria['id'] > 0 ? 'Editar categoria' : 'Nova categoria' ?></h2>
             <a class="cf-modal-close" href="index.php?page=cadastros_categorias_financeiras" data-close-cf-modal aria-label="Fechar">×</a>
         </div>
         <form method="post" class="cf-form">
             <input type="hidden" name="action" value="save">
-            <input type="hidden" name="id" id="cf-id" value="0">
+            <input type="hidden" name="id" id="cf-id" value="<?= (int)$modalCategoria['id'] ?>">
             <div class="cf-grid">
-                <div class="cf-field cf-full"><label>Nome</label><input name="nome" id="cf-nome" maxlength="180" required></div>
-                <div class="cf-field"><label>Grupo</label><input name="grupo" id="cf-grupo" list="cf-grupos" value="Geral" maxlength="120"><datalist id="cf-grupos"><?php foreach ($grupos as $grupo): ?><option value="<?= cf_h((string)$grupo) ?>"><?php endforeach; ?></datalist></div>
-                <div class="cf-field"><label>Tipo</label><select name="tipo" id="cf-tipo"><option value="despesa">Despesa</option><option value="receita">Receita</option><option value="ambos">Ambos</option></select></div>
-                <div class="cf-field"><label>Ordem</label><input type="number" name="ordem" id="cf-ordem" value="0"></div>
-                <label class="cf-check"><input type="checkbox" name="ativo" id="cf-ativo" value="1" checked> Categoria ativa</label>
-                <div class="cf-field cf-full"><label>Descricao</label><textarea name="descricao" id="cf-descricao"></textarea></div>
+                <div class="cf-field cf-full"><label>Nome</label><input name="nome" id="cf-nome" value="<?= cf_h((string)$modalCategoria['nome']) ?>" maxlength="180" required></div>
+                <div class="cf-field"><label>Grupo</label><input name="grupo" id="cf-grupo" list="cf-grupos" value="<?= cf_h((string)$modalCategoria['grupo']) ?>" maxlength="120"><datalist id="cf-grupos"><?php foreach ($grupos as $grupo): ?><option value="<?= cf_h((string)$grupo) ?>"><?php endforeach; ?></datalist></div>
+                <div class="cf-field"><label>Tipo</label><select name="tipo" id="cf-tipo"><option value="despesa" <?= (string)$modalCategoria['tipo'] === 'despesa' ? 'selected' : '' ?>>Despesa</option><option value="receita" <?= (string)$modalCategoria['tipo'] === 'receita' ? 'selected' : '' ?>>Receita</option><option value="ambos" <?= (string)$modalCategoria['tipo'] === 'ambos' ? 'selected' : '' ?>>Ambos</option></select></div>
+                <div class="cf-field"><label>Ordem</label><input type="number" name="ordem" id="cf-ordem" value="<?= (int)$modalCategoria['ordem'] ?>"></div>
+                <label class="cf-check"><input type="checkbox" name="ativo" id="cf-ativo" value="1" <?= !empty($modalCategoria['ativo']) ? 'checked' : '' ?>> Categoria ativa</label>
+                <div class="cf-field cf-full"><label>Descricao</label><textarea name="descricao" id="cf-descricao"><?= cf_h((string)$modalCategoria['descricao']) ?></textarea></div>
             </div>
             <div class="cf-modal-actions">
                 <a class="cf-btn" href="index.php?page=cadastros_categorias_financeiras" data-close-cf-modal>Cancelar</a>

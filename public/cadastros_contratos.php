@@ -18,6 +18,10 @@ if (empty($_SESSION['perm_cadastros']) && empty($_SESSION['perm_superadmin'])) {
     exit;
 }
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 function cadastros_contratos_e(string $value): string
 {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
@@ -45,14 +49,48 @@ function cadastros_contratos_query_params(): array
     return $params;
 }
 
+function cadastros_contratos_route_has_param(string $name, array $params): bool
+{
+    if (array_key_exists($name, $params)) {
+        return true;
+    }
+
+    $needle = preg_quote($name, '/');
+    foreach ([$_SERVER['QUERY_STRING'] ?? '', $_SERVER['REQUEST_URI'] ?? ''] as $source) {
+        $source = str_replace('&amp;', '&', (string)$source);
+        if (preg_match('/(?:^|[?&])' . $needle . '(?:=|&|$)/', $source)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function cadastros_contratos_route_int_param(string $name, array $params): int
+{
+    if (isset($params[$name])) {
+        return (int)$params[$name];
+    }
+
+    $needle = preg_quote($name, '/');
+    foreach ([$_SERVER['QUERY_STRING'] ?? '', $_SERVER['REQUEST_URI'] ?? ''] as $source) {
+        $source = str_replace('&amp;', '&', (string)$source);
+        if (preg_match('/(?:^|[?&])' . $needle . '=([^&#]*)/', $source, $match)) {
+            return (int)urldecode((string)$match[1]);
+        }
+    }
+
+    return 0;
+}
+
 contratos_modelos_ensure_schema($pdo);
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $success = '';
 $errors = [];
 $queryParams = cadastros_contratos_query_params();
-$modalOpen = array_key_exists('novo', $queryParams);
-$editId = (int)($queryParams['edit_id'] ?? 0);
+$modalOpen = cadastros_contratos_route_has_param('novo', $queryParams);
+$editId = cadastros_contratos_route_int_param('edit_id', $queryParams);
 $modalModelo = [
     'id' => 0,
     'nome' => '',
@@ -284,7 +322,7 @@ includeSidebar('Contratos');
     </section>
 </main>
 
-<div class="contratos-modal-backdrop <?= $modalOpen ? 'open' : '' ?>" id="contrato-modal" role="dialog" aria-modal="true" aria-labelledby="contrato-modal-title">
+<div class="contratos-modal-backdrop <?= $modalOpen ? 'open' : '' ?>" id="contrato-modal" role="dialog" aria-modal="true" aria-labelledby="contrato-modal-title"<?= $modalOpen ? ' style="display:flex"' : '' ?>>
     <div class="contratos-modal">
         <div class="contratos-modal-header">
             <h2 class="contratos-modal-title" id="contrato-modal-title"><?= (int)$modalModelo['id'] > 0 ? 'Editar contrato' : 'Adicionar contrato' ?></h2>
