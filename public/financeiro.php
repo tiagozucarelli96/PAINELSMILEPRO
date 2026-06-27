@@ -538,7 +538,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['financeiro_ofx_preview'] = [
                     'banco' => $banco,
                     'conta' => $conta,
-                    'centro_custo_padrao' => trim((string)($_POST['centro_custo'] ?? '')),
+                    'centro_custo_padrao' => '',
                     'items' => $items,
                     'created_at' => time(),
                 ];
@@ -832,8 +832,6 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                             <div>
                                 <h2 class="ofx-preview-title">Pre-visualizacao OFX</h2>
                                 <div class="ofx-preview-meta">
-                                    Banco: <?= h((string)($ofxPreview['banco'] ?? '')) ?: 'Nao informado' ?> ·
-                                    Conta: <?= h((string)($ofxPreview['conta'] ?? '')) ?: 'Nao informada' ?> ·
                                     <?= count($ofxPreviewItems) ?> transacao(oes)
                                 </div>
                             </div>
@@ -1005,9 +1003,6 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
             <input type="hidden" name="action" value="preview_ofx">
             <div class="modal-body">
                 <div class="form-grid">
-                    <div><label>Banco</label><input name="banco" placeholder="Ex: Santander" required></div>
-                    <div><label>Conta</label><input name="conta" placeholder="Ex: 0358 Smile"></div>
-                    <div><label>Centro de custo padrao</label><input name="centro_custo" placeholder="Ex: Administrativo"></div>
                     <div class="field full"><label>Arquivo OFX</label><input type="file" name="ofx_file" accept=".ofx,.OFX,application/x-ofx,text/plain,application/octet-stream" required></div>
                     <div class="field full muted">O arquivo sera lido primeiro em uma pre-visualizacao. Nenhuma transacao sera lancada sem sua confirmacao.</div>
                 </div>
