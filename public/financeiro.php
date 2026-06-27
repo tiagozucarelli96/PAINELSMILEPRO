@@ -21,6 +21,10 @@ if (empty($_SESSION['perm_financeiro']) && empty($_SESSION['perm_superadmin'])) 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $errors = [];
 $messages = [];
+if (!empty($_SESSION['financeiro_flash_success'])) {
+    $messages[] = (string)$_SESSION['financeiro_flash_success'];
+    unset($_SESSION['financeiro_flash_success']);
+}
 
 function financeiro_ensure_schema(PDO $pdo): void
 {
@@ -538,8 +542,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'items' => $items,
                     'created_at' => time(),
                 ];
-                $activeTab = 'despesas';
-                $messages[] = count($items) . ' transacao(oes) lida(s). Revise a pre-visualizacao antes de importar.';
+                $_SESSION['financeiro_flash_success'] = count($items) . ' transacao(oes) lida(s). Revise a pre-visualizacao antes de importar.';
+                header('Location: index.php?page=financeiro&tab=despesas&ofx_preview=1');
+                exit;
             }
         }
     }
@@ -604,6 +609,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messages[] = $imported . ' despesa(s) importada(s) do OFX. ' . $blocked . ' transacao(oes) bloqueada(s) por duplicidade ou tipo incompatível.';
         }
     }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && empty($_GET['ofx_preview'])) {
+    unset($_SESSION['financeiro_ofx_preview']);
 }
 
 $filters = [
@@ -710,6 +719,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
         <div class="finance-actions">
             <button class="btn btn-green" type="button" data-open-modal="despesa-modal">+ Nova despesa</button>
             <button class="btn btn-blue" type="button" data-open-modal="ofx-modal">Importar OFX</button>
+            <a class="btn btn-slate" href="index.php?page=financeiro_cartoes">Cartão de crédito</a>
         </div>
     </div>
 

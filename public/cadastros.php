@@ -187,6 +187,15 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <a href="index.php?page=financeiro_cartoes" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #334155, #0f172a);">
+                <span class="funcionalidade-card-icon">💳</span>
+                <div class="funcionalidade-card-title">Cartão de Crédito</div>
+                <div class="funcionalidade-card-subtitle">Cadastrar, editar e desativar cartões</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         
         <!-- REMOVIDO: Insumos (módulo desativado) -->
         <!-- REMOVIDO: Categorias (módulo desativado) -->
