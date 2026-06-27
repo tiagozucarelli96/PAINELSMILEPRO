@@ -160,7 +160,7 @@ function comercial_cadastro_cliente_recentes(PDO $pdo, string $search = ''): arr
         $where = ['c.ativo IS TRUE'];
         $params = [];
         if ($search !== '') {
-            $where[] = "(nome_completo ILIKE :search OR email ILIKE :search OR telefone_whatsapp ILIKE :search OR documento_numero ILIKE :search)";
+            $where[] = "(c.nome_completo ILIKE :search OR c.email ILIKE :search OR c.telefone_whatsapp ILIKE :search OR c.documento_numero ILIKE :search)";
             $params[':search'] = '%' . $search . '%';
         }
 
@@ -203,6 +203,64 @@ function comercial_cadastro_cliente_buscar(PDO $pdo, int $id): ?array
     }
 }
 
+function comercial_cadastro_cliente_buscar_por_search(PDO $pdo, string $search): ?array
+{
+    $search = trim($search);
+    if ($search === '') {
+        return null;
+    }
+
+    $digits = comercial_cadastro_cliente_digits($search);
+
+    try {
+        $conditions = [
+            'LOWER(TRIM(nome_completo)) = LOWER(TRIM(:search))',
+            'LOWER(TRIM(email)) = LOWER(TRIM(:search))',
+        ];
+        $params = [':search' => $search];
+
+        if ($digits !== '') {
+            $conditions[] = "REGEXP_REPLACE(COALESCE(telefone_whatsapp, ''), '\\D', '', 'g') = :digits";
+            $conditions[] = "REGEXP_REPLACE(COALESCE(documento_numero, ''), '\\D', '', 'g') = :digits";
+            $params[':digits'] = $digits;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM comercial_cadastro_clientes
+            WHERE ativo IS TRUE
+              AND (" . implode(' OR ', $conditions) . ")
+            ORDER BY updated_at DESC NULLS LAST, id DESC
+            LIMIT 1
+        ");
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($row)) {
+            return $row;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM comercial_cadastro_clientes
+            WHERE ativo IS TRUE
+              AND (
+                  nome_completo ILIKE :partial
+                  OR email ILIKE :partial
+                  OR telefone_whatsapp ILIKE :partial
+                  OR documento_numero ILIKE :partial
+              )
+            ORDER BY updated_at DESC NULLS LAST, id DESC
+            LIMIT 2
+        ");
+        $stmt->execute([':partial' => '%' . $search . '%']);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return count($rows) === 1 ? $rows[0] : null;
+    } catch (Throwable $e) {
+        error_log('comercial_cadastro_cliente_buscar_por_search: ' . $e->getMessage());
+        return null;
+    }
+}
+
 function comercial_cadastro_cliente_old(string $key, string $default = ''): string
 {
     return (string)($_POST[$key] ?? $default);
@@ -222,8 +280,15 @@ function comercial_cadastro_cliente_value(string $key, ?array $clienteAtual = nu
 comercial_cadastro_cliente_ensure_schema($pdo);
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+$search = trim((string)($_GET['search'] ?? ''));
 $clienteId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $clienteAtual = comercial_cadastro_cliente_buscar($pdo, $clienteId);
+if (!$clienteAtual && $clienteId <= 0 && $search !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    $clienteAtual = comercial_cadastro_cliente_buscar_por_search($pdo, $search);
+    if ($clienteAtual) {
+        $clienteId = (int)$clienteAtual['id'];
+    }
+}
 $isEditing = $clienteAtual !== null;
 $errors = [];
 $success = '';
@@ -376,7 +441,6 @@ if (!empty($_SESSION['comercial_cadastro_cliente_success'])) {
     unset($_SESSION['comercial_cadastro_cliente_success']);
 }
 
-$search = trim((string)($_GET['search'] ?? ''));
 $clientes = comercial_cadastro_cliente_recentes($pdo, $search);
 
 includeSidebar('Cadastro do cliente');
