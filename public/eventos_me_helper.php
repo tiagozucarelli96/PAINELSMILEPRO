@@ -562,6 +562,8 @@ function eventos_me_criar_snapshot(array $event): array {
         'hora_inicio' => eventos_me_pick_text($event, ['horainicio', 'hora_inicio', 'horaevento']),
         'hora_fim' => eventos_me_pick_text($event, ['horatermino', 'hora_fim', 'horafim', 'hora_termino']),
         'local' => eventos_me_pick_text($event, ['local', 'nomelocal', 'localevento', 'localEvento', 'endereco']),
+        'idlocalevento' => eventos_me_pick_int($event, ['idlocalevento', 'id_local_evento', 'local_id']),
+        'localevento' => eventos_me_pick_text($event, ['localevento', 'local_evento', 'nomelocal', 'local']),
         'unidade' => eventos_me_pick_text($event, ['unidade', 'tipoEvento', 'tipoevento']),
         'convidados' => eventos_me_pick_int($event, ['nconvidados', 'convidados', 'num_convidados', 'numero_convidados', 'qtd_convidados', 'quantidade_convidados']),
         'cliente' => [
@@ -635,6 +637,8 @@ function eventos_me_merge_snapshot(array $current, array $incoming): array {
         'hora_inicio',
         'hora_fim',
         'local',
+        'idlocalevento',
+        'localevento',
         'unidade',
         'convidados',
         'tipo_evento',

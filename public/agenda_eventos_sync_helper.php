@@ -104,7 +104,7 @@ if (!function_exists('agenda_eventos_sync_mapeamento')) {
             }
 
             $stmt = $pdo->prepare("
-                SELECT unidade_interna_id, space_visivel
+                SELECT unidade_interna_id, space_visivel, me_local_nome
                 FROM logistica_me_locais
                 WHERE me_local_id = :me_local_id
                 LIMIT 1
@@ -125,7 +125,7 @@ if (!function_exists('agenda_eventos_sync_mapeamento')) {
         }
 
         $stmt = $pdo->prepare("
-            SELECT unidade_interna_id, space_visivel
+            SELECT unidade_interna_id, space_visivel, me_local_nome
             FROM logistica_me_locais
             WHERE LOWER(TRIM(me_local_nome)) = LOWER(TRIM(:me_local_nome))
             LIMIT 1
@@ -177,13 +177,16 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
         }
 
         $dataEvento = agenda_eventos_sync_date(agenda_eventos_sync_pick($eventoData, ['dataevento', 'data_evento', 'data']));
+        $idLocalEvento = (int)agenda_eventos_sync_pick($eventoData, ['idlocalevento', 'id_local_evento', 'local_id'], 0);
         $localEvento = trim((string)agenda_eventos_sync_pick($eventoData, ['localevento', 'local_evento', 'local', 'nomelocal'], ''));
+        $mapping = agenda_eventos_sync_mapeamento($pdo, $idLocalEvento, $localEvento);
+        if ($localEvento === '' && is_array($mapping)) {
+            $localEvento = trim((string)($mapping['me_local_nome'] ?? ''));
+        }
         if ($dataEvento === null || $localEvento === '') {
             return ['ok' => false, 'error' => 'Payload ME sem data/local suficientes para atualizar agenda.'];
         }
 
-        $idLocalEvento = (int)agenda_eventos_sync_pick($eventoData, ['idlocalevento', 'id_local_evento', 'local_id'], 0);
-        $mapping = agenda_eventos_sync_mapeamento($pdo, $idLocalEvento, $localEvento);
         $statusMapeamento = $mapping ? 'MAPEADO' : 'PENDENTE';
         $unidadeId = $mapping['unidade_interna_id'] ?? null;
         $spaceVisivel = $mapping['space_visivel'] ?? null;

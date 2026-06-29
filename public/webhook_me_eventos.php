@@ -236,6 +236,21 @@ function processarWebhook($data) {
             require_once __DIR__ . '/eventos_me_helper.php';
 
             $snapshot = eventos_me_criar_snapshot(is_array($evento_data) ? $evento_data : []);
+            $id_local_evento = (int)($evento_data['idlocalevento'] ?? $evento_data['id_local_evento'] ?? $evento_data['local_id'] ?? 0);
+            if ($id_local_evento > 0 && trim((string)($snapshot['local'] ?? '')) === '') {
+                $stmt_local = $pdo->prepare("
+                    SELECT me_local_nome
+                    FROM logistica_me_locais
+                    WHERE me_local_id = :me_local_id
+                    LIMIT 1
+                ");
+                $stmt_local->execute([':me_local_id' => $id_local_evento]);
+                $local_mapeado = trim((string)$stmt_local->fetchColumn());
+                if ($local_mapeado !== '') {
+                    $snapshot['local'] = $local_mapeado;
+                    $snapshot['localevento'] = $local_mapeado;
+                }
+            }
             $snapshot['me_status'] = ($status === 'cancelado') ? 'cancelado' : 'ativo';
             $snapshot['webhook_event'] = (string)$webhook_tipo_original;
             $snapshot['webhook_at'] = date('Y-m-d H:i:s');
