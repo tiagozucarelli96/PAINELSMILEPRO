@@ -646,12 +646,6 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             }
         }
         
-        // Verificar se fechou contrato
-        if ($inscricao['fechou_contrato'] === 'sim') {
-            error_log("ERRO: Cliente já fechou contrato - Inscrição ID: {$inscricao_id}");
-            throw new Exception("Cliente já fechou contrato, não é necessário pagamento");
-        }
-        
         // Buscar dados da degustação para calcular valor
         if (empty($event_id)) {
             error_log("ERRO: event_id não definido");
@@ -696,13 +690,19 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         error_log("Calculando valor - Tipo: {$tipo_festa}, Pessoas: {$qtd_pessoas}");
         
         $valor_info = $asaasHelper->calculateTotal($tipo_festa, $qtd_pessoas, $precos);
+        if (($inscricao['fechou_contrato'] ?? 'nao') === 'sim') {
+            // Regra usada na inscrição pública: cliente com contrato paga apenas pessoas extras.
+            $valor_info['valor_base'] = 0.0;
+            $valor_info['valor_total'] = (float)($valor_info['valor_extras'] ?? 0);
+            error_log("Cliente com contrato fechado: cobrando apenas extras para inscrição {$inscricao_id}");
+        }
         $valor_total = $valor_info['valor_total'];
         
         error_log("Valor calculado: R$ " . number_format($valor_total, 2, ',', '.'));
         
         if ($valor_total <= 0) {
             error_log("ERRO: Valor inválido calculado - R$ {$valor_total}");
-            throw new Exception("Valor inválido para pagamento (R$ " . number_format($valor_total, 2, ',', '.') . ")");
+            throw new Exception("Não há valor pendente para gerar cobrança nesta inscrição");
         }
         
         // Criar QR Code PIX estático (com payload para copia e cola)
