@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS logistica_eventos_espelho (
     me_event_id INTEGER NOT NULL,
     data_evento DATE NOT NULL,
     hora_inicio TIME,
+    hora_fim TIME,
     convidados INTEGER,
     idlocalevento INTEGER,
     localevento TEXT NOT NULL,

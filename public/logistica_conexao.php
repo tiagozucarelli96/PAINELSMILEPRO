@@ -40,6 +40,7 @@ function ensure_logistica_schema(PDO $pdo, array &$errors, array &$messages): bo
         }
 
         if (!$missing) {
+            $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS hora_fim TIME");
             return true;
         }
 
@@ -415,14 +416,15 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
     if ($hasNomeEvento) {
         $sql = "
             INSERT INTO logistica_eventos_espelho
-            (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento, nome_evento,
+            (me_event_id, data_evento, hora_inicio, hora_fim, convidados, idlocalevento, localevento, nome_evento,
              unidade_interna_id, space_visivel, status_mapeamento, arquivado, synced_at, updated_at)
             VALUES
-            (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento, :nome_evento,
+            (:me_event_id, :data_evento, :hora_inicio, :hora_fim, :convidados, :idlocalevento, :localevento, :nome_evento,
              :unidade_interna_id, :space_visivel, :status_mapeamento, FALSE, NOW(), NOW())
             ON CONFLICT (me_event_id) DO UPDATE SET
                 data_evento = EXCLUDED.data_evento,
                 hora_inicio = EXCLUDED.hora_inicio,
+                hora_fim = EXCLUDED.hora_fim,
                 convidados = EXCLUDED.convidados,
                 idlocalevento = EXCLUDED.idlocalevento,
                 localevento = EXCLUDED.localevento,
@@ -437,14 +439,15 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
     } else {
         $sql = "
             INSERT INTO logistica_eventos_espelho
-            (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento,
+            (me_event_id, data_evento, hora_inicio, hora_fim, convidados, idlocalevento, localevento,
              unidade_interna_id, space_visivel, status_mapeamento, arquivado, synced_at, updated_at)
             VALUES
-            (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento,
+            (:me_event_id, :data_evento, :hora_inicio, :hora_fim, :convidados, :idlocalevento, :localevento,
              :unidade_interna_id, :space_visivel, :status_mapeamento, FALSE, NOW(), NOW())
             ON CONFLICT (me_event_id) DO UPDATE SET
                 data_evento = EXCLUDED.data_evento,
                 hora_inicio = EXCLUDED.hora_inicio,
+                hora_fim = EXCLUDED.hora_fim,
                 convidados = EXCLUDED.convidados,
                 idlocalevento = EXCLUDED.idlocalevento,
                 localevento = EXCLUDED.localevento,
@@ -485,6 +488,7 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
         $meEventId = (int)$meEventId;
         $idLocalEvento = isset($item['idlocalevento']) ? (int)$item['idlocalevento'] : 0;
         $horaInicio = !empty($item['horaevento']) ? $item['horaevento'] : null;
+        $horaFim = eventos_me_pick_text($item, ['horatermino', 'hora_fim', 'horafim', 'hora_termino', 'horaeventofim', 'fim'], '');
         $convidados = isset($item['convidados']) ? (int)$item['convidados'] : null;
         $nomeEvento = trim((string)($item['nomeevento'] ?? ''));
         if ($nomeEvento === '') {
@@ -523,6 +527,7 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
             ':me_event_id' => $meEventId,
             ':data_evento' => $dataEvento,
             ':hora_inicio' => $horaInicio,
+            ':hora_fim' => $horaFim !== '' ? $horaFim : null,
             ':convidados' => $convidados,
             ':idlocalevento' => $idLocalEvento,
             ':localevento' => $localEvento,

@@ -247,27 +247,12 @@ function agenda_eventos_format_clock(?string $time): string
     return $ts ? date('H:i', $ts) : '';
 }
 
-function agenda_eventos_infer_end_time(string $horaInicio): string
-{
-    $horaInicio = agenda_eventos_format_clock($horaInicio);
-    if ($horaInicio === '') {
-        return '';
-    }
-
-    $ts = strtotime('2000-01-01 ' . $horaInicio);
-    return $ts ? date('H:i', $ts + (6 * 60 * 60)) : '';
-}
-
 function agenda_eventos_format_time(array $evento): string
 {
     $horaInicio = agenda_eventos_format_clock((string)($evento['hora_inicio'] ?? ''));
     $horaFim = agenda_eventos_format_clock((string)($evento['hora_fim'] ?? ''));
     if ($horaInicio === '') {
         return 'Sem horário informado';
-    }
-
-    if ($horaFim === '') {
-        $horaFim = agenda_eventos_infer_end_time($horaInicio);
     }
 
     return $horaFim !== '' ? $horaInicio . ' às ' . $horaFim : $horaInicio;
@@ -281,6 +266,7 @@ $eventoSelecionado = null;
 
 $temTabelaEventos = agenda_eventos_has_table($pdo, 'logistica_eventos_espelho');
 $temColunaNomeEvento = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
+$temColunaHoraFim = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'hora_fim');
 $temTabelaReunioes = agenda_eventos_has_table($pdo, 'eventos_reunioes');
 $temColunaClienteCadastro = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
 $temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
@@ -357,7 +343,7 @@ if (!$temTabelaEventos) {
 
         $meetingIdSql = $temTabelaReunioes ? 'COALESCE(r.meeting_id, 0)' : '0';
 
-        $horaFimSql = $temTabelaReunioes
+        $horaFimSnapshotSql = $temTabelaReunioes
             ? "COALESCE(
                     NULLIF(TRIM(r.me_event_snapshot->>'hora_fim'), ''),
                     NULLIF(TRIM(r.me_event_snapshot->>'horafim'), ''),
@@ -367,6 +353,9 @@ if (!$temTabelaEventos) {
                     NULLIF(TRIM(r.me_event_snapshot->>'fim'), '')
                )"
             : "NULL";
+        $horaFimSql = $temColunaHoraFim
+            ? "COALESCE(NULLIF(TO_CHAR(e.hora_fim, 'HH24:MI'), ''), {$horaFimSnapshotSql})"
+            : $horaFimSnapshotSql;
 
         $snapshotLocalSql = $temTabelaReunioes
             ? "COALESCE(
@@ -469,7 +458,7 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
 
         $meetingIdDetalheSql = $temTabelaReunioes ? 'COALESCE(r.meeting_id, 0)' : '0';
 
-        $horaFimDetalheSql = $temTabelaReunioes
+        $horaFimDetalheSnapshotSql = $temTabelaReunioes
             ? "COALESCE(
                     NULLIF(TRIM(r.me_event_snapshot->>'hora_fim'), ''),
                     NULLIF(TRIM(r.me_event_snapshot->>'horafim'), ''),
@@ -479,6 +468,9 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
                     NULLIF(TRIM(r.me_event_snapshot->>'fim'), '')
                )"
             : "NULL";
+        $horaFimDetalheSql = $temColunaHoraFim
+            ? "COALESCE(NULLIF(TO_CHAR(e.hora_fim, 'HH24:MI'), ''), {$horaFimDetalheSnapshotSql})"
+            : $horaFimDetalheSnapshotSql;
 
         $snapshotLocalDetalheSql = $temTabelaReunioes
             ? "COALESCE(

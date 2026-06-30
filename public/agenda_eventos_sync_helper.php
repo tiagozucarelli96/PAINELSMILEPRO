@@ -151,11 +151,12 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
 
         if (!$schemaEnsured) {
             try {
+                $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS hora_fim TIME");
                 $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS whatsapp_cliente VARCHAR(40)");
                 $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS telefone_cliente VARCHAR(40)");
                 $schemaEnsured = true;
             } catch (Throwable $e) {
-                error_log('[AGENDA SYNC] Falha ao garantir telefone do cliente: ' . $e->getMessage());
+                error_log('[AGENDA SYNC] Falha ao garantir colunas complementares: ' . $e->getMessage());
             }
         }
 
@@ -226,6 +227,7 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
             ':me_event_id' => $meEventId,
             ':data_evento' => $dataEvento,
             ':hora_inicio' => agenda_eventos_sync_time(agenda_eventos_sync_pick($eventoData, ['horaevento', 'hora_inicio', 'horainicio', 'hora'])),
+            ':hora_fim' => agenda_eventos_sync_time(agenda_eventos_sync_pick($eventoData, ['horatermino', 'hora_fim', 'horafim', 'hora_termino', 'horaeventofim', 'fim'])),
             ':convidados' => (int)agenda_eventos_sync_pick($eventoData, ['convidados', 'nconvidados', 'num_convidados'], 0),
             ':idlocalevento' => $idLocalEvento,
             ':localevento' => $localEvento,
@@ -238,14 +240,15 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
             $params[':nome_evento'] = $nomeEvento;
             $sql = "
                 INSERT INTO logistica_eventos_espelho
-                (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento, nome_evento,
+                (me_event_id, data_evento, hora_inicio, hora_fim, convidados, idlocalevento, localevento, nome_evento,
                  unidade_interna_id, space_visivel, status_mapeamento, arquivado, synced_at, updated_at)
                 VALUES
-                (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento, :nome_evento,
+                (:me_event_id, :data_evento, :hora_inicio, :hora_fim, :convidados, :idlocalevento, :localevento, :nome_evento,
                  :unidade_interna_id, :space_visivel, :status_mapeamento, FALSE, NOW(), NOW())
                 ON CONFLICT (me_event_id) DO UPDATE SET
                     data_evento = EXCLUDED.data_evento,
                     hora_inicio = EXCLUDED.hora_inicio,
+                    hora_fim = EXCLUDED.hora_fim,
                     convidados = EXCLUDED.convidados,
                     idlocalevento = EXCLUDED.idlocalevento,
                     localevento = EXCLUDED.localevento,
@@ -260,14 +263,15 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
         } else {
             $sql = "
                 INSERT INTO logistica_eventos_espelho
-                (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento,
+                (me_event_id, data_evento, hora_inicio, hora_fim, convidados, idlocalevento, localevento,
                  unidade_interna_id, space_visivel, status_mapeamento, arquivado, synced_at, updated_at)
                 VALUES
-                (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento,
+                (:me_event_id, :data_evento, :hora_inicio, :hora_fim, :convidados, :idlocalevento, :localevento,
                  :unidade_interna_id, :space_visivel, :status_mapeamento, FALSE, NOW(), NOW())
                 ON CONFLICT (me_event_id) DO UPDATE SET
                     data_evento = EXCLUDED.data_evento,
                     hora_inicio = EXCLUDED.hora_inicio,
+                    hora_fim = EXCLUDED.hora_fim,
                     convidados = EXCLUDED.convidados,
                     idlocalevento = EXCLUDED.idlocalevento,
                     localevento = EXCLUDED.localevento,

@@ -164,6 +164,7 @@ function sync_me_bulk_event_row(array $event, array $mappings): ?array
         'me_event_id' => $meEventId,
         'data_evento' => $dataEvento,
         'hora_inicio' => agenda_eventos_sync_time(sync_me_bulk_pick($event, ['horaevento', 'hora_inicio', 'horainicio', 'hora'])),
+        'hora_fim' => agenda_eventos_sync_time(sync_me_bulk_pick($event, ['horatermino', 'hora_fim', 'horafim', 'hora_termino', 'horaeventofim', 'fim'])),
         'convidados' => (int)sync_me_bulk_pick($event, ['convidados', 'nconvidados', 'num_convidados'], '0'),
         'idlocalevento' => $idLocalEvento,
         'localevento' => $localEvento,
@@ -182,10 +183,13 @@ function sync_me_bulk_upsert_events(PDO $pdo, array $rows): int
         return 0;
     }
 
+    $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS hora_fim TIME");
+
     $columns = [
         'me_event_id',
         'data_evento',
         'hora_inicio',
+        'hora_fim',
         'convidados',
         'idlocalevento',
         'localevento',
@@ -215,6 +219,7 @@ function sync_me_bulk_upsert_events(PDO $pdo, array $rows): int
         ON CONFLICT (me_event_id) DO UPDATE SET
             data_evento = EXCLUDED.data_evento,
             hora_inicio = EXCLUDED.hora_inicio,
+            hora_fim = EXCLUDED.hora_fim,
             convidados = EXCLUDED.convidados,
             idlocalevento = EXCLUDED.idlocalevento,
             localevento = EXCLUDED.localevento,
