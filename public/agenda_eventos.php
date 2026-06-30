@@ -260,6 +260,7 @@ function agenda_eventos_format_time(array $evento): string
 
 $usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $isSuperadmin = !empty($_SESSION['perm_superadmin']);
+$canViewEventDetails = $isSuperadmin || !empty($_SESSION['perm_agenda_eventos_detalhes']);
 $spacesUsuario = $isSuperadmin ? [] : agenda_eventos_fetch_user_spaces($pdo, $usuarioId);
 $eventoSelecionadoId = isset($_GET['evento_id']) ? (int)$_GET['evento_id'] : 0;
 $eventoSelecionado = null;
@@ -300,6 +301,11 @@ $weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 $eventos = [];
 $eventosPorData = [];
 $errors = [];
+
+if ($eventoSelecionadoId > 0 && !$canViewEventDetails) {
+    $eventoSelecionadoId = 0;
+    $errors[] = 'Você não possui permissão para visualizar os detalhes completos dos eventos.';
+}
 
 if ($temTabelaEventos) {
     $lastClienteSync = (int)($_SESSION['agenda_eventos_cliente_sync_at'] ?? 0);
@@ -688,7 +694,7 @@ includeSidebar('Agenda Geral');
     background: #ffffff;
     border: 1px solid #dbe3ef;
     border-radius: 18px;
-    overflow: hidden;
+    overflow: visible;
     box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
 }
 
@@ -733,6 +739,7 @@ includeSidebar('Agenda Geral');
     border-right: 1px solid #eef2f7;
     border-bottom: 1px solid #eef2f7;
     background: #ffffff;
+    position: relative;
 }
 
 .day-cell:nth-child(7n) {
@@ -784,10 +791,19 @@ includeSidebar('Agenda Geral');
     transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
+.event-chip--locked {
+    cursor: default;
+}
+
 .event-chip:hover {
     transform: translateY(-1px);
     box-shadow: 0 10px 18px rgba(37, 99, 235, 0.12);
     border-color: #93c5fd;
+}
+
+.event-chip--locked:hover {
+    transform: none;
+    box-shadow: none;
 }
 
 .event-chip--lisbon {
@@ -844,12 +860,53 @@ includeSidebar('Agenda Geral');
 }
 
 .event-more {
+    position: relative;
+}
+
+.event-more summary {
+    list-style: none;
     font-size: 0.73rem;
     color: #475569;
     background: #f8fafc;
     border: 1px dashed #cbd5e1;
     border-radius: 10px;
     padding: 0.45rem 0.55rem;
+    cursor: pointer;
+}
+
+.event-more summary::-webkit-details-marker {
+    display: none;
+}
+
+.event-more-popover {
+    position: absolute;
+    z-index: 30;
+    left: 0;
+    right: auto;
+    bottom: calc(100% + 0.45rem);
+    width: min(280px, calc(100vw - 2rem));
+    max-height: 360px;
+    overflow: auto;
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.55rem;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+}
+
+.day-cell:nth-child(7n) .event-more-popover,
+.day-cell:nth-child(7n - 1) .event-more-popover {
+    left: auto;
+    right: 0;
+}
+
+.event-more-popover-title {
+    font-size: 0.74rem;
+    font-weight: 800;
+    color: #334155;
+    padding: 0.1rem 0.15rem;
 }
 
 .agenda-empty {
@@ -1412,17 +1469,54 @@ a.event-function-card:hover {
                                     <?php
                                     $eventClass = agenda_eventos_color_class($evento);
                                     $horario = agenda_eventos_format_time($evento);
+                                    $eventChipClass = 'event-chip ' . $eventClass . (!$canViewEventDetails ? ' event-chip--locked' : '');
                                     ?>
-                                    <a class="event-chip <?= h($eventClass) ?>" href="index.php?page=agenda_eventos&evento_id=<?= (int)($evento['id'] ?? 0) ?>&mes=<?= h($mesSelecionado->format('Y-m')) ?>">
-                                        <div class="event-chip-time"><?= h($horario) ?></div>
-                                        <div class="event-chip-name"><?= h((string)($evento['nome_evento'] ?? 'Evento')) ?></div>
-                                        <div class="event-chip-meta"><?= h((string)($evento['local_evento'] ?? 'Local não informado')) ?></div>
-                                        <div class="event-chip-guests">Convidados: <?= (int)($evento['convidados'] ?? 0) ?></div>
-                                    </a>
+                                    <?php if ($canViewEventDetails): ?>
+                                        <a class="<?= h($eventChipClass) ?>" href="index.php?page=agenda_eventos&evento_id=<?= (int)($evento['id'] ?? 0) ?>&mes=<?= h($mesSelecionado->format('Y-m')) ?>">
+                                            <div class="event-chip-time"><?= h($horario) ?></div>
+                                            <div class="event-chip-name"><?= h((string)($evento['nome_evento'] ?? 'Evento')) ?></div>
+                                            <div class="event-chip-meta"><?= h((string)($evento['local_evento'] ?? 'Local não informado')) ?></div>
+                                            <div class="event-chip-guests">Convidados: <?= (int)($evento['convidados'] ?? 0) ?></div>
+                                        </a>
+                                    <?php else: ?>
+                                        <div class="<?= h($eventChipClass) ?>">
+                                            <div class="event-chip-time"><?= h($horario) ?></div>
+                                            <div class="event-chip-name"><?= h((string)($evento['nome_evento'] ?? 'Evento')) ?></div>
+                                            <div class="event-chip-meta"><?= h((string)($evento['local_evento'] ?? 'Local não informado')) ?></div>
+                                            <div class="event-chip-guests">Convidados: <?= (int)($evento['convidados'] ?? 0) ?></div>
+                                        </div>
+                                    <?php endif; ?>
                                 <?php endforeach; ?>
 
                                 <?php if (count($dayEvents) > 3): ?>
-                                    <div class="event-more">+<?= count($dayEvents) - 3 ?> evento(s) neste dia</div>
+                                    <details class="event-more">
+                                        <summary>+<?= count($dayEvents) - 3 ?> evento(s) neste dia</summary>
+                                        <div class="event-more-popover">
+                                            <div class="event-more-popover-title">Eventos ocultos</div>
+                                            <?php foreach (array_slice($dayEvents, 3) as $evento): ?>
+                                                <?php
+                                                $eventClass = agenda_eventos_color_class($evento);
+                                                $horario = agenda_eventos_format_time($evento);
+                                                $eventChipClass = 'event-chip ' . $eventClass . (!$canViewEventDetails ? ' event-chip--locked' : '');
+                                                ?>
+                                                <?php if ($canViewEventDetails): ?>
+                                                    <a class="<?= h($eventChipClass) ?>" href="index.php?page=agenda_eventos&evento_id=<?= (int)($evento['id'] ?? 0) ?>&mes=<?= h($mesSelecionado->format('Y-m')) ?>">
+                                                        <div class="event-chip-time"><?= h($horario) ?></div>
+                                                        <div class="event-chip-name"><?= h((string)($evento['nome_evento'] ?? 'Evento')) ?></div>
+                                                        <div class="event-chip-meta"><?= h((string)($evento['local_evento'] ?? 'Local não informado')) ?></div>
+                                                        <div class="event-chip-guests">Convidados: <?= (int)($evento['convidados'] ?? 0) ?></div>
+                                                    </a>
+                                                <?php else: ?>
+                                                    <div class="<?= h($eventChipClass) ?>">
+                                                        <div class="event-chip-time"><?= h($horario) ?></div>
+                                                        <div class="event-chip-name"><?= h((string)($evento['nome_evento'] ?? 'Evento')) ?></div>
+                                                        <div class="event-chip-meta"><?= h((string)($evento['local_evento'] ?? 'Local não informado')) ?></div>
+                                                        <div class="event-chip-guests">Convidados: <?= (int)($evento['convidados'] ?? 0) ?></div>
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </details>
                                 <?php endif; ?>
                             </div>
                         <?php endif; ?>

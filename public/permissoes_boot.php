@@ -30,7 +30,7 @@ try {
     // Logística (novo módulo)
     'perm_superadmin','perm_logistico','perm_logistico_divergencias','perm_logistico_financeiro',
     // Módulos principais da sidebar
-    'perm_pessoal','perm_agenda','perm_agenda_eventos','perm_comercial','perm_marketing','perm_configuracoes',
+    'perm_pessoal','perm_agenda','perm_agenda_eventos','perm_agenda_eventos_detalhes','perm_comercial','perm_marketing','perm_configuracoes',
     'perm_cadastros','perm_financeiro','perm_administrativo','perm_gerencia',
     'perm_vendas_administracao',
     'perm_smile_chat','perm_smile_chat_admin',
