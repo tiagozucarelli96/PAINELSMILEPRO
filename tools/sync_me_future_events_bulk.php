@@ -238,6 +238,24 @@ function sync_me_bulk_upsert_events(PDO $pdo, array $rows): int
     return count($rows);
 }
 
+function sync_me_bulk_archive_events(PDO $pdo, array $eventIds): int
+{
+    $eventIds = array_values(array_unique(array_filter(array_map('intval', $eventIds))));
+    if ($eventIds === []) {
+        return 0;
+    }
+
+    $placeholders = implode(', ', array_fill(0, count($eventIds), '?'));
+    $stmt = $pdo->prepare("
+        UPDATE logistica_eventos_espelho
+        SET arquivado = TRUE,
+            updated_at = NOW()
+        WHERE me_event_id IN ({$placeholders})
+    ");
+    $stmt->execute($eventIds);
+    return $stmt->rowCount();
+}
+
 function sync_me_bulk_client_rows(array $events): array
 {
     $rows = [];
@@ -420,11 +438,22 @@ $mappings = sync_me_bulk_load_mappings($pdo);
 
 $eventRows = [];
 $invalidEvents = [];
+$canceledEventIds = [];
 foreach ($fetch['events'] as $event) {
+    if (!is_array($event)) {
+        continue;
+    }
+
+    $eventId = (int)sync_me_bulk_pick($event, ['id', 'idevento', 'id_evento'], '0');
+    if ($eventId > 0 && eventos_me_evento_cancelado($event)) {
+        $canceledEventIds[] = $eventId;
+        continue;
+    }
+
     $row = sync_me_bulk_event_row($event, $mappings);
     if ($row === null) {
         $invalidEvents[] = [
-            'me_event_id' => (int)sync_me_bulk_pick($event, ['id', 'idevento', 'id_evento'], '0'),
+            'me_event_id' => $eventId,
             'nome_evento' => sync_me_bulk_pick($event, ['nomeevento', 'nome_evento', 'nome']),
         ];
         continue;
@@ -441,8 +470,10 @@ $summary = [
     'fetched' => count($fetch['events']),
     'valid_events' => count($eventRows),
     'invalid_events' => count($invalidEvents),
+    'canceled_events' => count(array_unique($canceledEventIds)),
     'unique_clients' => count($clientData['clients']),
     'events_upserted' => 0,
+    'events_archived' => 0,
     'clients_upserted' => 0,
     'events_linked' => 0,
     'errors' => count($fetch['errors']),
@@ -453,6 +484,7 @@ if (!$dryRun) {
     $pdo->beginTransaction();
     try {
         $summary['events_upserted'] = sync_me_bulk_upsert_events($pdo, $eventRows);
+        $summary['events_archived'] = sync_me_bulk_archive_events($pdo, $canceledEventIds);
         $clientMap = sync_me_bulk_upsert_clients($pdo, $clientData['clients']);
         $summary['clients_upserted'] = count($clientMap);
         $summary['events_linked'] = sync_me_bulk_link_events($pdo, $clientData['event_client'], $clientMap);

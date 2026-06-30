@@ -99,7 +99,9 @@ function processarWebhook($data) {
         
         // Status baseado no tipo de evento
         $status = 'ativo';
-        if ($webhook_tipo_original === 'event_canceled' || $webhook_tipo_original === 'event_deleted') {
+        require_once __DIR__ . '/eventos_me_helper.php';
+        $payload_cancelado = is_array($evento_data) && eventos_me_evento_cancelado($evento_data);
+        if ($webhook_tipo_original === 'event_canceled' || $webhook_tipo_original === 'event_deleted' || $payload_cancelado) {
             $status = 'cancelado';
         } elseif ($webhook_tipo_original === 'event_reactivated') {
             $status = 'ativo';

@@ -88,6 +88,39 @@ if (!function_exists('agenda_eventos_sync_time')) {
     }
 }
 
+if (!function_exists('agenda_eventos_sync_payload_cancelado')) {
+    function agenda_eventos_sync_payload_cancelado(array $data): bool
+    {
+        $status = strtolower(trim((string)agenda_eventos_sync_pick($data, [
+            'status',
+            'STATUS',
+            'statusevento',
+            'statusEvento',
+            'status_evento',
+            'situacao',
+            'situacaoevento',
+            'situacaoEvento',
+            'situacao_evento',
+        ], '')));
+
+        if ($status === '') {
+            return false;
+        }
+
+        if (in_array($status, ['cancelado', 'cancelada', 'canceled', 'cancelled', 'excluido', 'excluida', 'deleted', 'inativo', 'inactive', 'arquivado', 'archived'], true)) {
+            return true;
+        }
+
+        foreach (['cancel', 'exclu', 'delet', 'inativ', 'arquiv'] as $needle) {
+            if (strpos($status, $needle) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('agenda_eventos_sync_mapeamento')) {
     function agenda_eventos_sync_mapeamento(PDO $pdo, int $idLocalEvento, string $localEvento): ?array
     {
@@ -166,7 +199,7 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
         }
 
         $webhookEvent = strtolower(trim($webhookEvent));
-        if (in_array($webhookEvent, ['event_canceled', 'event_deleted', 'deleted'], true)) {
+        if (in_array($webhookEvent, ['event_canceled', 'event_deleted', 'deleted'], true) || agenda_eventos_sync_payload_cancelado($eventoData)) {
             $stmt = $pdo->prepare("
                 UPDATE logistica_eventos_espelho
                 SET arquivado = TRUE,
@@ -174,7 +207,7 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
                 WHERE me_event_id = :me_event_id
             ");
             $stmt->execute([':me_event_id' => $meEventId]);
-            return ['ok' => true, 'action' => 'archived', 'me_event_id' => $meEventId];
+            return ['ok' => true, 'action' => 'archived', 'me_event_id' => $meEventId, 'reason' => $webhookEvent ?: 'payload_status'];
         }
 
         $dataEvento = agenda_eventos_sync_date(agenda_eventos_sync_pick($eventoData, ['dataevento', 'data_evento', 'data']));
