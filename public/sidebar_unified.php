@@ -277,10 +277,19 @@ if ($current_page === 'dashboard') {
     $is_superadmin_dashboard = !empty($_SESSION['perm_superadmin']);
     $dashboard_can_view_event_notifications = $is_superadmin_dashboard || !empty($_SESSION['perm_notificacoes_eventos']);
     $dashboard_current_month = new DateTimeImmutable('now');
-    $dashboard_manual_sales_key = dashboardGetManualSalesKey($dashboard_current_month);
-    $dashboard_sales_goal_key = dashboardGetSalesGoalKey($dashboard_current_month);
-    $dashboard_manual_sales_feedback = null;
-    $dashboard_sales_goal_feedback = null;
+    $dashboard_previous_month = $dashboard_current_month->modify('first day of previous month');
+    $dashboard_months = [
+        'previous' => [
+            'label' => 'Mês anterior',
+            'date' => $dashboard_previous_month,
+        ],
+        'current' => [
+            'label' => 'Mês atual',
+            'date' => $dashboard_current_month,
+        ],
+    ];
+    $dashboard_sales_feedback = null;
+    $dashboard_sales_feedback_month = null;
     $dashboard_bypass_cache = false;
     
     $stats = [];
@@ -312,23 +321,40 @@ if ($current_page === 'dashboard') {
     if (
         $is_superadmin_dashboard &&
         ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' &&
-        ($_POST['action'] ?? '') === 'save_manual_vendas_realizadas'
+        ($_POST['action'] ?? '') === 'save_dashboard_sales_month'
     ) {
         try {
             dashboardEnsureConfigTable($pdo);
+            $posted_month = trim((string)($_POST['dashboard_sales_month'] ?? ''));
+            if (!preg_match('/^\d{4}-\d{2}$/', $posted_month)) {
+                throw new RuntimeException('Mês inválido para salvar metas da dashboard.');
+            }
+
+            $target_month = new DateTimeImmutable($posted_month . '-01');
             $manual_sales_value = max(0, (int)($_POST['vendas_realizadas_manual'] ?? 0));
+            $sales_goal_value = max(0, (int)($_POST['meta_vendas_manual'] ?? 0));
+
             dashboardSaveConfigValue(
                 $pdo,
-                $dashboard_manual_sales_key,
+                dashboardGetManualSalesKey($target_month),
                 (string)$manual_sales_value,
                 'Valor manual mensal do card Vendas Realizadas da dashboard',
                 'number'
             );
-            $dashboard_manual_sales_feedback = 'saved';
+            dashboardSaveConfigValue(
+                $pdo,
+                dashboardGetSalesGoalKey($target_month),
+                (string)$sales_goal_value,
+                'Valor manual mensal do card Meta de Vendas da dashboard',
+                'number'
+            );
+            $dashboard_sales_feedback = 'saved';
+            $dashboard_sales_feedback_month = $target_month->format('Y-m');
             $dashboard_bypass_cache = true;
         } catch (Throwable $e) {
-            error_log('[SIDEBAR] Erro ao salvar vendas realizadas manualmente: ' . $e->getMessage());
-            $dashboard_manual_sales_feedback = 'error';
+            error_log('[SIDEBAR] Erro ao salvar meta e vendas da dashboard: ' . $e->getMessage());
+            $dashboard_sales_feedback = 'error';
+            $dashboard_sales_feedback_month = trim((string)($_POST['dashboard_sales_month'] ?? ''));
             $dashboard_bypass_cache = true;
         }
     }
@@ -342,35 +368,13 @@ if ($current_page === 'dashboard') {
         }
     }
 
-    if (
-        $is_superadmin_dashboard &&
-        ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' &&
-        ($_POST['action'] ?? '') === 'save_meta_vendas'
-    ) {
-        try {
-            dashboardEnsureConfigTable($pdo);
-            $sales_goal_value = max(0, (int)($_POST['meta_vendas_manual'] ?? 0));
-            dashboardSaveConfigValue(
-                $pdo,
-                $dashboard_sales_goal_key,
-                (string)$sales_goal_value,
-                'Valor manual mensal do card Meta de Vendas da dashboard',
-                'number'
-            );
-            $dashboard_sales_goal_feedback = 'saved';
-            $dashboard_bypass_cache = true;
-        } catch (Throwable $e) {
-            error_log('[SIDEBAR] Erro ao salvar meta de vendas manualmente: ' . $e->getMessage());
-            $dashboard_sales_goal_feedback = 'error';
-            $dashboard_bypass_cache = true;
-        }
-    }
-
-    $dashboard_stats_cache_key = 'stats:v2:' . $dashboard_current_month->format('Y-m') . ':' . ($is_superadmin_dashboard ? '1' : '0');
+    $dashboard_stats_cache_key = 'stats:v3:' . $dashboard_previous_month->format('Y-m') . ':' . $dashboard_current_month->format('Y-m') . ':' . ($is_superadmin_dashboard ? '1' : '0');
     $cached_stats = $dashboard_bypass_cache ? null : dashboardCacheRead($dashboard_stats_cache_key, 60);
     if (is_array($cached_stats)) {
         $stats = $cached_stats;
         $stats['meta_vendas'] = max(0, (int)($stats['meta_vendas'] ?? 0));
+        $stats['vendas_realizadas'] = max(0, (int)($stats['vendas_realizadas'] ?? 0));
+        $dashboard_sales_months = is_array($stats['sales_months'] ?? null) ? $stats['sales_months'] : [];
         $stats['visitas_realizadas'] = max(0, (int)($stats['visitas_realizadas'] ?? 0));
         $stats['fechamentos_realizados'] = (float)($stats['fechamentos_realizados'] ?? 0);
     } else {
@@ -387,8 +391,25 @@ if ($current_page === 'dashboard') {
             $stats['inscritos_degustacao'] = $stmt->fetchColumn() ?: 0;
 
             dashboardEnsureConfigTable($pdo);
-            $stats['vendas_realizadas'] = dashboardReadConfigIntValue($pdo, $dashboard_manual_sales_key);
-            $stats['meta_vendas'] = dashboardReadConfigIntValue($pdo, $dashboard_sales_goal_key);
+            $dashboard_sales_months = [];
+            foreach ($dashboard_months as $month_id => $month_info) {
+                $month_date = $month_info['date'];
+                $month_sales = dashboardReadConfigIntValue($pdo, dashboardGetManualSalesKey($month_date));
+                $month_goal = dashboardReadConfigIntValue($pdo, dashboardGetSalesGoalKey($month_date));
+                $dashboard_sales_months[$month_id] = [
+                    'id' => $month_id,
+                    'label' => $month_info['label'],
+                    'month_key' => $month_date->format('Y-m'),
+                    'month_label' => $month_date->format('m/Y'),
+                    'sales' => $month_sales,
+                    'goal' => $month_goal,
+                    'difference' => $month_sales - $month_goal,
+                    'hit_goal' => $month_goal > 0 && $month_sales >= $month_goal,
+                ];
+            }
+            $stats['sales_months'] = $dashboard_sales_months;
+            $stats['vendas_realizadas'] = (int)($dashboard_sales_months['current']['sales'] ?? 0);
+            $stats['meta_vendas'] = (int)($dashboard_sales_months['current']['goal'] ?? 0);
 
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) as total 
@@ -418,7 +439,26 @@ if ($current_page === 'dashboard') {
                 'vendas_realizadas' => 0,
                 'meta_vendas' => 0,
                 'visitas_realizadas' => 0,
-                'fechamentos_realizados' => 0
+                'fechamentos_realizados' => 0,
+                'sales_months' => []
+            ];
+            $dashboard_sales_months = [];
+        }
+    }
+
+    if (empty($dashboard_sales_months)) {
+        $dashboard_sales_months = [];
+        foreach ($dashboard_months as $month_id => $month_info) {
+            $month_date = $month_info['date'];
+            $dashboard_sales_months[$month_id] = [
+                'id' => $month_id,
+                'label' => $month_info['label'],
+                'month_key' => $month_date->format('Y-m'),
+                'month_label' => $month_date->format('m/Y'),
+                'sales' => 0,
+                'goal' => 0,
+                'difference' => 0,
+                'hit_goal' => false,
             ];
         }
     }
@@ -594,6 +634,82 @@ if ($current_page === 'dashboard') {
             $demandas_hoje = [];
         }
     }
+
+    $dashboard_sales_rows_html = '';
+    foreach ($dashboard_sales_months as $month_data) {
+        $month_key = (string)($month_data['month_key'] ?? '');
+        $month_label = htmlspecialchars((string)($month_data['month_label'] ?? ''));
+        $month_title = htmlspecialchars((string)($month_data['label'] ?? 'Mês'));
+        $month_sales = max(0, (int)($month_data['sales'] ?? 0));
+        $month_goal = max(0, (int)($month_data['goal'] ?? 0));
+        $difference = $month_sales - $month_goal;
+        $goal_defined = $month_goal > 0;
+        $hit_goal = $goal_defined && $difference >= 0;
+        $status_class = !$goal_defined ? 'neutral' : ($hit_goal ? 'success' : 'warning');
+        $status_text = !$goal_defined ? 'Meta não definida' : ($hit_goal ? 'Meta batida' : 'Abaixo da meta');
+        $difference_text = $difference === 0
+            ? '0'
+            : (($difference > 0 ? '+' : '') . (string)$difference);
+
+        $dashboard_sales_rows_html .= '
+            <div class="sales-month-row ' . $status_class . '">
+                <div class="sales-month-summary">
+                    <div>
+                        <div class="sales-month-title">' . $month_title . '</div>
+                        <div class="sales-month-subtitle">' . $month_label . '</div>
+                    </div>
+                    <span class="sales-month-badge ' . $status_class . '">' . htmlspecialchars($status_text) . '</span>
+                </div>
+                <div class="sales-month-numbers">
+                    <div>
+                        <span>Vendas</span>
+                        <strong>' . $month_sales . '</strong>
+                    </div>
+                    <div>
+                        <span>Meta</span>
+                        <strong>' . $month_goal . '</strong>
+                    </div>
+                    <div>
+                        <span>Diferença</span>
+                        <strong>' . htmlspecialchars($difference_text) . '</strong>
+                    </div>
+                </div>
+                ' . ($is_superadmin_dashboard ? '
+                <form class="sales-month-form" method="POST">
+                    <input type="hidden" name="action" value="save_dashboard_sales_month">
+                    <input type="hidden" name="dashboard_sales_month" value="' . htmlspecialchars($month_key) . '">
+                    <label>
+                        <span>Vendas</span>
+                        <input type="number" name="vendas_realizadas_manual" min="0" step="1" value="' . $month_sales . '" aria-label="Vendas realizadas de ' . $month_label . '">
+                    </label>
+                    <label>
+                        <span>Meta</span>
+                        <input type="number" name="meta_vendas_manual" min="0" step="1" value="' . $month_goal . '" aria-label="Meta de vendas de ' . $month_label . '">
+                    </label>
+                    <button type="submit">Salvar</button>
+                    ' . ($dashboard_sales_feedback_month === $month_key
+                        ? ($dashboard_sales_feedback === 'saved'
+                            ? '<div class="metric-card-feedback">Valores atualizados.</div>'
+                            : ($dashboard_sales_feedback === 'error'
+                                ? '<div class="metric-card-feedback error">Erro ao salvar.</div>'
+                                : ''))
+                        : '') . '
+                </form>
+                ' : '') . '
+            </div>';
+    }
+
+    $dashboard_sales_goal_card_html = '
+            <div class="metric-card sales-goal-card">
+                <div class="metric-icon">🎯</div>
+                <div class="metric-content">
+                    <h3>Meta x Vendas</h3>
+                    <p>Mês anterior e atual</p>
+                    <div class="sales-month-list">
+                        ' . $dashboard_sales_rows_html . '
+                    </div>
+                </div>
+            </div>';
     
     $dashboard_content = '
     <style>
@@ -659,6 +775,123 @@ if ($current_page === 'dashboard') {
     }
     .metric-card-feedback.error {
         color: #b91c1c;
+    }
+    .sales-goal-card {
+        grid-column: span 2;
+    }
+    .sales-goal-card .metric-content h3 {
+        font-size: 1.25rem;
+    }
+    .sales-month-list {
+        display: grid;
+        gap: 0.85rem;
+        margin-top: 0.7rem;
+    }
+    .sales-month-row {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.85rem;
+        background: #f8fafc;
+    }
+    .sales-month-row.success {
+        border-color: #bbf7d0;
+        background: #f0fdf4;
+    }
+    .sales-month-row.warning {
+        border-color: #fde68a;
+        background: #fffbeb;
+    }
+    .sales-month-summary {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: flex-start;
+        margin-bottom: 0.7rem;
+    }
+    .sales-month-title {
+        color: #0f172a;
+        font-size: 0.95rem;
+        font-weight: 800;
+    }
+    .sales-month-subtitle {
+        color: #64748b;
+        font-size: 0.78rem;
+        margin-top: 0.15rem;
+    }
+    .sales-month-badge {
+        border-radius: 999px;
+        padding: 0.25rem 0.55rem;
+        font-size: 0.72rem;
+        font-weight: 800;
+        white-space: nowrap;
+        color: #475569;
+        background: #e2e8f0;
+    }
+    .sales-month-badge.success {
+        color: #047857;
+        background: #dcfce7;
+    }
+    .sales-month-badge.warning {
+        color: #92400e;
+        background: #fef3c7;
+    }
+    .sales-month-numbers {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.55rem;
+    }
+    .sales-month-numbers div {
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.7);
+        padding: 0.55rem;
+    }
+    .sales-month-numbers span,
+    .sales-month-form span {
+        display: block;
+        color: #64748b;
+        font-size: 0.72rem;
+        font-weight: 700;
+        margin-bottom: 0.15rem;
+    }
+    .sales-month-numbers strong {
+        color: #0f172a;
+        font-size: 1rem;
+        line-height: 1.1;
+    }
+    .sales-month-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+        gap: 0.55rem;
+        align-items: end;
+        margin-top: 0.75rem;
+    }
+    .sales-month-form label {
+        min-width: 0;
+    }
+    .sales-month-form input[type="number"] {
+        width: 100%;
+        min-width: 0;
+        padding: 0.48rem 0.55rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        font-size: 0.85rem;
+        background: #fff;
+    }
+    .sales-month-form button {
+        border: none;
+        border-radius: 10px;
+        background: #1d4ed8;
+        color: #fff;
+        padding: 0.52rem 0.85rem;
+        font-size: 0.82rem;
+        font-weight: 800;
+        cursor: pointer;
+        min-height: 2.25rem;
+    }
+    .sales-month-form .metric-card-feedback {
+        grid-column: 1 / -1;
+        margin-top: 0;
     }
     .avisos-list {
         display: grid;
@@ -844,6 +1077,15 @@ if ($current_page === 'dashboard') {
         }
     }
     @media (max-width: 720px) {
+        .sales-goal-card {
+            grid-column: span 1;
+        }
+        .sales-month-numbers {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .sales-month-form {
+            grid-template-columns: 1fr;
+        }
         .evento-notificacao-item {
             grid-template-columns: minmax(0, 1fr) auto;
         }
@@ -872,54 +1114,8 @@ if ($current_page === 'dashboard') {
                 </div>
             </div>
             
-            <div class="metric-card">
-                <div class="metric-icon">🎉</div>
-                <div class="metric-content">
-                    <h3>' . $stats['vendas_realizadas'] . '</h3>
-                    <p>Vendas Realizadas</p>
-                    ' . ($is_superadmin_dashboard ? '
-                    <div class="metric-card-form">
-                        <form method="POST">
-                            <input type="hidden" name="action" value="save_manual_vendas_realizadas">
-                            <input type="number" name="vendas_realizadas_manual" min="0" step="1" value="' . (int)$stats['vendas_realizadas'] . '" aria-label="Vendas realizadas do mês">
-                            <button type="submit">Salvar</button>
-                        </form>
-                        <small>Valor manual de ' . htmlspecialchars($dashboard_current_month->format('m/Y')) . '.</small>
-                        ' . ($dashboard_manual_sales_feedback === 'saved'
-                            ? '<div class="metric-card-feedback">Valor atualizado.</div>'
-                            : ($dashboard_manual_sales_feedback === 'error'
-                                ? '<div class="metric-card-feedback error">Erro ao salvar.</div>'
-                                : '')) . '
-                    </div>
-                    ' : '') . '
-                </div>
-            </div>
-            
-            <div class="metric-card">
-                <div class="metric-icon">🎯</div>
-                <div class="metric-content">
-                    <h3>' . $stats['meta_vendas'] . '</h3>
-                    <p>Meta de Vendas</p>
-                    ' . ($is_superadmin_dashboard ? '
-                    <div class="metric-card-form">
-                        <form method="POST">
-                            <input type="hidden" name="action" value="save_meta_vendas">
-                            <input type="number" name="meta_vendas_manual" min="0" step="1" value="' . (int)$stats['meta_vendas'] . '" aria-label="Meta de vendas do mês">
-                            <button type="submit">Salvar</button>
-                        </form>
-                        <small>Valor manual de ' . htmlspecialchars($dashboard_current_month->format('m/Y')) . '.</small>
-                        ' . ($dashboard_sales_goal_feedback === 'saved'
-                            ? '<div class="metric-card-feedback">Valor atualizado.</div>'
-                            : ($dashboard_sales_goal_feedback === 'error'
-                                ? '<div class="metric-card-feedback error">Erro ao salvar.</div>'
-                                : '')) . '
-                    </div>
-                    ' : '
-                    <small>Valor mensal definido pela administração.</small>
-                    ') . '
-                </div>
-            </div>
-            
+            ' . $dashboard_sales_goal_card_html . '
+
             <div class="metric-card">
                 <div class="metric-icon">✅</div>
                 <div class="metric-content">

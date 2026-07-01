@@ -625,12 +625,18 @@ if ($_POST && !$inscricoes_encerradas) {
             }
         }
 
-        // Usar mensagem personalizada se configurada, senão usar mensagem padrão
-        if (!empty($degustacao['msg_sucesso_html'])) {
-            $success_message = $degustacao['msg_sucesso_html'];
-        } else {
-        $success_message = "Inscrição realizada com sucesso!";
-        }
+        $success_message = '
+            <h2 style="margin: 0 0 1rem 0; color: #111827; font-size: 1.5rem;">Inscrição realizada com sucesso!</h2>
+            <p style="margin: 0 0 1rem 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">
+                Recebemos sua inscrição para a Degustação do Grupo Smile Eventos.
+            </p>
+            <p style="margin: 0 0 1rem 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">
+                Como não há valor pendente nesta inscrição, não é necessário realizar pagamento nem enviar comprovante.
+            </p>
+            <p style="margin: 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">
+                Sua presença está registrada. Estamos preparando uma experiência especial para recebê-lo em breve.
+            </p>
+        ';
 
     } catch (Exception $e) {
         $error_message = "Erro: " . $e->getMessage();
@@ -994,10 +1000,10 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 <?php endif; ?>
             </div>
             <div class="confirmacao-mensagem">
-                <?php if (!empty($degustacao['msg_sucesso_html'])): ?>
-                    <?= $degustacao['msg_sucesso_html'] ?>
+                <?php if (!empty($success_message)): ?>
+                    <?= $success_message ?>
                 <?php else: ?>
-                    <p style="margin: 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">✅ <?= h($success_message) ?></p>
+                    <p style="margin: 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">✅ Inscrição realizada com sucesso!</p>
                 <?php endif; ?>
             </div>
         </div>
