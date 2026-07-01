@@ -63,6 +63,7 @@ return [
     'comercial_degust_inscritos' => 'perm_comercial',
     'comercial_degust_inscricoes' => 'perm_comercial',
     'comercial_degustacao_editar' => 'perm_comercial',
+    'comercial_novo_evento' => 'perm_comercial',
     'comercial_cadastro_cliente' => 'perm_comercial',
     'comercial_clientes_cadastrados' => 'perm_comercial',
     'comercial_clientes' => 'perm_comercial',

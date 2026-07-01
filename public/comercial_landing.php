@@ -597,6 +597,27 @@ includeSidebar('Comercial');
             </div>
         </div>
         
+        <!-- Novo Evento -->
+        <a href="index.php?page=comercial_novo_evento" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #155e75);">
+                <span class="funcionalidade-card-icon">🗓️</span>
+                <div class="funcionalidade-card-title">Novo Evento</div>
+                <div class="funcionalidade-card-subtitle">Criar evento direto no painel</div>
+            </div>
+            <div class="funcionalidade-card-content">
+                <div class="funcionalidade-card-item">
+                    <span class="funcionalidade-item-icon">➕</span>
+                    <span class="funcionalidade-item-text">Cadastrar novo evento</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </div>
+                <div class="funcionalidade-card-item">
+                    <span class="funcionalidade-item-icon">👤</span>
+                    <span class="funcionalidade-item-text">Vincular cliente e dados comerciais</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </div>
+            </div>
+        </a>
+
         <!-- Clientes -->
         <div class="funcionalidade-card" style="cursor: default;">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">

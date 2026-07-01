@@ -298,6 +298,7 @@ $routes = [
   'comercial_degust_inscricoes' => 'comercial_degust_inscricoes.php',
   'comercial_degustacao_editar' => 'comercial_degustacao_editar.php',
   'comercial_degust_public' => 'comercial_degust_public.php',
+  'comercial_novo_evento' => 'comercial_novo_evento.php',
   'comercial_cadastro_cliente' => 'comercial_cadastro_cliente.php',
   'comercial_clientes_cadastrados' => 'comercial_clientes_cadastrados.php',
   'comercial_clientes' => 'comercial_clientes.php',
