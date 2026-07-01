@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/eventos_reuniao_helper.php';
 
 if (empty($_SESSION['perm_comercial']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -54,6 +55,7 @@ function comercial_novo_evento_ensure_schema(PDO $pdo): void
                 cliente_cadastro_id BIGINT NULL REFERENCES comercial_cadastro_clientes(id) ON DELETE SET NULL,
                 local_evento TEXT NOT NULL,
                 nome_evento TEXT NOT NULL,
+                tipo_evento_real VARCHAR(24) NULL,
                 data_venda DATE NOT NULL DEFAULT CURRENT_DATE,
                 data_evento DATE NOT NULL,
                 hora_inicio TIME NOT NULL,
@@ -66,6 +68,7 @@ function comercial_novo_evento_ensure_schema(PDO $pdo): void
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
         ");
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_eventos_painel ADD COLUMN IF NOT EXISTS tipo_evento_real VARCHAR(24) NULL");
         $pdo->exec("ALTER TABLE IF EXISTS comercial_eventos_painel ADD COLUMN IF NOT EXISTS data_venda DATE NOT NULL DEFAULT CURRENT_DATE");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_eventos_painel_espelho ON comercial_eventos_painel (espelho_evento_id)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_eventos_painel_cliente ON comercial_eventos_painel (cliente_cadastro_id)");
@@ -154,6 +157,22 @@ function comercial_novo_evento_clientes(PDO $pdo): array
     } catch (Throwable $e) {
         error_log('Falha ao carregar clientes para novo evento: ' . $e->getMessage());
         return [];
+    }
+}
+
+function comercial_novo_evento_tipos_evento(PDO $pdo): array
+{
+    try {
+        return eventos_reuniao_tipos_evento_real_options($pdo, false);
+    } catch (Throwable $e) {
+        error_log('Falha ao carregar tipos de evento no novo evento: ' . $e->getMessage());
+        $fallback = [];
+        foreach (eventos_reuniao_tipos_evento_real_defaults() as $key => $meta) {
+            if (!empty($meta['ativo'])) {
+                $fallback[$key] = (string)($meta['label'] ?? $key);
+            }
+        }
+        return $fallback;
     }
 }
 
@@ -276,6 +295,7 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_client_inl
 
 $locais = comercial_novo_evento_locais($pdo);
 $clientes = comercial_novo_evento_clientes($pdo);
+$tiposEvento = comercial_novo_evento_tipos_evento($pdo);
 $comoConheceuOptions = [
     'Instagram',
     'Google',
@@ -313,6 +333,7 @@ $errors = [];
 $old = [
     'local_key' => $_POST['local_key'] ?? '',
     'nome_evento' => trim((string)($_POST['nome_evento'] ?? '')),
+    'tipo_evento_real' => eventos_reuniao_normalizar_tipo_evento_real((string)($_POST['tipo_evento_real'] ?? ''), $pdo),
     'data_venda' => $_POST['data_venda'] ?? date('Y-m-d'),
     'data_evento' => $_POST['data_evento'] ?? '',
     'hora_inicio' => $_POST['hora_inicio'] ?? '',
@@ -351,6 +372,9 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     }
     if ($old['nome_evento'] === '') {
         $errors[] = 'Informe o nome do evento.';
+    }
+    if ($old['tipo_evento_real'] === '' || !isset($tiposEvento[$old['tipo_evento_real']])) {
+        $errors[] = 'Selecione o tipo de evento.';
     }
     if ($old['data_venda'] === '') {
         $errors[] = 'Informe a data da venda.';
@@ -406,11 +430,11 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
             $stmt = $pdo->prepare("
                 INSERT INTO comercial_eventos_painel (
                     espelho_evento_id, cliente_cadastro_id, local_evento, nome_evento,
-                    data_venda, data_evento, hora_inicio, hora_fim, como_conheceu, convidados,
+                    tipo_evento_real, data_venda, data_evento, hora_inicio, hora_fim, como_conheceu, convidados,
                     created_by, updated_at
                 ) VALUES (
                     :espelho_evento_id, :cliente_id, :local_evento, :nome_evento,
-                    :data_venda, :data_evento, :hora_inicio, :hora_fim, :como_conheceu, :convidados,
+                    :tipo_evento_real, :data_venda, :data_evento, :hora_inicio, :hora_fim, :como_conheceu, :convidados,
                     :created_by, NOW()
                 )
             ");
@@ -419,6 +443,7 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
                 ':cliente_id' => $clienteId,
                 ':local_evento' => $local['localevento'],
                 ':nome_evento' => $old['nome_evento'],
+                ':tipo_evento_real' => $old['tipo_evento_real'],
                 ':data_venda' => $old['data_venda'],
                 ':data_evento' => $old['data_evento'],
                 ':hora_inicio' => $old['hora_inicio'],
@@ -541,6 +566,23 @@ includeSidebar('Novo Evento');
 .field.full {
     grid-column: 1 / -1;
 }
+.form-section {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0 4px;
+    margin-top: 4px;
+    color: #1e3a8a;
+    font-weight: 900;
+    font-size: 0.98rem;
+}
+.form-section::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: #dbe3ef;
+}
 .field label {
     color: #334155;
     font-weight: 800;
@@ -574,6 +616,13 @@ includeSidebar('Novo Evento');
     padding-top: 22px;
     margin-top: 20px;
     border-top: 1px solid #e5edf6;
+}
+.novo-evento-help {
+    display: block;
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 0.84rem;
+    font-weight: 600;
 }
 .alert {
     margin-bottom: 14px;
@@ -712,6 +761,7 @@ includeSidebar('Novo Evento');
         <form class="novo-evento-form" method="post" autocomplete="off">
             <input type="hidden" name="action" value="create_event">
             <div class="form-grid">
+                <div class="form-section">Evento</div>
                 <div class="field">
                     <label for="local_key">Local do evento</label>
                     <select id="local_key" name="local_key" required>
@@ -728,6 +778,18 @@ includeSidebar('Novo Evento');
                     <input id="nome_evento" name="nome_evento" type="text" value="<?= comercial_novo_evento_e($old['nome_evento']) ?>" required>
                 </div>
                 <div class="field">
+                    <label for="tipo_evento_real">Tipo de evento</label>
+                    <select id="tipo_evento_real" name="tipo_evento_real" required>
+                        <option value="">Selecione...</option>
+                        <?php foreach ($tiposEvento as $tipoKey => $tipoLabel): ?>
+                            <option value="<?= comercial_novo_evento_e($tipoKey) ?>" <?= $old['tipo_evento_real'] === (string)$tipoKey ? 'selected' : '' ?>>
+                                <?= comercial_novo_evento_e($tipoLabel) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="novo-evento-help">Usa os tipos cadastrados em Configurações.</span>
+                </div>
+                <div class="field">
                     <label for="data_venda">Data da venda</label>
                     <input id="data_venda" name="data_venda" type="date" value="<?= comercial_novo_evento_e($old['data_venda']) ?>" required>
                 </div>
@@ -742,6 +804,7 @@ includeSidebar('Novo Evento');
                         <input name="hora_fim" type="time" value="<?= comercial_novo_evento_e($old['hora_fim']) ?>" required aria-label="Horário de término">
                     </div>
                 </div>
+                <div class="form-section">Cliente</div>
                 <div class="field full">
                     <label for="cliente_search">Cliente</label>
                     <div>
@@ -755,6 +818,7 @@ includeSidebar('Novo Evento');
                     </div>
                     <a class="btn btn-link" href="#cliente-modal" id="open-client-modal">+ Adicionar novo cliente</a>
                 </div>
+                <div class="form-section">Comercial</div>
                 <div class="field">
                     <label for="como_conheceu">Como nos conheceu?</label>
                     <select id="como_conheceu" name="como_conheceu">
