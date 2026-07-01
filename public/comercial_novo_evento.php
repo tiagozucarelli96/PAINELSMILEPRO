@@ -188,41 +188,71 @@ function comercial_novo_evento_json(array $payload, int $status = 200): void
     exit;
 }
 
+function comercial_novo_evento_client_payload(array $source): array
+{
+    return [
+        'nome' => trim((string)($source['nome_completo'] ?? '')),
+        'telefone' => trim((string)($source['telefone_whatsapp'] ?? '')),
+        'email' => trim((string)($source['email'] ?? '')),
+        'documento' => comercial_novo_evento_digits($source['documento_numero'] ?? ''),
+        'rg' => trim((string)($source['rg'] ?? '')),
+        'cep' => trim((string)($source['cep'] ?? '')),
+        'endereco_numero' => trim((string)($source['endereco_numero'] ?? '')),
+        'endereco_complemento' => trim((string)($source['endereco_complemento'] ?? '')),
+        'endereco_logradouro' => trim((string)($source['endereco_logradouro'] ?? '')),
+        'endereco_bairro' => trim((string)($source['endereco_bairro'] ?? '')),
+        'endereco_cidade' => trim((string)($source['endereco_cidade'] ?? '')),
+        'endereco_estado' => mb_strtoupper(trim((string)($source['endereco_estado'] ?? '')), 'UTF-8'),
+    ];
+}
+
+function comercial_novo_evento_insert_client(PDO $pdo, array $data): array
+{
+    $stmt = $pdo->prepare("
+        INSERT INTO comercial_cadastro_clientes (
+            tipo_pessoa, nome_completo, email, telefone_whatsapp, documento_tipo,
+            documento_numero, rg, cep, endereco_logradouro, endereco_numero,
+            endereco_complemento, endereco_bairro, endereco_cidade, endereco_estado,
+            origem_cliente, origem_importacao, created_by, created_at, updated_at
+        ) VALUES (
+            'PF', :nome, :email, :telefone, 'CPF',
+            :documento, :rg, :cep, :endereco_logradouro, :endereco_numero,
+            :endereco_complemento, :endereco_bairro, :endereco_cidade, :endereco_estado,
+            'Novo evento', 'painel', :created_by, NOW(), NOW()
+        )
+        RETURNING id, nome_completo, email, telefone_whatsapp, documento_numero
+    ");
+    $stmt->execute([
+        ':nome' => $data['nome'],
+        ':email' => $data['email'],
+        ':telefone' => $data['telefone'],
+        ':documento' => $data['documento'],
+        ':rg' => $data['rg'],
+        ':cep' => $data['cep'],
+        ':endereco_logradouro' => $data['endereco_logradouro'],
+        ':endereco_numero' => $data['endereco_numero'],
+        ':endereco_complemento' => $data['endereco_complemento'],
+        ':endereco_bairro' => $data['endereco_bairro'],
+        ':endereco_cidade' => $data['endereco_cidade'],
+        ':endereco_estado' => $data['endereco_estado'],
+        ':created_by' => $_SESSION['usuario_id'] ?? $_SESSION['id'] ?? null,
+    ]);
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+}
+
 comercial_novo_evento_ensure_schema($pdo);
 
 $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'ajax_create_client') {
-    $nome = trim((string)($_POST['nome_completo'] ?? ''));
-    $telefone = trim((string)($_POST['telefone_whatsapp'] ?? ''));
-    $email = trim((string)($_POST['email'] ?? ''));
-    $documento = comercial_novo_evento_digits($_POST['documento_numero'] ?? '');
+    $clientData = comercial_novo_evento_client_payload($_POST);
 
-    if ($nome === '') {
+    if ($clientData['nome'] === '') {
         comercial_novo_evento_json(['ok' => false, 'message' => 'Informe o nome do cliente.'], 422);
     }
 
     try {
-        $stmt = $pdo->prepare("
-            INSERT INTO comercial_cadastro_clientes (
-                tipo_pessoa, nome_completo, email, telefone_whatsapp, documento_tipo,
-                documento_numero, origem_cliente, origem_importacao, created_by,
-                created_at, updated_at
-            ) VALUES (
-                'PF', :nome, :email, :telefone, 'CPF',
-                :documento, 'Novo evento', 'painel', :created_by,
-                NOW(), NOW()
-            )
-            RETURNING id, nome_completo, email, telefone_whatsapp, documento_numero
-        ");
-        $stmt->execute([
-            ':nome' => $nome,
-            ':email' => $email,
-            ':telefone' => $telefone,
-            ':documento' => $documento,
-            ':created_by' => $_SESSION['usuario_id'] ?? $_SESSION['id'] ?? null,
-        ]);
-        comercial_novo_evento_json(['ok' => true, 'client' => $stmt->fetch(PDO::FETCH_ASSOC)]);
+        comercial_novo_evento_json(['ok' => true, 'client' => comercial_novo_evento_insert_client($pdo, $clientData)]);
     } catch (Throwable $e) {
         error_log('Falha ao cadastrar cliente no novo evento: ' . $e->getMessage());
         comercial_novo_evento_json(['ok' => false, 'message' => 'Não foi possível cadastrar o cliente.'], 500);
@@ -230,33 +260,12 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'ajax_create_clien
 }
 
 if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_client_inline') {
-    $nome = trim((string)($_POST['nome_completo'] ?? ''));
-    $telefone = trim((string)($_POST['telefone_whatsapp'] ?? ''));
-    $email = trim((string)($_POST['email'] ?? ''));
-    $documento = comercial_novo_evento_digits($_POST['documento_numero'] ?? '');
+    $clientData = comercial_novo_evento_client_payload($_POST);
 
-    if ($nome !== '') {
+    if ($clientData['nome'] !== '') {
         try {
-            $stmt = $pdo->prepare("
-                INSERT INTO comercial_cadastro_clientes (
-                    tipo_pessoa, nome_completo, email, telefone_whatsapp, documento_tipo,
-                    documento_numero, origem_cliente, origem_importacao, created_by,
-                    created_at, updated_at
-                ) VALUES (
-                    'PF', :nome, :email, :telefone, 'CPF',
-                    :documento, 'Novo evento', 'painel', :created_by,
-                    NOW(), NOW()
-                )
-                RETURNING id
-            ");
-            $stmt->execute([
-                ':nome' => $nome,
-                ':email' => $email,
-                ':telefone' => $telefone,
-                ':documento' => $documento,
-                ':created_by' => $_SESSION['usuario_id'] ?? $_SESSION['id'] ?? null,
-            ]);
-            $clienteNovoId = (int)$stmt->fetchColumn();
+            $clienteNovo = comercial_novo_evento_insert_client($pdo, $clientData);
+            $clienteNovoId = (int)($clienteNovo['id'] ?? 0);
             header('Location: index.php?page=comercial_novo_evento&cliente_id=' . $clienteNovoId);
             exit;
         } catch (Throwable $e) {
@@ -592,7 +601,10 @@ includeSidebar('Novo Evento');
     display: flex;
 }
 .cliente-modal {
-    width: min(720px, 100%);
+    width: min(860px, 100%);
+    max-height: calc(100vh - 44px);
+    display: flex;
+    flex-direction: column;
     background: #fff;
     border-radius: 14px;
     overflow: hidden;
@@ -623,11 +635,30 @@ includeSidebar('Novo Evento');
 }
 .cliente-modal-body {
     padding: 20px;
+    overflow-y: auto;
 }
 .cliente-modal-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
+}
+.cliente-modal-section {
+    grid-column: 1 / -1;
+    color: #1e3a8a;
+    font-weight: 900;
+    border-bottom: 1px solid #e5edf6;
+    padding-top: 4px;
+    padding-bottom: 8px;
+}
+.cliente-modal-grid .span-2 {
+    grid-column: span 2;
+}
+.cliente-modal-grid .span-3 {
+    grid-column: span 3;
+}
+.cliente-modal-grid.is-address {
+    grid-template-columns: 1fr 0.6fr 1fr;
+    margin-top: 16px;
 }
 .cliente-modal-footer {
     display: flex;
@@ -644,8 +675,13 @@ includeSidebar('Novo Evento');
     }
     .form-grid,
     .time-range,
+    .cliente-modal-grid.is-address,
     .cliente-modal-grid {
         grid-template-columns: 1fr;
+    }
+    .cliente-modal-grid .span-2,
+    .cliente-modal-grid .span-3 {
+        grid-column: 1;
     }
 }
 </style>
@@ -754,9 +790,18 @@ includeSidebar('Novo Evento');
             <div class="cliente-modal-body">
                 <div class="alert alert-error" id="client-modal-error" style="display: none;"></div>
                 <div class="cliente-modal-grid">
+                    <div class="cliente-modal-section">Dados do cliente</div>
                     <div class="field full">
                         <label for="modal_nome_completo">Nome completo</label>
                         <input id="modal_nome_completo" name="nome_completo" type="text" required>
+                    </div>
+                    <div class="field">
+                        <label for="modal_documento">CPF</label>
+                        <input id="modal_documento" name="documento_numero" type="text">
+                    </div>
+                    <div class="field">
+                        <label for="modal_rg">RG</label>
+                        <input id="modal_rg" name="rg" type="text">
                     </div>
                     <div class="field">
                         <label for="modal_telefone">Telefone / WhatsApp</label>
@@ -766,9 +811,36 @@ includeSidebar('Novo Evento');
                         <label for="modal_email">E-mail</label>
                         <input id="modal_email" name="email" type="email">
                     </div>
+                </div>
+                <div class="cliente-modal-grid is-address">
+                    <div class="cliente-modal-section">Endereço</div>
                     <div class="field">
-                        <label for="modal_documento">CPF</label>
-                        <input id="modal_documento" name="documento_numero" type="text">
+                        <label for="modal_cep">CEP</label>
+                        <input id="modal_cep" name="cep" type="text">
+                    </div>
+                    <div class="field">
+                        <label for="modal_endereco_numero">Número</label>
+                        <input id="modal_endereco_numero" name="endereco_numero" type="text">
+                    </div>
+                    <div class="field">
+                        <label for="modal_endereco_complemento">Complemento</label>
+                        <input id="modal_endereco_complemento" name="endereco_complemento" type="text">
+                    </div>
+                    <div class="field span-3">
+                        <label for="modal_endereco_logradouro">Rua</label>
+                        <input id="modal_endereco_logradouro" name="endereco_logradouro" type="text">
+                    </div>
+                    <div class="field">
+                        <label for="modal_endereco_bairro">Bairro</label>
+                        <input id="modal_endereco_bairro" name="endereco_bairro" type="text">
+                    </div>
+                    <div class="field">
+                        <label for="modal_endereco_cidade">Cidade</label>
+                        <input id="modal_endereco_cidade" name="endereco_cidade" type="text">
+                    </div>
+                    <div class="field">
+                        <label for="modal_endereco_estado">Estado</label>
+                        <input id="modal_endereco_estado" name="endereco_estado" type="text" maxlength="2">
                     </div>
                 </div>
             </div>
