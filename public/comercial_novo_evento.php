@@ -617,13 +617,6 @@ includeSidebar('Novo Evento');
     margin-top: 20px;
     border-top: 1px solid #e5edf6;
 }
-.novo-evento-help {
-    display: block;
-    margin-top: 4px;
-    color: #64748b;
-    font-size: 0.84rem;
-    font-weight: 600;
-}
 .alert {
     margin-bottom: 14px;
     padding: 12px 14px;
@@ -787,7 +780,6 @@ includeSidebar('Novo Evento');
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <span class="novo-evento-help">Usa os tipos cadastrados em Configurações.</span>
                 </div>
                 <div class="field">
                     <label for="data_venda">Data da venda</label>
