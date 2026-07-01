@@ -636,6 +636,7 @@ if ($current_page === 'dashboard') {
     }
 
     $dashboard_sales_rows_html = '';
+    $dashboard_sales_modal_forms_html = '';
     foreach ($dashboard_sales_months as $month_data) {
         $month_key = (string)($month_data['month_key'] ?? '');
         $month_label = htmlspecialchars((string)($month_data['month_label'] ?? ''));
@@ -674,16 +675,23 @@ if ($current_page === 'dashboard') {
                         <strong>' . htmlspecialchars($difference_text) . '</strong>
                     </div>
                 </div>
-                ' . ($is_superadmin_dashboard ? '
-                <form class="sales-month-form" method="POST">
+            </div>';
+
+        if ($is_superadmin_dashboard) {
+            $dashboard_sales_modal_forms_html .= '
+                <form class="sales-modal-month-form" method="POST">
+                    <div>
+                        <div class="sales-month-title">' . $month_title . '</div>
+                        <div class="sales-month-subtitle">' . $month_label . '</div>
+                    </div>
                     <input type="hidden" name="action" value="save_dashboard_sales_month">
                     <input type="hidden" name="dashboard_sales_month" value="' . htmlspecialchars($month_key) . '">
                     <label>
-                        <span>Vendas</span>
+                        <span>Vendas realizadas</span>
                         <input type="number" name="vendas_realizadas_manual" min="0" step="1" value="' . $month_sales . '" aria-label="Vendas realizadas de ' . $month_label . '">
                     </label>
                     <label>
-                        <span>Meta</span>
+                        <span>Meta de vendas</span>
                         <input type="number" name="meta_vendas_manual" min="0" step="1" value="' . $month_goal . '" aria-label="Meta de vendas de ' . $month_label . '">
                     </label>
                     <button type="submit">Salvar</button>
@@ -694,17 +702,16 @@ if ($current_page === 'dashboard') {
                                 ? '<div class="metric-card-feedback error">Erro ao salvar.</div>'
                                 : ''))
                         : '') . '
-                </form>
-                ' : '') . '
-            </div>';
+                </form>';
+        }
     }
 
     $dashboard_sales_goal_card_html = '
-            <div class="metric-card sales-goal-card">
+            <div class="metric-card sales-goal-card' . ($is_superadmin_dashboard ? ' is-clickable' : '') . '"' . ($is_superadmin_dashboard ? ' role="button" tabindex="0" onclick="abrirDashboardSalesModal()" onkeydown="if(event.key === \'Enter\' || event.key === \' \'){event.preventDefault(); abrirDashboardSalesModal();}"' : '') . '>
                 <div class="metric-icon">🎯</div>
                 <div class="metric-content">
                     <h3>Meta x Vendas</h3>
-                    <p>Mês anterior e atual</p>
+                    <p>Mês anterior e atual' . ($is_superadmin_dashboard ? ' • clique para ajustar' : '') . '</p>
                     <div class="sales-month-list">
                         ' . $dashboard_sales_rows_html . '
                     </div>
@@ -779,6 +786,12 @@ if ($current_page === 'dashboard') {
     .sales-goal-card {
         grid-column: span 2;
     }
+    .sales-goal-card.is-clickable {
+        cursor: pointer;
+    }
+    .sales-goal-card.is-clickable:hover {
+        border-color: #93c5fd;
+    }
     .sales-goal-card .metric-content h3 {
         font-size: 1.25rem;
     }
@@ -789,24 +802,23 @@ if ($current_page === 'dashboard') {
     }
     .sales-month-row {
         border: 1px solid #e2e8f0;
+        border-left-width: 4px;
         border-radius: 12px;
-        padding: 0.85rem;
-        background: #f8fafc;
+        padding: 0.75rem 0.85rem;
+        background: #fff;
     }
     .sales-month-row.success {
-        border-color: #bbf7d0;
-        background: #f0fdf4;
+        border-left-color: #10b981;
     }
     .sales-month-row.warning {
-        border-color: #fde68a;
-        background: #fffbeb;
+        border-left-color: #f59e0b;
     }
     .sales-month-summary {
         display: flex;
         justify-content: space-between;
         gap: 0.75rem;
         align-items: flex-start;
-        margin-bottom: 0.7rem;
+        margin-bottom: 0.6rem;
     }
     .sales-month-title {
         color: #0f172a;
@@ -838,16 +850,13 @@ if ($current_page === 'dashboard') {
     .sales-month-numbers {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.55rem;
+        gap: 0.75rem;
     }
     .sales-month-numbers div {
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.7);
-        padding: 0.55rem;
+        padding: 0;
     }
     .sales-month-numbers span,
-    .sales-month-form span {
+    .sales-modal-month-form span {
         display: block;
         color: #64748b;
         font-size: 0.72rem;
@@ -856,20 +865,80 @@ if ($current_page === 'dashboard') {
     }
     .sales-month-numbers strong {
         color: #0f172a;
-        font-size: 1rem;
+        font-size: 1.15rem;
         line-height: 1.1;
     }
-    .sales-month-form {
+    .dashboard-sales-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 1400;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background: rgba(15, 23, 42, 0.56);
+    }
+    .dashboard-sales-modal.open {
+        display: flex;
+    }
+    .dashboard-sales-modal-card {
+        width: min(760px, 100%);
+        max-height: min(86vh, 760px);
+        overflow: auto;
+        background: #fff;
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        border: 1px solid #dbeafe;
+    }
+    .dashboard-sales-modal-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem 1.15rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .dashboard-sales-modal-header h3 {
+        margin: 0;
+        color: #0f172a;
+        font-size: 1.15rem;
+    }
+    .dashboard-sales-modal-header p {
+        margin: 0.25rem 0 0;
+        color: #64748b;
+        font-size: 0.86rem;
+    }
+    .dashboard-sales-modal-close {
+        border: 0;
+        background: #f1f5f9;
+        color: #334155;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1.35rem;
+        line-height: 1;
+    }
+    .dashboard-sales-modal-body {
+        display: grid;
+        gap: 0.8rem;
+        padding: 1rem 1.15rem 1.15rem;
+    }
+    .sales-modal-month-form {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-        gap: 0.55rem;
+        gap: 0.65rem;
         align-items: end;
-        margin-top: 0.75rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.85rem;
     }
-    .sales-month-form label {
+    .sales-modal-month-form > div:first-child {
+        grid-column: 1 / -1;
+    }
+    .sales-modal-month-form label {
         min-width: 0;
     }
-    .sales-month-form input[type="number"] {
+    .sales-modal-month-form input[type="number"] {
         width: 100%;
         min-width: 0;
         padding: 0.48rem 0.55rem;
@@ -878,7 +947,7 @@ if ($current_page === 'dashboard') {
         font-size: 0.85rem;
         background: #fff;
     }
-    .sales-month-form button {
+    .sales-modal-month-form button {
         border: none;
         border-radius: 10px;
         background: #1d4ed8;
@@ -889,7 +958,7 @@ if ($current_page === 'dashboard') {
         cursor: pointer;
         min-height: 2.25rem;
     }
-    .sales-month-form .metric-card-feedback {
+    .sales-modal-month-form .metric-card-feedback {
         grid-column: 1 / -1;
         margin-top: 0;
     }
@@ -1083,7 +1152,7 @@ if ($current_page === 'dashboard') {
         .sales-month-numbers {
             grid-template-columns: repeat(3, minmax(0, 1fr));
         }
-        .sales-month-form {
+        .sales-modal-month-form {
             grid-template-columns: 1fr;
         }
         .evento-notificacao-item {
@@ -1125,6 +1194,52 @@ if ($current_page === 'dashboard') {
                 </div>
             </div>
         </div>
+
+        ' . ($is_superadmin_dashboard ? '
+        <div class="dashboard-sales-modal" id="dashboardSalesModal" aria-hidden="true">
+            <div class="dashboard-sales-modal-card" role="dialog" aria-modal="true" aria-labelledby="dashboardSalesModalTitle">
+                <div class="dashboard-sales-modal-header">
+                    <div>
+                        <h3 id="dashboardSalesModalTitle">Ajustar Meta x Vendas</h3>
+                        <p>Atualize os números do mês anterior e do mês atual.</p>
+                    </div>
+                    <button type="button" class="dashboard-sales-modal-close" onclick="fecharDashboardSalesModal()" aria-label="Fechar">&times;</button>
+                </div>
+                <div class="dashboard-sales-modal-body">
+                    ' . $dashboard_sales_modal_forms_html . '
+                </div>
+            </div>
+        </div>
+        <script>
+            function abrirDashboardSalesModal() {
+                const modal = document.getElementById("dashboardSalesModal");
+                if (!modal) return;
+                modal.classList.add("open");
+                modal.setAttribute("aria-hidden", "false");
+                const firstInput = modal.querySelector("input[type=number]");
+                if (firstInput) {
+                    setTimeout(() => firstInput.focus(), 50);
+                }
+            }
+            function fecharDashboardSalesModal() {
+                const modal = document.getElementById("dashboardSalesModal");
+                if (!modal) return;
+                modal.classList.remove("open");
+                modal.setAttribute("aria-hidden", "true");
+            }
+            document.addEventListener("keydown", function(event) {
+                if (event.key === "Escape") {
+                    fecharDashboardSalesModal();
+                }
+            });
+            document.addEventListener("click", function(event) {
+                const modal = document.getElementById("dashboardSalesModal");
+                if (modal && event.target === modal) {
+                    fecharDashboardSalesModal();
+                }
+            });
+        </script>
+        ' : '') . '
 
         ' . ($dashboard_can_view_event_notifications ? '
         <!-- Notificações dos eventos -->
