@@ -643,36 +643,20 @@ if ($current_page === 'dashboard') {
         $month_title = htmlspecialchars((string)($month_data['label'] ?? 'Mês'));
         $month_sales = max(0, (int)($month_data['sales'] ?? 0));
         $month_goal = max(0, (int)($month_data['goal'] ?? 0));
-        $difference = $month_sales - $month_goal;
-        $goal_defined = $month_goal > 0;
-        $hit_goal = $goal_defined && $difference >= 0;
-        $status_class = !$goal_defined ? 'neutral' : ($hit_goal ? 'success' : 'warning');
-        $status_text = !$goal_defined ? 'Meta não definida' : ($hit_goal ? 'Meta batida' : 'Abaixo da meta');
-        $difference_text = $difference === 0
-            ? '0'
-            : (($difference > 0 ? '+' : '') . (string)$difference);
-
         $dashboard_sales_rows_html .= '
-            <div class="sales-month-row ' . $status_class . '">
+            <div class="sales-month-row">
                 <div class="sales-month-summary">
-                    <div>
-                        <div class="sales-month-title">' . $month_title . '</div>
-                        <div class="sales-month-subtitle">' . $month_label . '</div>
-                    </div>
-                    <span class="sales-month-badge ' . $status_class . '">' . htmlspecialchars($status_text) . '</span>
+                    <div class="sales-month-title">' . $month_title . '</div>
+                    <div class="sales-month-subtitle">' . $month_label . '</div>
                 </div>
                 <div class="sales-month-numbers">
-                    <div>
-                        <span>Vendas</span>
-                        <strong>' . $month_sales . '</strong>
-                    </div>
                     <div>
                         <span>Meta</span>
                         <strong>' . $month_goal . '</strong>
                     </div>
                     <div>
-                        <span>Diferença</span>
-                        <strong>' . htmlspecialchars($difference_text) . '</strong>
+                        <span>Vendas</span>
+                        <strong>' . $month_sales . '</strong>
                     </div>
                 </div>
             </div>';
@@ -797,28 +781,20 @@ if ($current_page === 'dashboard') {
     }
     .sales-month-list {
         display: grid;
-        gap: 0.85rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
         margin-top: 0.7rem;
-    }
-    .sales-month-row {
         border: 1px solid #e2e8f0;
-        border-left-width: 4px;
+        border-left: 4px solid #f59e0b;
         border-radius: 12px;
-        padding: 0.75rem 0.85rem;
+        padding: 0.85rem 1rem;
         background: #fff;
     }
-    .sales-month-row.success {
-        border-left-color: #10b981;
-    }
-    .sales-month-row.warning {
-        border-left-color: #f59e0b;
+    .sales-month-row {
+        min-width: 0;
     }
     .sales-month-summary {
-        display: flex;
-        justify-content: space-between;
-        gap: 0.75rem;
-        align-items: flex-start;
-        margin-bottom: 0.6rem;
+        margin-bottom: 0.55rem;
     }
     .sales-month-title {
         color: #0f172a;
@@ -830,27 +806,10 @@ if ($current_page === 'dashboard') {
         font-size: 0.78rem;
         margin-top: 0.15rem;
     }
-    .sales-month-badge {
-        border-radius: 999px;
-        padding: 0.25rem 0.55rem;
-        font-size: 0.72rem;
-        font-weight: 800;
-        white-space: nowrap;
-        color: #475569;
-        background: #e2e8f0;
-    }
-    .sales-month-badge.success {
-        color: #047857;
-        background: #dcfce7;
-    }
-    .sales-month-badge.warning {
-        color: #92400e;
-        background: #fef3c7;
-    }
     .sales-month-numbers {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.75rem;
+        grid-template-columns: repeat(2, minmax(0, max-content));
+        gap: 1.4rem;
     }
     .sales-month-numbers div {
         padding: 0;
@@ -1149,8 +1108,12 @@ if ($current_page === 'dashboard') {
         .sales-goal-card {
             grid-column: span 1;
         }
+        .sales-month-list {
+            grid-template-columns: 1fr;
+            gap: 0.85rem;
+        }
         .sales-month-numbers {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, max-content));
         }
         .sales-modal-month-form {
             grid-template-columns: 1fr;
