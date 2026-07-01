@@ -445,6 +445,16 @@ function client_app_api_me_client_cpf(PDO $pdo, array $event): string
 
 function client_app_api_me_event_local_matches(array $event, array $location): bool
 {
+    $eventLocalId = (int)client_app_api_me_pick_text($event, [
+        'idlocalevento',
+        'id_local_evento',
+        'local_id',
+    ]);
+    $mappedLocalId = (int)($location['me_local_id'] ?? 0);
+    if ($eventLocalId > 0 && $mappedLocalId > 0 && $eventLocalId === $mappedLocalId) {
+        return true;
+    }
+
     $eventLocal = mb_strtolower(trim(client_app_api_me_pick_text($event, [
         'localevento',
         'localEvento',
@@ -479,12 +489,6 @@ function client_app_api_sync_meeting_from_me(PDO $pdo, int $meEventId): ?array
             ':me_event_id' => $meEventId,
         ]);
         $row = $existing->fetch(PDO::FETCH_ASSOC) ?: null;
-        if ($row) {
-            return [
-                'meeting_id' => (int)$row['id'],
-                'me_event_id' => (int)$row['me_event_id'],
-            ];
-        }
 
         $eventResult = eventos_me_buscar_por_id($pdo, $meEventId);
         if (empty($eventResult['ok']) || !is_array($eventResult['event'] ?? null)) {
@@ -495,10 +499,53 @@ function client_app_api_sync_meeting_from_me(PDO $pdo, int $meEventId): ?array
         }
 
         $snapshot = eventos_me_criar_snapshot($eventResult['event']);
+        $idLocalEvento = (int)($snapshot['idlocalevento'] ?? 0);
+        if ($idLocalEvento > 0 && trim((string)($snapshot['local'] ?? '')) === '') {
+            $stmtLocal = $pdo->prepare("
+                SELECT me_local_nome
+                FROM logistica_me_locais
+                WHERE me_local_id = :me_local_id
+                LIMIT 1
+            ");
+            $stmtLocal->execute([':me_local_id' => $idLocalEvento]);
+            $localMapeado = trim((string)$stmtLocal->fetchColumn());
+            if ($localMapeado !== '') {
+                $snapshot['local'] = $localMapeado;
+                $snapshot['localevento'] = $localMapeado;
+            }
+        }
         $snapshotCpf = client_app_api_me_client_cpf($pdo, $eventResult['event']);
         if ($snapshotCpf !== '') {
             $snapshot['cliente']['cpf'] = $snapshotCpf;
         }
+
+        if ($row) {
+            $currentStmt = $pdo->prepare("SELECT me_event_snapshot FROM eventos_reunioes WHERE id = :id LIMIT 1");
+            $currentStmt->execute([':id' => (int)$row['id']]);
+            $currentSnapshot = json_decode((string)$currentStmt->fetchColumn(), true);
+            if (!is_array($currentSnapshot)) {
+                $currentSnapshot = [];
+            }
+            $mergedSnapshot = function_exists('eventos_me_merge_snapshot')
+                ? eventos_me_merge_snapshot($currentSnapshot, $snapshot)
+                : array_merge($currentSnapshot, $snapshot);
+            $update = $pdo->prepare("
+                UPDATE eventos_reunioes
+                SET me_event_snapshot = :snapshot,
+                    updated_at = NOW()
+                WHERE id = :id
+            ");
+            $update->execute([
+                ':snapshot' => json_encode($mergedSnapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ':id' => (int)$row['id'],
+            ]);
+
+            return [
+                'meeting_id' => (int)$row['id'],
+                'me_event_id' => (int)$row['me_event_id'],
+            ];
+        }
+
         $insert = $pdo->prepare("
             INSERT INTO eventos_reunioes (me_event_id, me_event_snapshot, status, created_by, created_at, updated_at)
             VALUES (:me_event_id, :snapshot, 'rascunho', 0, NOW(), NOW())
@@ -627,6 +674,7 @@ function client_app_api_find_meeting_via_local_mirror_and_me_cpf(PDO $pdo, strin
             FROM logistica_eventos_espelho le
             WHERE le.data_evento = :event_date
               AND le.idlocalevento = :location_id
+              AND COALESCE(le.arquivado, FALSE) = FALSE
               AND le.me_event_id IS NOT NULL
               AND le.me_event_id > 0
             ORDER BY le.me_event_id DESC
@@ -709,6 +757,7 @@ function client_app_api_find_meeting_via_local_meeting_and_me_cpf(PDO $pdo, stri
                     NULLIF(TRIM(r.me_event_snapshot->>'data'), '')::date,
                     le.data_evento
                   ) = :event_date
+              AND COALESCE(le.arquivado, FALSE) = FALSE
               AND (
                     le.idlocalevento = :location_id
                     OR EXISTS (
@@ -831,6 +880,7 @@ function client_app_api_find_meeting_via_internal_cpf_sources(PDO $pdo, string $
                     NULLIF(TRIM(r.me_event_snapshot->>'data'), '')::date,
                     le.data_evento
                   ) = :event_date
+              AND COALESCE(le.arquivado, FALSE) = FALSE
               AND (
                     le.idlocalevento = :location_id
                     OR EXISTS (
