@@ -56,15 +56,15 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
     header('Cache-Control: no-cache, no-store, must-revalidate');
     header('Pragma: no-cache');
     header('Expires: 0');
-    
+
     require_once __DIR__ . '/conexao.php';
     $check_id = (int)$_GET['inscricao_id'];
-    
+
     // Verificar quais colunas de pagamento existem
     $check_valor_cols = $pdo->query("
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'comercial_inscricoes' 
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'comercial_inscricoes'
         AND column_name IN ('valor_total', 'valor_pago', 'asaas_qr_code_id', 'asaas_payment_id')
     ");
     $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
@@ -72,7 +72,7 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
     $has_valor_pago = in_array('valor_pago', $valor_columns);
     $has_asaas_qr_code_id = in_array('asaas_qr_code_id', $valor_columns);
     $has_asaas_payment_id = in_array('asaas_payment_id', $valor_columns);
-    
+
     // Montar expressão de valor dinamicamente
     if ($has_valor_total && $has_valor_pago) {
         $valor_expr = "COALESCE(valor_total, valor_pago, 0) as valor_pago";
@@ -83,23 +83,23 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
     } else {
         $valor_expr = "0 as valor_pago";
     }
-    
+
     $asaas_qr_code_select = $has_asaas_qr_code_id ? ", asaas_qr_code_id" : ", NULL::text as asaas_qr_code_id";
     $asaas_payment_select = $has_asaas_payment_id ? ", asaas_payment_id" : ", NULL::text as asaas_payment_id";
 
     // Buscar status de pagamento e valor (mesma lógica da página de inscritos)
     $stmt = $pdo->prepare("
-        SELECT 
+        SELECT
             pagamento_status,
             $valor_expr
             $asaas_qr_code_select
             $asaas_payment_select
-        FROM comercial_inscricoes 
+        FROM comercial_inscricoes
         WHERE id = :id
     ");
     $stmt->execute([':id' => $check_id]);
     $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$inscricao) {
         echo json_encode([
             'status' => 'erro',
@@ -144,7 +144,7 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
             error_log("Erro ao consultar pagamento do QR Code no Asaas (inscrição #{$check_id}): " . $e->getMessage());
         }
     }
-    
+
     // Converter status para texto legível (mesma lógica da página de inscritos)
     $status_text = match($inscricao['pagamento_status']) {
         'pago' => 'Pago',
@@ -153,7 +153,7 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
         'cancelado' => 'Cancelado',
         default => 'N/A'
     };
-    
+
     echo json_encode([
         'status' => $inscricao['pagamento_status'] ?? 'aguardando',
         'status_text' => $status_text,
@@ -175,7 +175,7 @@ if ($_POST && !$inscricoes_encerradas) {
         $fechou_contrato = $fechou_contrato === 'sim' ? 'sim' : 'nao';
         $nome_titular_contrato = trim($_POST['nome_titular_contrato'] ?? '');
         $cpf_3_digitos = trim($_POST['cpf_3_digitos'] ?? '');
-        
+
         // Respostas do formulário
         $dados_json = [];
         $campos = json_decode($degustacao['campos_json'], true) ?: [];
@@ -186,51 +186,91 @@ if ($_POST && !$inscricoes_encerradas) {
             }
             $dados_json[$campo['name']] = $value;
         }
-        
+
         // Validar campos obrigatórios
         if (!$nome || !$email || !$tipo_festa || !$qtd_pessoas) {
             throw new Exception("Preencha todos os campos obrigatórios");
         }
-        
+
         // Calcular no servidor para evitar divergências com o JavaScript
         $incluidos = $tipo_festa === 'casamento' ? (int)$degustacao['incluidos_casamento'] : (int)$degustacao['incluidos_15anos'];
         $preco_base = $tipo_festa === 'casamento' ? (float)$degustacao['preco_casamento'] : (float)$degustacao['preco_15anos'];
         $preco_extra = (float)$degustacao['preco_extra'];
         $extras = max(0, $qtd_pessoas - $incluidos);
-        
+
         // Regra:
         // - Não fechou contrato: cobra base + extras
         // - Já fechou contrato: cobra apenas extras
         $valor_total = ($fechou_contrato === 'sim' ? 0.0 : $preco_base) + ($extras * $preco_extra);
         $deve_gerar_pagamento = $valor_total > 0;
-        
+
         // Determinar status baseado na capacidade (verificar novamente ANTES de inserir para evitar condições de corrida)
         // IMPORTANTE: Re-verificar capacidade aqui porque pode ter mudado entre a primeira verificação e o INSERT
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = :id AND status = 'confirmado'");
         $stmt->execute([':id' => $degustacao['id']]);
         $inscritos_atual = $stmt->fetchColumn();
-        
+
         $lotado_atual = $inscritos_atual >= $degustacao['capacidade'];
         $aceita_lista_espera_atual = ($degustacao['lista_espera'] ?? false) && $lotado_atual;
-        
+
         $status = 'confirmado';
         if ($lotado_atual && !$aceita_lista_espera_atual) {
             throw new Exception("Degustação lotada e não aceita lista de espera");
         } elseif ($lotado_atual && $aceita_lista_espera_atual) {
             $status = 'lista_espera';
         }
-        
-        // Verificar se já existe inscrição com este e-mail
-        $stmt = $pdo->prepare("SELECT id FROM comercial_inscricoes WHERE degustacao_id = :degustacao_id AND email = :email");
-        $stmt->execute([':degustacao_id' => $degustacao['id'], ':email' => $email]);
-        if ($stmt->fetch()) {
-            throw new Exception("Já existe uma inscrição com este e-mail para esta degustação");
-        }
-        
-        // Verificar se colunas existem antes de inserir
+
+        // Verificar quais colunas existem na tabela antes de montar consultas dinâmicas.
         try {
-            $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                       WHERE table_name = 'comercial_inscricoes' 
+            $check_all_cols = $pdo->query("SELECT column_name FROM information_schema.columns
+                                           WHERE table_name = 'comercial_inscricoes'");
+            $existing_columns = $check_all_cols->fetchAll(PDO::FETCH_COLUMN);
+        } catch (PDOException $e) {
+            $existing_columns = [];
+        }
+
+        $reuse_pending_inscricao = false;
+        $inscricao_id = 0;
+
+        // Verificar se já existe inscrição com este e-mail
+        $duplicate_select = ['id', 'status', 'pagamento_status'];
+        foreach (['asaas_qr_code_id', 'qr_code_image', 'pix_copia_cola'] as $optional_col) {
+            if (in_array($optional_col, $existing_columns)) {
+                $duplicate_select[] = $optional_col;
+            }
+        }
+
+        $stmt = $pdo->prepare("SELECT " . implode(', ', $duplicate_select) . " FROM comercial_inscricoes WHERE degustacao_id = :degustacao_id AND email = :email");
+        $stmt->execute([':degustacao_id' => $degustacao['id'], ':email' => $email]);
+        $inscricao_existente = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($inscricao_existente) {
+            $pagamento_existente = $inscricao_existente['pagamento_status'] ?? 'nao_aplicavel';
+
+            if ($deve_gerar_pagamento && in_array($pagamento_existente, ['aguardando', 'expirado', 'cancelado'], true)) {
+                $inscricao_id = (int)$inscricao_existente['id'];
+                $tem_qr_existente = !empty($inscricao_existente['asaas_qr_code_id'] ?? '')
+                    || !empty($inscricao_existente['qr_code_image'] ?? '')
+                    || !empty($inscricao_existente['pix_copia_cola'] ?? '');
+
+                if ($pagamento_existente === 'aguardando' && $tem_qr_existente) {
+                    $base_url = "https://{$_SERVER['HTTP_HOST']}";
+                    $current_url = $base_url . $_SERVER['REQUEST_URI'];
+                    header("Location: " . $current_url . "&qr_code=1&inscricao_id=" . $inscricao_id);
+                    exit;
+                }
+
+                $reuse_pending_inscricao = true;
+            } elseif ($pagamento_existente === 'pago') {
+                throw new Exception("Já existe uma inscrição paga com este e-mail para esta degustação");
+            } else {
+                throw new Exception("Já existe uma inscrição com este e-mail para esta degustação");
+            }
+        }
+
+        // Verificar se colunas existem antes de inserir/atualizar
+        try {
+            $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns
+                                       WHERE table_name = 'comercial_inscricoes'
                                        AND column_name IN ('nome_titular_contrato', 'cpf_3_digitos', 'me_event_id', 'me_cliente_cpf')");
             $check_columns = $check_stmt->fetchAll(PDO::FETCH_COLUMN);
             $has_nome_titular = in_array('nome_titular_contrato', $check_columns);
@@ -243,27 +283,21 @@ if ($_POST && !$inscricoes_encerradas) {
             $has_me_event_id = false;
             $has_me_cpf = false;
         }
-        
+
         $cpf_3_digitos = substr(preg_replace('/\D/', '', $_POST['me_cliente_cpf'] ?? ''), 0, 3);
         $me_cliente_cpf = preg_replace('/\D/', '', $_POST['me_cliente_cpf'] ?? '');
         $me_event_id = (int)($_POST['me_event_id'] ?? 0);
-        
-        // Montar SQL dinamicamente baseado nas colunas existentes
-        // Verificar quais colunas existem na tabela
-        try {
-            $check_all_cols = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                           WHERE table_name = 'comercial_inscricoes'");
-            $existing_columns = $check_all_cols->fetchAll(PDO::FETCH_COLUMN);
-        } catch (PDOException $e) {
-            $existing_columns = [];
+
+        if (empty($existing_columns)) {
+            throw new Exception("Não foi possível validar a estrutura da tabela de inscrições");
         }
-        
+
         // Verificar se coluna é telefone ou celular
-        $telefone_col = in_array('telefone', $existing_columns) ? 'telefone' : 
+        $telefone_col = in_array('telefone', $existing_columns) ? 'telefone' :
                        (in_array('celular', $existing_columns) ? 'celular' : 'telefone');
-        
+
         $telefone = $_POST['telefone'] ?? $_POST['celular'] ?? '';
-        
+
         // Campos obrigatórios (sempre existem)
         $campos = ['degustacao_id', 'status', 'fechou_contrato', 'nome', 'email', 'dados_json'];
         $valores = [':degustacao_id', ':status', ':fechou_contrato', ':nome', ':email', ':dados_json'];
@@ -275,117 +309,124 @@ if ($_POST && !$inscricoes_encerradas) {
             ':email' => $email,
             ':dados_json' => json_encode($dados_json)
         ];
-        
+
         // Campos opcionais - adicionar apenas se existirem na tabela
         if (in_array($telefone_col, $existing_columns)) {
             $campos[] = $telefone_col;
             $valores[] = ':telefone';
             $params[':telefone'] = $telefone;
         }
-        
+
         if (in_array('qtd_pessoas', $existing_columns)) {
             $campos[] = 'qtd_pessoas';
             $valores[] = ':qtd_pessoas';
             $params[':qtd_pessoas'] = $qtd_pessoas;
         }
-        
+
         if (in_array('tipo_festa', $existing_columns)) {
             $campos[] = 'tipo_festa';
             $valores[] = ':tipo_festa';
             $params[':tipo_festa'] = $tipo_festa;
         }
-        
+
         if (in_array('extras', $existing_columns)) {
             $campos[] = 'extras';
             $valores[] = ':extras';
             $params[':extras'] = $extras;
         }
-        
+
         if (in_array('pagamento_status', $existing_columns)) {
             $campos[] = 'pagamento_status';
             $valores[] = ':pagamento_status';
             $params[':pagamento_status'] = $deve_gerar_pagamento ? 'aguardando' : 'nao_aplicavel';
         }
-        
+
         if (in_array('valor_pago', $existing_columns)) {
             $campos[] = 'valor_pago';
             $valores[] = ':valor_pago';
             $params[':valor_pago'] = $deve_gerar_pagamento ? $valor_total : 0;
         }
-        
+
         if (in_array('ip_origem', $existing_columns)) {
             $campos[] = 'ip_origem';
             $valores[] = ':ip_origem';
             $params[':ip_origem'] = $_SERVER['REMOTE_ADDR'] ?? null;
         }
-        
+
         if (in_array('user_agent_origem', $existing_columns)) {
             $campos[] = 'user_agent_origem';
             $valores[] = ':user_agent_origem';
             $params[':user_agent_origem'] = $_SERVER['HTTP_USER_AGENT'] ?? null;
         }
-        
+
         // Adicionar colunas opcionais se existirem
         if ($has_nome_titular) {
             $campos[] = 'nome_titular_contrato';
             $valores[] = ':nome_titular_contrato';
             $params[':nome_titular_contrato'] = $nome_titular_contrato;
         }
-        
+
         if ($has_cpf_3) {
             $campos[] = 'cpf_3_digitos';
             $valores[] = ':cpf_3_digitos';
             $params[':cpf_3_digitos'] = $cpf_3_digitos;
         }
-        
+
         if ($has_me_event_id && $me_event_id > 0) {
             $campos[] = 'me_event_id';
             $valores[] = ':me_event_id';
             $params[':me_event_id'] = $me_event_id;
         }
-        
+
         if ($has_me_cpf && !empty($me_cliente_cpf)) {
             $campos[] = 'me_cliente_cpf';
             $valores[] = ':me_cliente_cpf';
             $params[':me_cliente_cpf'] = $me_cliente_cpf;
         }
-        
-        // Montar SQL final
-        $sql = "INSERT INTO comercial_inscricoes (" . implode(', ', $campos) . ") VALUES (" . implode(', ', $valores) . ")";
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $inscricao_id = $pdo->lastInsertId();
-        
-        // Enviar e-mail de confirmação via sistema global (Resend + sistema_email_config)
-        try {
-            require_once __DIR__ . '/comercial_email_helper.php';
-            $emailHelper = new ComercialEmailHelper();
-            $inscricao = [
-                'nome' => $nome,
-                'email' => $email,
-                'celular' => $telefone,
-                'qtd_pessoas' => $qtd_pessoas,
-                'tipo_festa' => $tipo_festa,
-            ];
-            if ($status === 'lista_espera') {
-                $emailHelper->sendListaEsperaNotification($inscricao, $degustacao);
-            } else {
-                $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
+
+        if ($reuse_pending_inscricao) {
+            $update_fields = [];
+            $update_params = [':id' => $inscricao_id];
+
+            foreach ($campos as $campo) {
+                if ($campo === 'degustacao_id' || $campo === 'email') {
+                    continue;
+                }
+                $param_name = ':' . $campo;
+                if (array_key_exists($param_name, $params)) {
+                    $update_fields[] = "{$campo} = {$param_name}";
+                    $update_params[$param_name] = $params[$param_name];
+                }
             }
-        } catch (Exception $e) {
-            error_log("Degustação: falha ao enviar e-mail de confirmação (inscrição #{$inscricao_id}): " . $e->getMessage());
+
+            foreach (['asaas_qr_code_id', 'qr_code_image', 'pix_copia_cola'] as $qr_col) {
+                if (in_array($qr_col, $existing_columns)) {
+                    $update_fields[] = "{$qr_col} = NULL";
+                }
+            }
+
+            if (!empty($update_fields)) {
+                $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id");
+                $stmt->execute($update_params);
+            }
+        } else {
+            // Montar SQL final
+            $sql = "INSERT INTO comercial_inscricoes (" . implode(', ', $campos) . ") VALUES (" . implode(', ', $valores) . ")";
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $inscricao_id = $pdo->lastInsertId();
         }
-        
+
         // Gerar pagamento quando houver valor devido (base e/ou extras)
         if ($deve_gerar_pagamento) {
             try {
                 $asaasHelper = new AsaasHelper();
-                
+
                 // URLs de redirecionamento
                 $base_url = "https://{$_SERVER['HTTP_HOST']}";
                 $current_url = $base_url . $_SERVER['REQUEST_URI'];
-                
+
                 // Descrição detalhada do item (máximo 37 caracteres conforme API Asaas)
                 // Montar descrição curta (API Asaas limita a 37 caracteres)
                 $descricao_base = "Degustação: {$degustacao['nome']}";
@@ -400,27 +441,27 @@ if ($_POST && !$inscricoes_encerradas) {
                         $descricao_item = $com_tipo;
                     }
                 }
-                
+
                 // ============================================
                 // QR CODE ESTÁTICO (TESTE - MAIS PRÁTICO)
                 // Exibe QR Code direto na página, cliente paga sem sair
                 // ============================================
-                
+
                 // Obter chave PIX do Asaas (deve estar configurada em ASAAS_PIX_ADDRESS_KEY)
                 require_once __DIR__ . '/config_env.php';
                 $pix_address_key = $_ENV['ASAAS_PIX_ADDRESS_KEY'] ?? ASAAS_PIX_ADDRESS_KEY ?? '';
-                
+
                 if (empty($pix_address_key)) {
                     throw new Exception("Chave PIX não configurada. Configure ASAAS_PIX_ADDRESS_KEY no Railway.");
                 }
-                
+
                 // Criar QR Code estático conforme modelo Asaas
                 // Calcula data de expiração: data/hora atual + 1 hora
                 $expiration_date = date('Y-m-d H:i:s', strtotime('+1 hour'));
-                
+
                 // Valor total já foi calculado anteriormente (base + extras)
                 // $valor_total contém: preco_base + (extras * preco_extra)
-                
+
                 $qr_code_data = [
                     'addressKey' => $pix_address_key,
                     'description' => $descricao_item,
@@ -430,15 +471,15 @@ if ($_POST && !$inscricoes_encerradas) {
                     'allowsMultiplePayments' => true // Permite múltiplos pagamentos (conforme modelo)
                     // NÃO enviar expirationSeconds quando usar expirationDate (API aceita apenas um)
                 ];
-                
+
                 $qr_code_response = $asaasHelper->createStaticQrCode($qr_code_data);
-                
+
                 // Log completo da resposta para debug
                 error_log("📋 Resposta completa do QR Code: " . json_encode($qr_code_response, JSON_PRETTY_PRINT));
-                
+
                 if ($qr_code_response && isset($qr_code_response['id'])) {
                     $qr_code_id = $qr_code_response['id'];
-                    
+
                     // Imagem do QR Code: encodedImage ou image (formato ALL pode retornar os dois)
                     $qr_code_image = $qr_code_response['encodedImage'] ?? $qr_code_response['image'] ?? '';
                     $pix_copia_cola = '';
@@ -451,20 +492,20 @@ if ($_POST && !$inscricoes_encerradas) {
                     if (empty($qr_code_image) && is_string($payload_raw) && (strpos($payload_raw, 'data:image') === 0 || (strlen($payload_raw) > 100 && preg_match('/^[A-Za-z0-9+\/=]+$/', $payload_raw)))) {
                         $qr_code_image = $payload_raw;
                     }
-                    
+
                     error_log("✅ QR Code estático criado: $qr_code_id");
                     error_log("📷 Imagem: " . (!empty($qr_code_image) ? 'SIM' : 'NÃO') . " | PIX copia e cola: " . (!empty($pix_copia_cola) ? 'SIM (' . strlen($pix_copia_cola) . ' chars)' : 'NÃO'));
-                    
+
                     // Verificar/criar colunas necessárias
                     try {
                         $check_columns = $pdo->query("
-                            SELECT column_name 
-                            FROM information_schema.columns 
-                            WHERE table_name = 'comercial_inscricoes' 
+                            SELECT column_name
+                            FROM information_schema.columns
+                            WHERE table_name = 'comercial_inscricoes'
                             AND column_name IN ('asaas_qr_code_id', 'qr_code_image', 'pix_copia_cola')
                         ");
                         $existing_columns = $check_columns->fetchAll(PDO::FETCH_COLUMN);
-                        
+
                         if (!in_array('asaas_qr_code_id', $existing_columns)) {
                             $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN asaas_qr_code_id VARCHAR(255) NULL");
                         }
@@ -477,7 +518,7 @@ if ($_POST && !$inscricoes_encerradas) {
                     } catch (Exception $e) {
                         error_log("Erro ao verificar/criar colunas: " . $e->getMessage());
                     }
-                    
+
                     // Salvar QR Code e PIX copia e cola na inscrição
                     $update_fields = [
                         "pagamento_status = 'aguardando'",
@@ -491,27 +532,27 @@ if ($_POST && !$inscricoes_encerradas) {
                         ':qr_code_image' => $qr_code_image,
                         ':pix_copia_cola' => $pix_copia_cola ?: null
                     ];
-                    
+
                     $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
                     $stmt = $pdo->prepare($update_sql);
                     $stmt->execute($update_params);
-                    
+
                     error_log("✅ Inscrição ID $inscricao_id atualizada com QR Code: $qr_code_id");
-                    
+
                     // Armazenar dados do QR Code em variáveis para exibir na página
                     $_SESSION['qr_code_inscricao_id'] = $inscricao_id;
                     $_SESSION['qr_code_id'] = $qr_code_id;
                     $_SESSION['qr_code_image'] = $qr_code_image;
                     $_SESSION['qr_code_value'] = $valor_total;
                     $_SESSION['pix_copia_cola'] = $pix_copia_cola;
-                    
+
                     // Redirecionar para mesma página com flag de QR Code
                     header("Location: " . $current_url . "&qr_code=1&inscricao_id=" . $inscricao_id);
                     exit;
                 } else {
                     throw new Exception("Erro ao criar QR Code: resposta inválida do Asaas");
                 }
-                
+
                 // ============================================
                 // OPÇÃO 2: CHECKOUT (VERSÃO FUNCIONANDO - BACKUP)
                 // Se QR Code der erro, descomentar e comentar opção acima
@@ -537,40 +578,60 @@ if ($_POST && !$inscricoes_encerradas) {
                     'minutesToExpire' => 60,
                     'externalReference' => 'inscricao_' . $inscricao_id
                 ];
-                
+
                 $checkout_response = $asaasHelper->createCheckout($checkout_data);
-                
+
                 if ($checkout_response && isset($checkout_response['id'])) {
                     $checkout_id_asaas = $checkout_response['id'];
-                    
+
                     // Salvar checkout_id
                     try {
                         $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN IF NOT EXISTS asaas_checkout_id VARCHAR(255) NULL");
                     } catch (Exception $e) {}
-                    
+
                     $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'aguardando', asaas_checkout_id = :checkout_id WHERE id = :id")
                         ->execute([':checkout_id' => $checkout_id_asaas, ':id' => $inscricao_id]);
-                    
+
                     if (isset($checkout_response['checkoutUrl'])) {
                         header("Location: " . $checkout_response['checkoutUrl']);
                         exit;
                     }
                 }
                 */
-                
+
             } catch (Exception $e) {
-                $error_message = "Erro ao processar pagamento: " . $e->getMessage();
                 error_log("Erro ao criar checkout Asaas: " . $e->getMessage());
+                throw new Exception("Erro ao processar pagamento: " . $e->getMessage());
+            }
+        } else {
+            // Sem valor a pagar: confirmar a inscrição e enviar e-mail imediatamente.
+            try {
+                require_once __DIR__ . '/comercial_email_helper.php';
+                $emailHelper = new ComercialEmailHelper();
+                $inscricao = [
+                    'nome' => $nome,
+                    'email' => $email,
+                    'celular' => $telefone,
+                    'qtd_pessoas' => $qtd_pessoas,
+                    'tipo_festa' => $tipo_festa,
+                ];
+                if ($status === 'lista_espera') {
+                    $emailHelper->sendListaEsperaNotification($inscricao, $degustacao);
+                } else {
+                    $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
+                }
+            } catch (Exception $e) {
+                error_log("Degustação: falha ao enviar e-mail de confirmação (inscrição #{$inscricao_id}): " . $e->getMessage());
             }
         }
-        
+
         // Usar mensagem personalizada se configurada, senão usar mensagem padrão
         if (!empty($degustacao['msg_sucesso_html'])) {
             $success_message = $degustacao['msg_sucesso_html'];
         } else {
         $success_message = "Inscrição realizada com sucesso!";
         }
-        
+
     } catch (Exception $e) {
         $error_message = "Erro: " . $e->getMessage();
     }
@@ -599,7 +660,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             margin: 0 auto;
             padding: 20px;
         }
-        
+
         .event-header {
             text-align: center;
             margin-bottom: 40px;
@@ -608,18 +669,18 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             color: white;
             border-radius: 12px;
         }
-        
+
         .event-title {
             font-size: 32px;
             font-weight: 700;
             margin: 0 0 10px 0;
         }
-        
+
         .event-details {
             font-size: 18px;
             opacity: 0.9;
         }
-        
+
         .instructions {
             background: #f8fafc;
             border: 1px solid #e5e7eb;
@@ -627,7 +688,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             padding: 20px;
             margin-bottom: 30px;
         }
-        
+
         .form-container {
             background: white;
             border: 1px solid #e5e7eb;
@@ -635,18 +696,18 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             padding: 30px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
         }
-        
+
         .form-group {
             margin-bottom: 20px;
         }
-        
+
         .form-label {
             display: block;
             font-weight: 600;
             color: #374151;
             margin-bottom: 5px;
         }
-        
+
         .form-input {
             width: 100%;
             padding: 12px;
@@ -657,13 +718,13 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             appearance: none;
             box-sizing: border-box;
         }
-        
+
         .form-input:focus {
             outline: none;
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
-        
+
         .form-select {
             width: 100%;
             padding: 12px;
@@ -672,19 +733,19 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             font-size: 16px;
             background: white;
         }
-        
+
         .form-radio-group {
             display: flex;
             gap: 20px;
             margin-top: 10px;
         }
-        
+
         .form-radio {
             display: flex;
             align-items: center;
             gap: 8px;
         }
-        
+
         .form-radio input[type="radio"] {
             width: 22px;
             height: 22px;
@@ -694,14 +755,14 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             cursor: pointer;
         }
         .form-radio label { cursor: pointer; }
-        
+
         .form-checkbox {
             display: flex;
             align-items: center;
             gap: 8px;
             margin-top: 10px;
         }
-        
+
         .form-checkbox input[type="checkbox"] {
             width: 22px;
             height: 22px;
@@ -711,7 +772,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             cursor: pointer;
         }
         .form-checkbox label { cursor: pointer; }
-        
+
         .btn-submit {
             width: 100%;
             background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
@@ -727,43 +788,43 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
         }
-        
+
         .btn-submit:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
-        
+
         .btn-submit:disabled {
             background: #9ca3af;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
         }
-        
+
         .alert {
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
         }
-        
+
         .alert-success {
             background: #d1fae5;
             color: #065f46;
             border: 1px solid #a7f3d0;
         }
-        
+
         .alert-error {
             background: #fee2e2;
             color: #991b1b;
             border: 1px solid #fca5a5;
         }
-        
+
         .alert-warning {
             background: #fef3c7;
             color: #92400e;
             border: 1px solid #fbbf24;
         }
-        
+
         .price-info {
             background: #f0f9ff;
             border: 1px solid #0ea5e9;
@@ -771,7 +832,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             padding: 15px;
             margin-bottom: 20px;
         }
-        
+
         .price-item {
             display: flex;
             justify-content: space-between;
@@ -780,7 +841,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             gap: 4px;
         }
         .price-item span { word-break: break-word; }
-        
+
         .price-total {
             font-weight: 700;
             font-size: 18px;
@@ -788,11 +849,11 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             padding-top: 10px;
             margin-top: 10px;
         }
-        
+
         .hidden {
             display: none;
         }
-        
+
         /* Tela dedicada de confirmação (logo + mensagem configurada) */
         .confirmacao-tela {
             min-height: 80vh;
@@ -828,7 +889,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
         }
         .confirmacao-mensagem :first-child { margin-top: 0; }
         .confirmacao-mensagem :last-child { margin-bottom: 0; }
-        
+
         /* ========== Mobile e tablet (70% dos acessos) ========== */
         @media (max-width: 768px) {
             .public-container {
@@ -873,7 +934,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 max-width: 100%;
             }
         }
-        
+
         @media (max-width: 480px) {
             .public-container { padding: 10px 12px; }
             .event-title { font-size: 1.35rem; }
@@ -881,7 +942,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             .form-input, .form-select { padding: 14px; }
             .confirmacao-logo-texto { font-size: 1.25rem; }
         }
-        
+
         /* Modal e QR Code: mobile */
         @media (max-width: 768px) {
             .qr-code-container img,
@@ -896,7 +957,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             .pix-copia-cola-row input { font-size: 14px !important; }
             .btn-copiar-pix { width: 100%; }
         }
-        
+
         /* Área de toque adequada para botões e links (mín. 44px) */
         button, .btn-primary, .btn-secondary, .btn-submit, .cliente-item-me,
         input[type="submit"], input[type="button"],
@@ -906,7 +967,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
         }
-        
+
         /* Evitar overflow horizontal em qualquer dispositivo */
         body { overflow-x: hidden; }
         .public-container { overflow-x: hidden; }
@@ -945,51 +1006,51 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
         <div class="event-header">
             <h1 class="event-title"><?= h($degustacao['nome']) ?></h1>
             <div class="event-details">
-                📅 <?= date('d/m/Y', strtotime($degustacao['data'])) ?> 
+                📅 <?= date('d/m/Y', strtotime($degustacao['data'])) ?>
                 🕐 <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?> - <?= date('H:i', strtotime($degustacao['hora_fim'])) ?>
                 📍 <?= h($degustacao['local']) ?>
             </div>
         </div>
-        
+
         <!-- Instruções -->
         <?php if ($degustacao['instrutivo_html']): ?>
         <div class="instructions">
             <?= $degustacao['instrutivo_html'] ?>
         </div>
         <?php endif; ?>
-        
+
         <?php if ($error_message): ?>
             <div class="alert alert-error">
                 ❌ <?= h($error_message) ?>
             </div>
         <?php endif; ?>
-        
-        <?php 
+
+        <?php
         // Exibir QR Code PIX se foi gerado
         $show_qr_code = isset($_GET['qr_code']) && $_GET['qr_code'] == '1';
         $qr_inscricao_id = (int)($_GET['inscricao_id'] ?? 0);
-        
+
         if ($show_qr_code && $qr_inscricao_id > 0) {
             // Buscar dados do QR Code (da sessão ou do banco)
             $qr_code_image = $_SESSION['qr_code_image'] ?? '';
             $qr_code_id = $_SESSION['qr_code_id'] ?? '';
             $qr_code_value = $_SESSION['qr_code_value'] ?? 0;
             $pix_copia_cola = $_SESSION['pix_copia_cola'] ?? '';
-            
+
             // Se não estiver na sessão, buscar do banco
             if (empty($qr_code_image)) {
                 try {
                     // Verificar quais colunas existem
                     $check_cols = $pdo->query("
-                        SELECT column_name FROM information_schema.columns 
-                        WHERE table_name = 'comercial_inscricoes' 
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name = 'comercial_inscricoes'
                         AND column_name IN ('valor_total', 'valor_pago', 'pix_copia_cola')
                     ");
                     $all_cols = $check_cols->fetchAll(PDO::FETCH_COLUMN);
                     $has_valor_total = in_array('valor_total', $all_cols);
                     $has_valor_pago = in_array('valor_pago', $all_cols);
                     $has_pix_copia_cola = in_array('pix_copia_cola', $all_cols);
-                    
+
                     if ($has_valor_total && $has_valor_pago) {
                         $valor_expr = "COALESCE(valor_total, valor_pago, 0) as valor_total";
                     } elseif ($has_valor_total) {
@@ -1000,20 +1061,20 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         $valor_expr = "0 as valor_total";
                     }
                     $pix_col = $has_pix_copia_cola ? ", COALESCE(pix_copia_cola, '') as pix_copia_cola" : "";
-                    
+
                     $stmt = $pdo->prepare("
-                        SELECT 
-                            qr_code_image, 
-                            asaas_qr_code_id, 
+                        SELECT
+                            qr_code_image,
+                            asaas_qr_code_id,
                             $valor_expr,
                             pagamento_status
                             $pix_col
-                        FROM comercial_inscricoes 
+                        FROM comercial_inscricoes
                         WHERE id = :id
                     ");
                     $stmt->execute([':id' => $qr_inscricao_id]);
                     $qr_data = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
+
                     if ($qr_data) {
                         $qr_code_image = $qr_data['qr_code_image'] ?? '';
                         $qr_code_id = $qr_data['asaas_qr_code_id'] ?? '';
@@ -1041,7 +1102,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     $pagamento_status = 'aguardando';
                 }
             }
-            
+
             // SEMPRE verificar status novamente para garantir que está atualizado (mesma lógica da página de inscritos)
             try {
                 $stmt_check = $pdo->prepare("SELECT pagamento_status FROM comercial_inscricoes WHERE id = :id");
@@ -1054,22 +1115,22 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 // Se der erro, manter status anterior
                 error_log("Erro na verificação final de status: " . $e->getMessage());
             }
-            
+
             // Se já foi pago, não mostrar QR Code, mostrar confirmação
             if ($pagamento_status === 'pago') {
                 // Buscar valor pago para exibir
                 try {
                     // Verificar quais colunas de valor existem
                     $check_valor_cols = $pdo->query("
-                        SELECT column_name 
-                        FROM information_schema.columns 
-                        WHERE table_name = 'comercial_inscricoes' 
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'comercial_inscricoes'
                         AND column_name IN ('valor_total', 'valor_pago')
                     ");
                     $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
                     $has_valor_total = in_array('valor_total', $valor_columns);
                     $has_valor_pago = in_array('valor_pago', $valor_columns);
-                    
+
                     // Montar expressão de valor dinamicamente
                     if ($has_valor_total && $has_valor_pago) {
                         $valor_expr = "COALESCE(valor_total, valor_pago, 0) as valor_pago";
@@ -1080,7 +1141,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     } else {
                         $valor_expr = "0 as valor_pago";
                     }
-                    
+
                     $stmt = $pdo->prepare("SELECT $valor_expr FROM comercial_inscricoes WHERE id = :id");
                     $stmt->execute([':id' => $qr_inscricao_id]);
                     $valor_data = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1089,7 +1150,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     $valor_pago = $qr_code_value;
                 }
             }
-            
+
             // Se pagamento já foi confirmado, mostrar mensagem de sucesso
             if ($pagamento_status === 'pago'): ?>
                 <div class="qr-code-container" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: 3px solid #10b981; border-radius: 12px; padding: 40px; margin: 30px 0; text-align: center; box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3);">
@@ -1098,7 +1159,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     <p style="color: rgba(255, 255, 255, 0.95); margin-bottom: 20px; font-size: 18px; line-height: 1.6;">
                         Sua inscrição foi confirmada com sucesso!
                     </p>
-                    
+
                     <div style="margin-top: 25px; padding: 20px; background: rgba(255, 255, 255, 0.2); border-radius: 8px; backdrop-filter: blur(10px);">
                         <p style="margin: 0; font-size: 32px; font-weight: 700; color: white;">
                             R$ <?= number_format($valor_pago, 2, ',', '.') ?>
@@ -1107,21 +1168,21 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                             Valor pago
                         </p>
                     </div>
-                    
+
                     <p style="color: rgba(255, 255, 255, 0.9); font-size: 14px; margin-top: 25px; line-height: 1.6;">
                         📧 Você receberá um e-mail de confirmação em breve<br>
                         📅 Fique atento às informações da degustação
                     </p>
                 </div>
-                <?php elseif (!empty($qr_code_image)): ?>
+                <?php elseif (!empty($qr_code_image) || !empty($pix_copia_cola)): ?>
                 <div id="qr-code-pix-container" class="qr-code-container" style="background: white; border: 2px solid #3b82f6; border-radius: 12px; padding: 30px; margin: 30px 0; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                     <h2 style="color: #1e40af; margin-bottom: 20px;">💰 Pague com PIX</h2>
                     <p style="color: #6b7280; margin-bottom: 15px; font-size: 16px;">
                         Escaneie o QR Code abaixo com o app do seu banco para finalizar o pagamento
                     </p>
-                    
+
                     <div style="background: white; padding: 20px; border-radius: 8px; display: inline-block; margin: 20px 0;">
-                        <?php 
+                        <?php
                         // Garantir que o Base64 está no formato correto
                         // Se já tem o prefixo data:image, usar direto, senão adicionar
                         if (strpos($qr_code_image, 'data:image') === 0) {
@@ -1134,8 +1195,8 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         }
                         ?>
                         <?php if (!empty($img_src)): ?>
-                            <img src="<?= h($img_src) ?>" 
-                                 alt="QR Code PIX" 
+                            <img src="<?= h($img_src) ?>"
+                                 alt="QR Code PIX"
                                  style="max-width: 300px; width: 100%; height: auto;">
                         <?php else: ?>
                             <div style="padding: 40px; text-align: center; color: #6b7280;">
@@ -1145,18 +1206,18 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                             </div>
                         <?php endif; ?>
                     </div>
-                    
+
                     <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 8px;">
                         <p style="margin: 0; font-size: 24px; font-weight: 700; color: #1e40af;">
                             R$ <?= number_format($qr_code_value, 2, ',', '.') ?>
                         </p>
                     </div>
-                    
+
                     <?php if (!empty($pix_copia_cola)): ?>
                     <div class="pix-copia-cola-box" style="margin-top: 24px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; text-align: left;">
                         <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1e40af;">📱 Pagando no celular? Copie o código PIX:</p>
                         <div class="pix-copia-cola-row" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                            <input type="text" id="pixCopiaCola" readonly value="<?= h($pix_copia_cola) ?>" 
+                            <input type="text" id="pixCopiaCola" readonly value="<?= h($pix_copia_cola) ?>"
                                 style="flex: 1; min-width: 0; padding: 12px; font-size: 16px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;">
                             <button type="button" onclick="copiarPixCopiaCola()" class="btn-copiar-pix"
                                 style="background: #1e40af; color: white; border: none; padding: 12px 20px; min-height: 44px; border-radius: 6px; font-weight: 600; cursor: pointer; white-space: nowrap;">
@@ -1166,25 +1227,25 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         <p style="margin: 10px 0 0 0; font-size: 12px; color: #6b7280;">Cole no app do seu banco na opção PIX Copia e Cola.</p>
                     </div>
                     <?php endif; ?>
-                    
+
                     <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
                         ⏱️ Este QR Code expira em 1 hora<br>
                         💡 Após o pagamento, sua inscrição será confirmada automaticamente
                     </p>
-                    
+
                     <div id="statusPagamentoContainer" style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; display: none;">
                         <p id="statusPagamentoTexto" style="margin: 0; font-size: 14px; color: #6b7280; text-align: center;">
                             ⏳ Verificando pagamento...
                         </p>
                     </div>
-                    
+
                     <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                         <button id="btnVerificarPagamento" onclick="verificarPagamento()" style="background: #3b82f6; color: white; border: none; padding: 14px 24px; min-height: 48px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s;">
                             🔄 Verificar Pagamento
                         </button>
                     </div>
                 </div>
-                
+
                 <script>
                 // Rolagem automática até o QR Code ao carregar a página (evita cliente ficar no topo)
                 (function() {
@@ -1193,7 +1254,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 })();
-                
+
                 function copiarPixCopiaCola() {
                     var input = document.getElementById('pixCopiaCola');
                     if (!input || !input.value) return;
@@ -1223,7 +1284,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         }
                     }
                 }
-                
+
                 let intervaloVerificacao = null;
 
                 function montarUrlPagamento(params) {
@@ -1240,7 +1301,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
 
                     return url.toString();
                 }
-                
+
                 // Verificação SILENCIOSA em background (sem mostrar erros ou tocar no botão)
                 function verificarPagamentoSilencioso() {
                     // Adicionar timestamp para evitar cache do navegador
@@ -1250,7 +1311,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         inscricao_id: '<?= $qr_inscricao_id ?>',
                         _t: timestamp
                     });
-                    
+
                     fetch(verificarUrl, {
                         method: 'GET',
                         headers: {
@@ -1272,18 +1333,18 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         if (data.pago === true || data.status === 'pago') {
                             const statusContainer = document.getElementById('statusPagamentoContainer');
                             const statusTexto = document.getElementById('statusPagamentoTexto');
-                            
+
                             // Parar verificação automática
                             if (intervaloVerificacao) {
                                 clearInterval(intervaloVerificacao);
                                 intervaloVerificacao = null;
                             }
-                            
+
                             // Mostrar confirmação
                             statusContainer.style.display = 'block';
                             statusTexto.innerHTML = `✅ <strong>Pagamento Confirmado!</strong><br>R$ ${parseFloat(data.valor_pago || 0).toFixed(2).replace('.', ',')}`;
                             statusTexto.style.color = '#059669';
-                            
+
                             // Recarregar página após 2 segundos para mostrar confirmação completa
                             setTimeout(() => {
                                 window.location.href = montarUrlPagamento({
@@ -1302,27 +1363,27 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         // Não fazer nada visualmente para não confundir o cliente
                     });
                 }
-                
+
                 // Verificação MANUAL quando o usuário clica no botão (com feedback visual)
                 function verificarPagamento() {
                     const statusContainer = document.getElementById('statusPagamentoContainer');
                     const statusTexto = document.getElementById('statusPagamentoTexto');
                     const btnVerificar = document.getElementById('btnVerificarPagamento');
-                    
+
                     // Mostrar loading
                     statusContainer.style.display = 'block';
                     statusTexto.innerHTML = '⏳ Verificando pagamento...';
                     statusTexto.style.color = '#6b7280';
                     btnVerificar.disabled = true;
                     btnVerificar.style.opacity = '0.6';
-                    
+
                     const timestamp = new Date().getTime();
                     const verificarUrl = montarUrlPagamento({
                         verificar_pagamento: '1',
                         inscricao_id: '<?= $qr_inscricao_id ?>',
                         _t: timestamp
                     });
-                    
+
                     fetch(verificarUrl, {
                         method: 'GET',
                         headers: {
@@ -1342,18 +1403,18 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     .then(data => {
                         btnVerificar.disabled = false;
                         btnVerificar.style.opacity = '1';
-                        
+
                         if (data.pago === true || data.status === 'pago') {
                             // Pagamento confirmado!
                             statusTexto.innerHTML = `✅ <strong>Pagamento Confirmado!</strong><br>R$ ${parseFloat(data.valor_pago || 0).toFixed(2).replace('.', ',')}`;
                             statusTexto.style.color = '#059669';
-                            
+
                             // Parar verificação automática
                             if (intervaloVerificacao) {
                                 clearInterval(intervaloVerificacao);
                                 intervaloVerificacao = null;
                             }
-                            
+
                             // Recarregar página após 2 segundos
                             setTimeout(() => {
                                 window.location.href = montarUrlPagamento({
@@ -1377,14 +1438,14 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         statusTexto.style.color = '#dc2626';
                     });
                 }
-                
+
                 // Verificação automática SILENCIOSA a cada 10 segundos (em background, sem tocar no botão)
                 intervaloVerificacao = setInterval(() => verificarPagamentoSilencioso(), 10000);
-                
+
                 // Verificar imediatamente também (silenciosamente)
                 setTimeout(() => verificarPagamentoSilencioso(), 2000);
                 </script>
-                
+
                 <?php
                 // Exibir mensagem de confirmação se pagamento foi confirmado
                 if (isset($_GET['pagamento_confirmado'])): ?>
@@ -1395,7 +1456,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 <?php endif; ?>
             <?php endif; ?>
         <?php } ?>
-        
+
         <?php if ($inscricoes_encerradas): ?>
             <div class="alert alert-warning">
                 ⏰ Inscrições encerradas. A data limite foi <?= date('d/m/Y', strtotime($degustacao['data_limite'])) ?>.
@@ -1409,12 +1470,12 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 ⚠️ Degustação lotada, mas você pode se inscrever na lista de espera.
             </div>
         <?php elseif (!($show_qr_code && $qr_inscricao_id > 0)): ?>
-        
+
         <!-- Formulário de Inscrição (apenas quando NÃO estiver na tela do QR Code) -->
         <div class="form-container">
             <form method="POST" id="inscricaoForm">
                 <h2 style="margin-bottom: 20px; color: #1e3a8a;">📝 Inscrição</h2>
-                
+
                 <!-- Já fechou contrato? (PRIMEIRO) -->
                 <div class="form-group">
                     <label class="form-label">Já fechou seu evento conosco? *</label>
@@ -1429,7 +1490,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Buscar Evento (se já fechou) -->
                 <div id="buscaEventoContainer" class="hidden" style="margin-bottom: 20px; padding: 15px; background: #f0f9ff; border: 2px solid #0ea5e9; border-radius: 8px;">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
@@ -1441,30 +1502,30 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 8px;">
                         💡 Se você já fechou evento conosco, busque aqui e seus dados serão preenchidos automaticamente
                     </small>
-                    
+
                     <!-- Informações do evento encontrado -->
                     <div id="meEventInfo" class="alert alert-success hidden" style="margin-top: 15px;">
                         <h4 style="margin: 0 0 10px 0; font-size: 16px;">✅ Evento encontrado!</h4>
                         <div id="meEventDetails"></div>
                     </div>
                 </div>
-                
+
                 <!-- Dados Básicos (preenchidos automaticamente ou manualmente) -->
                 <div class="form-group">
                     <label class="form-label">Nome Completo *</label>
                     <input type="text" name="nome" id="nomeInput" class="form-input" required>
                 </div>
-                
+
                 <div class="form-group">
                     <label class="form-label">E-mail *</label>
                     <input type="email" name="email" id="emailInput" class="form-input" required>
                 </div>
-                
+
                 <div class="form-group">
                     <label class="form-label">Celular *</label>
                     <input type="tel" name="telefone" id="telefoneInput" class="form-input" required>
                 </div>
-                
+
                 <!-- Tipo de Festa -->
                 <div class="form-group">
                     <label class="form-label">Tipo de Festa *</label>
@@ -1479,7 +1540,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Quantidade de Pessoas -->
                 <div class="form-group">
                     <label class="form-label">Pessoas no Evento *</label>
@@ -1513,7 +1574,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     </div>
                     <div id="resumoTotalPessoas" style="margin-top: 8px; padding: 10px; background: #eef2ff; border-left: 3px solid #4f46e5; border-radius: 4px; display: none; color: #312e81; font-weight: 600;"></div>
                 </div>
-                
+
                 <!-- Informações de Preço -->
                 <div id="priceInfo" class="price-info" style="display: none;">
                     <h3 style="margin: 0 0 10px 0; color: #0ea5e9;">💰 Resumo do Valor</h3>
@@ -1530,13 +1591,13 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         <span id="valorTotal">R$ 0,00</span>
                     </div>
                 </div>
-                
+
                 <!-- Campos ocultos para dados da ME -->
                 <input type="hidden" name="nome_titular_contrato" id="nomeTitularHidden">
                 <input type="hidden" name="cpf_3_digitos" id="cpf3DigitosHidden">
                 <input type="hidden" name="me_cliente_cpf" id="meClienteCpfHidden">
                 <input type="hidden" name="me_event_id" id="meEventIdHidden">
-                
+
                 <!-- Campos dinâmicos do Form Builder -->
                 <?php
                 $campos = json_decode($degustacao['campos_json'], true) ?: [];
@@ -1544,69 +1605,69 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 ?>
                     <div class="form-group">
                         <label class="form-label"><?= h($campo['label']) ?> <?= $campo['required'] ? '*' : '' ?></label>
-                        
+
                         <?php if ($campo['type'] === 'texto' || $campo['type'] === 'email' || $campo['type'] === 'celular' || $campo['type'] === 'cpf_cnpj' || $campo['type'] === 'numero'): ?>
-                            <input type="<?= $campo['type'] === 'email' ? 'email' : ($campo['type'] === 'numero' ? 'number' : 'text') ?>" 
-                                   name="<?= h($campo['name']) ?>" class="form-input" 
+                            <input type="<?= $campo['type'] === 'email' ? 'email' : ($campo['type'] === 'numero' ? 'number' : 'text') ?>"
+                                   name="<?= h($campo['name']) ?>" class="form-input"
                                    <?= $campo['required'] ? 'required' : '' ?>>
-                        
+
                         <?php elseif ($campo['type'] === 'data'): ?>
-                            <input type="date" name="<?= h($campo['name']) ?>" class="form-input" 
+                            <input type="date" name="<?= h($campo['name']) ?>" class="form-input"
                                    <?= $campo['required'] ? 'required' : '' ?>>
-                        
+
                         <?php elseif ($campo['type'] === 'select'): ?>
-                            <select name="<?= h($campo['name']) ?>" class="form-select" 
+                            <select name="<?= h($campo['name']) ?>" class="form-select"
                                     <?= $campo['required'] ? 'required' : '' ?>>
                                 <option value="">Selecione...</option>
                                 <?php foreach ($campo['options'] as $option): ?>
                                     <option value="<?= h($option) ?>"><?= h($option) ?></option>
                                 <?php endforeach; ?>
                             </select>
-                        
+
                         <?php elseif ($campo['type'] === 'radio'): ?>
                             <div class="form-radio-group">
                                 <?php foreach ($campo['options'] as $option): ?>
                                     <div class="form-radio">
-                                        <input type="radio" name="<?= h($campo['name']) ?>" value="<?= h($option) ?>" 
-                                               id="<?= h($campo['name'] . '_' . $option) ?>" 
+                                        <input type="radio" name="<?= h($campo['name']) ?>" value="<?= h($option) ?>"
+                                               id="<?= h($campo['name'] . '_' . $option) ?>"
                                                <?= $campo['required'] ? 'required' : '' ?>>
                                         <label for="<?= h($campo['name'] . '_' . $option) ?>"><?= h($option) ?></label>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
-                        
+
                         <?php elseif ($campo['type'] === 'checkbox'): ?>
                             <div class="form-checkbox">
                                 <?php foreach ($campo['options'] as $option): ?>
                                     <div class="form-checkbox">
-                                        <input type="checkbox" name="<?= h($campo['name']) ?>[]" value="<?= h($option) ?>" 
+                                        <input type="checkbox" name="<?= h($campo['name']) ?>[]" value="<?= h($option) ?>"
                                                id="<?= h($campo['name'] . '_' . $option) ?>">
                                         <label for="<?= h($campo['name'] . '_' . $option) ?>"><?= h($option) ?></label>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
-                        
+
                         <?php elseif ($campo['type'] === 'textarea'): ?>
-                            <textarea name="<?= h($campo['name']) ?>" class="form-input" rows="4" 
+                            <textarea name="<?= h($campo['name']) ?>" class="form-input" rows="4"
                                       <?= $campo['required'] ? 'required' : '' ?>></textarea>
                         <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
-                
+
                 <!-- Campos ocultos para cálculo -->
                 <input type="hidden" name="valor_total" id="valorTotalHidden" value="0">
                 <input type="hidden" name="extras" id="extrasHidden" value="0">
-                
+
                 <button type="submit" class="btn-submit" id="btnSubmitInscricao">
                     <?= $lotado && $aceita_lista_espera ? '📋 Inscrever na Lista de Espera' : '✅ Inscrever-se' ?>
                 </button>
             </form>
         </div>
-        
+
         <?php endif; ?>
         <?php endif; ?>
     </div>
-    
+
     <!-- Modal de Busca ME Eventos - RECRIADO PARA CENTRALIZAÇÃO -->
     <div id="modalBuscaME" class="modal-overlay-degust" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; min-height: 100vh; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); z-index: 99999; margin: 0; padding: 0; overflow: auto; -webkit-overflow-scrolling: touch;" onclick="if(event.target === this) fecharModalBuscaME()">
         <div class="modal-inner-mobile" style="position: relative; margin: 20px auto; background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); max-width: 600px; width: calc(100% - 40px); max-height: 90vh; overflow-y: auto; padding: 0; -webkit-overflow-scrolling: touch;" onclick="event.stopPropagation()">
@@ -1614,7 +1675,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 <h3 style="font-size: 20px; font-weight: 700; color: white; margin: 0; display: flex; align-items: center; gap: 8px;">🔍 Buscar Evento</h3>
                 <button onclick="fecharModalBuscaME()" style="background: rgba(255, 255, 255, 0.2); border: none; color: white; font-size: 28px; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; line-height: 1;">&times;</button>
             </div>
-            
+
             <div style="padding: 24px; background: #f9fafb;">
                 <!-- Busca por Nome -->
                 <div id="buscaMEPorNome">
@@ -1630,14 +1691,14 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                             Digite pelo menos 3 caracteres para buscar
                         </small>
                     </div>
-                    
+
                     <div id="buscaMELoading" style="display: none; text-align: center; padding: 20px; color: #64748b;">
                         <div>⏳ Buscando...</div>
                     </div>
-                    
+
                     <div id="buscaMEResultados" style="margin-top: 15px;"></div>
                 </div>
-                
+
                 <!-- Validação de CPF -->
                 <div id="buscaMEValidarCPF" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
                     <div class="form-group">
@@ -1646,20 +1707,20 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                             <span id="nomeClienteSelecionado"></span>
                         </div>
                     </div>
-                    
+
                     <div class="form-group">
                         <label class="form-label">Digite seu CPF completo para confirmar *</label>
-                        <input type="text" id="buscaMECpf" class="form-input" placeholder="000.000.000-00" maxlength="14" 
+                        <input type="text" id="buscaMECpf" class="form-input" placeholder="000.000.000-00" maxlength="14"
                                oninput="this.value = this.value.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')">
                         <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 5px;">
                             🔒 Seus dados estão seguros. O CPF será usado apenas para confirmação.
                         </small>
                     </div>
-                    
+
                     <div id="buscaMEValidarLoading" style="display: none; text-align: center; padding: 10px; color: #64748b;">
                         ⏳ Validando CPF...
                     </div>
-                    
+
                     <div style="display: flex; gap: 10px; margin-top: 15px;">
                         <button type="button" onclick="fecharModalBuscaME()" class="btn-cancel" style="flex: 1;">
                             Cancelar
@@ -1672,7 +1733,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             </div>
         </div>
     </div>
-    
+
     <style>
         .cliente-item-me {
             padding: 12px;
@@ -1682,13 +1743,13 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             transition: all 0.2s;
             background: #f8fafc;
         }
-        
+
         .cliente-item-me:hover {
             background: #e0f2fe !important;
             border-color: #0ea5e9 !important;
             transform: translateX(2px);
         }
-        
+
         .btn-secondary {
             background: #6b7280;
             color: white;
@@ -1699,12 +1760,12 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             font-weight: 600;
             transition: all 0.2s;
         }
-        
+
         .btn-secondary:hover {
             background: #4b5563;
         }
     </style>
-    
+
     <script>
         const PRECOS = {
             casamento: {
@@ -1717,7 +1778,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             },
             extra: <?= $degustacao['preco_extra'] ?>
         };
-        
+
         // Mostrar pessoas incluídas baseado no tipo de festa
         function mostrarPessoasIncluidas() {
             const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
@@ -1728,23 +1789,23 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 document.getElementById('extrasInputContainer').style.display = 'none';
                 return;
             }
-            
-            const incluidos = tipoFesta.value === 'casamento' ? 
-                PRECOS.casamento.incluidos : 
+
+            const incluidos = tipoFesta.value === 'casamento' ?
+                PRECOS.casamento.incluidos :
                 PRECOS['15anos'].incluidos;
             const tipoLabel = tipoFesta.value === 'casamento' ? 'casamento' : '15 anos';
-            
+
             document.getElementById('totalIncluido').textContent = incluidos;
             document.getElementById('pessoasIncluidasInfo').style.display = 'block';
             document.getElementById('avisoIncluidosQtd').textContent = incluidos;
             document.getElementById('avisoPrecoExtra').textContent = 'R$ ' + PRECOS.extra.toFixed(2).replace('.', ',');
             document.getElementById('avisoInclusaoExtras').style.display = 'block';
-            
+
             const ajudaExtras = document.getElementById('ajudaExtrasTexto');
             if (ajudaExtras) {
                 ajudaExtras.textContent = `💡 Em ${tipoLabel}, ${incluidos} pessoa(s) já estão incluídas. Digite apenas as extras.`;
             }
-            
+
             // Padrão: não adicionar extras
             const radioNao = document.getElementById('adicionar_extras_nao');
             const radioSim = document.getElementById('adicionar_extras_sim');
@@ -1752,13 +1813,13 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             if (radioNao) radioNao.checked = true;
             toggleExtras(false);
         }
-        
+
         function toggleExtras(mostrar) {
             const extrasContainer = document.getElementById('extrasInputContainer');
             const qtdInput = document.getElementById('qtdPessoasInput');
-            
+
             if (!extrasContainer || !qtdInput) return;
-            
+
             if (mostrar) {
                 extrasContainer.style.display = 'block';
                 if ((parseInt(qtdInput.value, 10) || 0) <= 0) {
@@ -1768,48 +1829,48 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 extrasContainer.style.display = 'none';
                 qtdInput.value = 0;
             }
-            
+
             calcularPreco();
         }
-        
+
         function calcularPreco() {
             const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
             const qtdExtras = parseInt(document.getElementById('qtdPessoasInput').value) || 0;
             const fechouContrato = document.getElementById('fechou_sim')?.checked;
-            
+
             if (!tipoFesta) {
                 document.getElementById('priceInfo').style.display = 'none';
                 return;
             }
-            
+
             const precoInfo = tipoFesta.value === 'casamento' ? PRECOS.casamento : PRECOS['15anos'];
             const precoBase = precoInfo.base;
             const incluidos = precoInfo.incluidos;
             const precoExtra = PRECOS.extra;
             const valorBaseAplicado = fechouContrato ? 0 : precoBase;
-            
+
             // Total de pessoas = incluídos + extras
             const totalPessoas = incluidos + qtdExtras;
-            
+
             // Regra:
             // - Não fechou contrato: base + extras
             // - Já fechou contrato: apenas extras
             const valorTotal = valorBaseAplicado + (qtdExtras * precoExtra);
-            
+
             if (fechouContrato) {
                 document.getElementById('precoBase').textContent = 'R$ 0,00 (contrato já fechado)';
             } else {
                 document.getElementById('precoBase').textContent = 'R$ ' + precoBase.toFixed(2).replace('.', ',');
             }
-            
+
             if (qtdExtras > 0) {
                 document.getElementById('extrasInfo').textContent = qtdExtras + ' pessoa(s) extra(s) x R$ ' + precoExtra.toFixed(2).replace('.', ',') + ' = R$ ' + (qtdExtras * precoExtra).toFixed(2).replace('.', ',');
             } else {
                 document.getElementById('extrasInfo').textContent = '0 pessoa(s) extra(s) (dentro do valor base)';
             }
-            
+
             document.getElementById('valorTotal').textContent = 'R$ ' + valorTotal.toFixed(2).replace('.', ',');
-            
+
             document.getElementById('priceInfo').style.display = 'block';
             const btnSubmit = document.getElementById('btnSubmitInscricao');
             if (btnSubmit) {
@@ -1826,49 +1887,49 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 resumoTotalPessoas.innerHTML = `<strong>Total de convidados:</strong> ${totalPessoas} (${incluidos} incluídas + ${qtdExtras} extras)`;
                 resumoTotalPessoas.style.display = 'block';
             }
-            
+
             // Atualizar campos ocultos para o formulário (total de pessoas = incluídos + extras)
             document.getElementById('valorTotalHidden').value = valorTotal;
             document.getElementById('extrasHidden').value = qtdExtras;
-            
+
             // Atualizar campo qtd_pessoas com o total (incluídos + extras)
             document.getElementById('qtdPessoasInput').setAttribute('data-total', totalPessoas);
         }
-        
-        
+
+
         // Mostrar pessoas incluídas quando tipo de festa mudar
         document.querySelectorAll('input[name="tipo_festa"]').forEach(radio => {
             radio.addEventListener('change', function() {
                 mostrarPessoasIncluidas();
             });
         });
-        
+
         // Ao submeter, garantir que qtd_pessoas seja o total (incluídos + extras)
         document.getElementById('inscricaoForm')?.addEventListener('submit', function(e) {
             const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
             const respostaExtras = document.querySelector('input[name="adicionar_extras"]:checked');
             const qtdPessoasInput = document.getElementById('qtdPessoasInput');
             const qtdExtras = parseInt(qtdPessoasInput.value) || 0;
-            
+
             if (!tipoFesta) {
                 return;
             }
-            
+
             if (!respostaExtras) {
                 e.preventDefault();
                 alert('Selecione se deseja adicionar pessoas extras (Sim ou Não).');
                 return;
             }
-            
+
             if (respostaExtras.value === 'sim' && qtdExtras <= 0) {
                 e.preventDefault();
                 alert('Informe a quantidade de pessoas extras para continuar.');
                 return;
             }
-            
+
             const incluidos = tipoFesta.value === 'casamento' ? PRECOS.casamento.incluidos : PRECOS['15anos'].incluidos;
             const totalPessoas = incluidos + qtdExtras;
-            
+
             if (qtdExtras > 0) {
                 const confirmarExtras = window.confirm(`Confirma ${qtdExtras} pessoa(s) extra(s)? O total final ficará em ${totalPessoas} pessoa(s) (${incluidos} incluídas + ${qtdExtras} extras).`);
                 if (!confirmarExtras) {
@@ -1876,10 +1937,10 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     return;
                 }
             }
-            
+
             qtdPessoasInput.value = totalPessoas;
         });
-        
+
         // Inicializar texto do botão baseado na seleção inicial
         document.addEventListener('DOMContentLoaded', function() {
             const fechouNao = document.getElementById('fechou_nao');
@@ -1891,10 +1952,10 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 }
             }
         });
-        
+
         // Variáveis globais para busca ME
         let clienteSelecionadoME = null;
-        
+
         // Função para abrir modal de busca ME - SIMPLIFICADA
         function abrirModalBuscaME() {
             const modal = document.getElementById('modalBuscaME');
@@ -1909,12 +1970,12 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 document.getElementById('buscaMENome')?.focus();
             }, 100);
         }
-        
+
         function toggleContratoInfo() {
             const fechouSim = document.getElementById('fechou_sim').checked;
             const buscaContainer = document.getElementById('buscaEventoContainer');
             const btnSubmit = document.getElementById('btnSubmitInscricao');
-            
+
             if (fechouSim) {
                 buscaContainer.classList.remove('hidden');
                 // Se já fechou contrato, mudar texto do botão
@@ -1925,35 +1986,35 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             } else {
                 buscaContainer.classList.add('hidden');
                 document.getElementById('meEventInfo').classList.add('hidden');
-                
+
                 // Limpar campos ocultos
                 document.getElementById('nomeTitularHidden').value = '';
                 document.getElementById('cpf3DigitosHidden').value = '';
                 document.getElementById('meClienteCpfHidden').value = '';
                 document.getElementById('meEventIdHidden').value = '';
                 clienteSelecionadoME = null;
-                
+
                 // Se não fechou contrato, mudar texto do botão para "Realizar Pagamento"
                 if (btnSubmit) {
                     btnSubmit.innerHTML = '💳 Realizar Pagamento';
                     btnSubmit.style.background = 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)';
                 }
             }
-            
+
             calcularPreco();
         }
-        
+
         function fecharModalBuscaME() {
             const modal = document.getElementById('modalBuscaME');
             if (modal) {
                 modal.style.display = 'none';
             }
         }
-        
+
         // Buscar cliente na ME Eventos
         async function buscarClienteME() {
             const nome = document.getElementById('buscaMENome').value.trim();
-            
+
             if (nome.length < 3) {
                 if (typeof customAlert === 'function') {
                     customAlert('Digite pelo menos 3 caracteres para buscar', '⚠️ Validação');
@@ -1962,45 +2023,45 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 }
                 return;
             }
-            
+
             const loadingDiv = document.getElementById('buscaMELoading');
             const resultadosDiv = document.getElementById('buscaMEResultados');
-            
+
             loadingDiv.style.display = 'block';
             resultadosDiv.innerHTML = '';
-            
+
             try {
                 const response = await fetch(`me_buscar_cliente.php?nome=${encodeURIComponent(nome)}`);
                 const data = await response.json();
-                
+
                 loadingDiv.style.display = 'none';
-                
+
                 if (!data.ok) {
                     throw new Error(data.error || 'Erro ao buscar cliente');
                 }
-                
+
                 if (!data.clientes || data.clientes.length === 0) {
                     resultadosDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">Nenhum cliente encontrado com este nome.</div>';
                     return;
                 }
-                
+
                 // Mostrar lista de clientes encontrados
                 let html = '<div style="margin-bottom: 10px; font-weight: 600; color: #374151;">Cliente(s) encontrado(s):</div>';
                 html += '<div style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">';
-                
+
                 data.clientes.forEach((cliente, index) => {
                     html += `
-                        <div class="cliente-item-me" onclick="selecionarClienteME('${cliente.nome_cliente.replace(/'/g, "\\'")}', ${cliente.quantidade_eventos})" 
+                        <div class="cliente-item-me" onclick="selecionarClienteME('${cliente.nome_cliente.replace(/'/g, "\\'")}', ${cliente.quantidade_eventos})"
                              style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.2s; background: #f8fafc;">
                             <div style="font-weight: 600; color: #1e3a8a;">${escapeHtml(cliente.nome_cliente)}</div>
                             <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">${cliente.quantidade_eventos} evento(s) encontrado(s)</div>
                         </div>
                     `;
                 });
-                
+
                 html += '</div>';
                 resultadosDiv.innerHTML = html;
-                
+
                 } catch (error) {
                     loadingDiv.style.display = 'none';
                     const errorMsg = error.message || 'Erro ao buscar cliente';
@@ -2011,24 +2072,24 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     }
                 }
         }
-        
+
         // Selecionar cliente da lista
         function selecionarClienteME(nomeCliente, qtdEventos) {
             clienteSelecionadoME = { nome: nomeCliente, eventos: qtdEventos };
-            
+
             // Log da seleção
             console.log('Cliente selecionado:', nomeCliente, 'com', qtdEventos, 'evento(s)');
-            
+
             // Esconder resultados e mostrar validação de CPF
             document.getElementById('buscaMEResultados').innerHTML = '';
             document.getElementById('buscaMEValidarCPF').style.display = 'block';
             document.getElementById('nomeClienteSelecionado').textContent = nomeCliente;
-            
+
             // Limpar campo de CPF para nova validação
             document.getElementById('buscaMECpf').value = '';
             document.getElementById('buscaMECpf').focus();
         }
-        
+
         // Validar CPF do cliente
         async function validarCPFME() {
             if (!clienteSelecionadoME) {
@@ -2039,9 +2100,9 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 }
                 return;
             }
-            
+
             const cpf = document.getElementById('buscaMECpf').value.replace(/\D/g, '');
-            
+
             if (cpf.length !== 11) {
                 if (typeof customAlert === 'function') {
                     customAlert('CPF deve ter 11 dígitos', '⚠️ Validação');
@@ -2050,10 +2111,10 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 }
                 return;
             }
-            
+
             const loadingDiv = document.getElementById('buscaMEValidarLoading');
             loadingDiv.style.display = 'block';
-            
+
             try {
                 const response = await fetch('me_buscar_cliente.php', {
                     method: 'POST',
@@ -2066,15 +2127,15 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         degustacao_token: '<?= h($token) ?>' // Token da degustação atual
                     })
                 });
-                
+
                 const data = await response.json();
                 loadingDiv.style.display = 'none';
-                
+
                 if (!data.ok) {
                     // Limpar mensagem de evento encontrado anterior
                     document.getElementById('meEventInfo').classList.add('hidden');
                     document.getElementById('meEventDetails').innerHTML = '';
-                    
+
                     // Limpar campos preenchidos anteriormente
                     document.getElementById('nomeInput').value = '';
                     document.getElementById('emailInput').value = '';
@@ -2083,14 +2144,14 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     document.getElementById('cpf3DigitosHidden').value = '';
                     document.getElementById('meClienteCpfHidden').value = '';
                     document.getElementById('meEventIdHidden').value = '';
-                    
+
                     // Mostrar erro com mensagem clara e orientações
                     const errorMsg = data.error || 'Erro ao validar dados';
-                    
+
                     // Determinar tipo de erro para mensagem específica
                     let tipoErro = 'geral';
                     let instrucoes = '';
-                    
+
                     if (errorMsg.includes('CPF não confere') || errorMsg.includes('não confere com o cadastro')) {
                         tipoErro = 'cpf';
                         instrucoes = `
@@ -2122,7 +2183,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                             • Você está usando os mesmos dados do cadastro?<br>
                         `;
                     }
-                    
+
                     document.getElementById('buscaMEResultados').innerHTML = `
                         <div style="padding: 24px; text-align: center; background: #fef2f2; border: 2px solid #dc2626; border-radius: 12px; color: #991b1b; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                             <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
@@ -2137,66 +2198,66 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                                 <small style="color: #991b1b; opacity: 0.8; display: block; margin-bottom: 12px;">
                                     Você pode tentar novamente ou se inscrever sem buscar evento
                                 </small>
-                                <button type="button" onclick="document.getElementById('buscaMEValidarCPF').style.display='none'; document.getElementById('buscaMENome').value='${clienteSelecionadoME ? escapeHtml(clienteSelecionadoME.nome) : ''}'; clienteSelecionadoME=null;" 
+                                <button type="button" onclick="document.getElementById('buscaMEValidarCPF').style.display='none'; document.getElementById('buscaMENome').value='${clienteSelecionadoME ? escapeHtml(clienteSelecionadoME.nome) : ''}'; clienteSelecionadoME=null;"
                                         style="background: #dc2626; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
                                     🔄 Tentar Novamente
                                 </button>
                             </div>
                         </div>
                     `;
-                    
+
                     // Voltar para tela de busca
                     document.getElementById('buscaMEValidarCPF').style.display = 'none';
                     if (clienteSelecionadoME) {
                         document.getElementById('buscaMENome').value = clienteSelecionadoME.nome;
                     }
                     clienteSelecionadoME = null;
-                    
+
                     throw new Error(errorMsg);
                 }
-                
+
                 // CPF validado com sucesso! Preencher campos automaticamente
                 console.log('✅ CPF validado! Resposta completa do backend:', data);
                 console.log('   data.ok =', data.ok);
                 console.log('   data.evento =', data.evento);
                 console.log('   Tipo de data.evento:', typeof data.evento);
-                
+
                 const evento = data.evento;
-                
+
                 if (!evento) {
                     console.error('❌ ERRO CRÍTICO: data.evento está null ou undefined!');
                     console.log('   Resposta completa:', JSON.stringify(data, null, 2));
                     return;
                 }
-                
+
                 console.log('✅ CPF validado com sucesso! Preenchendo campos...');
                 console.log('Dados do evento recebidos:', evento);
                 console.log('   Todos os campos do evento:', Object.keys(evento));
                 console.log('   Estrutura JSON completa:', JSON.stringify(evento, null, 2));
-                
+
                 // Limpar mensagem de erro anterior se existir
                 document.getElementById('meEventInfo').classList.add('hidden');
-                
+
                 // Preencher campos principais automaticamente
                 const nomeInput = document.getElementById('nomeInput');
                 const emailInput = document.getElementById('emailInput');
                 const telefoneInput = document.getElementById('telefoneInput');
-                
+
                 if (nomeInput) {
                     nomeInput.value = evento.nome_cliente || '';
                     console.log('✅ Nome preenchido:', nomeInput.value);
                 } else {
                     console.error('❌ Campo nomeInput não encontrado!');
                 }
-                
+
                 // Preencher email (buscar em múltiplos campos possíveis)
                 // IMPORTANTE: Verificar TODOS os campos possíveis que podem conter email
                 console.log('🔍 Buscando email no evento...');
                 console.log('   evento.email =', evento.email);
                 console.log('   evento.emailCliente =', evento.emailCliente);
-                
+
                 let emailVal = '';
-                
+
                 // Lista de TODOS os campos possíveis
                 const camposEmail = [
                     'email',
@@ -2215,7 +2276,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     'correio',
                     'correio_eletronico'
                 ];
-                
+
                 // Tentar cada campo
                 for (const campo of camposEmail) {
                     const valor = evento[campo];
@@ -2226,7 +2287,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         break;
                     }
                 }
-                
+
                 // Se ainda não encontrou, buscar em qualquer campo que contenha '@'
                 if (!emailVal) {
                     console.log('   Buscando email em qualquer campo que contenha @...');
@@ -2239,7 +2300,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         }
                     }
                 }
-                
+
                 // Tentar preencher
                 if (emailInput) {
                     if (emailVal) {
@@ -2267,10 +2328,10 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         console.error('   ❌ Nenhum campo de email encontrado no formulário!');
                     }
                 }
-                
+
                 // Preencher telefone/celular (buscar em múltiplos campos possíveis)
-                const telefoneVal = evento.telefone || evento.celular || evento.telefoneCliente || 
-                                   evento.celularCliente || evento.cliente_telefone || evento.cliente_celular || 
+                const telefoneVal = evento.telefone || evento.celular || evento.telefoneCliente ||
+                                   evento.celularCliente || evento.cliente_telefone || evento.cliente_celular ||
                                    evento.contato_telefone || evento.telefone_contato || '';
                 if (telefoneInput && telefoneVal) {
                     telefoneInput.value = telefoneVal;
@@ -2280,18 +2341,18 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 } else {
                     console.error('❌ Campo telefoneInput não encontrado!');
                 }
-                
+
                 // Disparar evento de mudança nos campos para garantir que qualquer validação JavaScript seja executada
                 if (nomeInput) nomeInput.dispatchEvent(new Event('input', { bubbles: true }));
                 if (emailInput) emailInput.dispatchEvent(new Event('input', { bubbles: true }));
                 if (telefoneInput) telefoneInput.dispatchEvent(new Event('input', { bubbles: true }));
-                
+
                 // Preencher campos ocultos
                 document.getElementById('nomeTitularHidden').value = evento.nome_cliente || '';
                 document.getElementById('cpf3DigitosHidden').value = cpf.substring(0, 3);
                 document.getElementById('meClienteCpfHidden').value = cpf;
                 document.getElementById('meEventIdHidden').value = evento.id || '';
-                
+
                 // Mostrar informações do evento
                 const eventDetails = `
                     <div style="margin-top: 10px; font-size: 14px;">
@@ -2301,13 +2362,13 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         ${evento.local_evento ? `<div><strong>📍 Local:</strong> ${escapeHtml(evento.local_evento)}</div>` : ''}
                     </div>
                 `;
-                
+
                 document.getElementById('meEventDetails').innerHTML = eventDetails;
                 document.getElementById('meEventInfo').classList.remove('hidden');
-                
+
                 // Fechar modal
                 fecharModalBuscaME();
-                
+
             } catch (error) {
                 loadingDiv.style.display = 'none';
                 const errorMsg = 'Erro ao validar CPF: ' + error.message;
@@ -2318,26 +2379,26 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 }
             }
         }
-        
+
         function formatarData(data) {
             if (!data) return '';
             const d = new Date(data + 'T00:00:00');
             return d.toLocaleDateString('pt-BR');
         }
-        
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
-        
+
         // Permitir busca ao pressionar Enter
         document.getElementById('buscaMENome')?.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 buscarClienteME();
             }
         });
-        
+
         document.getElementById('buscaMECpf')?.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 validarCPFME();

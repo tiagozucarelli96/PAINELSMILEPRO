@@ -291,7 +291,7 @@ try {
                     $degustacao = $stmt_deg->fetch(PDO::FETCH_ASSOC);
                     
                     // Enviar e-mail de confirmação
-                    if ($degustacao && class_exists('ComercialEmailHelper')) {
+                    if ($degustacao) {
                         require_once __DIR__ . '/comercial_email_helper.php';
                         $emailHelper = new ComercialEmailHelper();
                         $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
@@ -541,11 +541,9 @@ try {
             }
             
             // Enviar e-mail de confirmação
-            if (class_exists('ComercialEmailHelper')) {
-                require_once __DIR__ . '/comercial_email_helper.php';
-                $emailHelper = new ComercialEmailHelper();
-                $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
-            }
+            require_once __DIR__ . '/comercial_email_helper.php';
+            $emailHelper = new ComercialEmailHelper();
+            $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
             
             logWebhook("Pagamento confirmado para inscrição ID: " . $inscricao['id']);
             break;
