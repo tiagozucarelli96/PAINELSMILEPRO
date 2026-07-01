@@ -630,9 +630,6 @@ if ($_POST && !$inscricoes_encerradas) {
             <p style="margin: 0 0 1rem 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">
                 Recebemos sua inscrição para a Degustação do Grupo Smile Eventos.
             </p>
-            <p style="margin: 0 0 1rem 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">
-                Como não há valor pendente nesta inscrição, não é necessário realizar pagamento nem enviar comprovante.
-            </p>
             <p style="margin: 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">
                 Sua presença está registrada. Estamos preparando uma experiência especial para recebê-lo em breve.
             </p>
