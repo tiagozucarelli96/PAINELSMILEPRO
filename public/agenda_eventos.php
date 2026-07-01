@@ -269,6 +269,7 @@ $temTabelaEventos = agenda_eventos_has_table($pdo, 'logistica_eventos_espelho');
 $temColunaNomeEvento = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
 $temColunaHoraFim = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'hora_fim');
 $temTabelaReunioes = agenda_eventos_has_table($pdo, 'eventos_reunioes');
+$temTabelaComercialEventosPainel = agenda_eventos_has_table($pdo, 'comercial_eventos_painel');
 $temColunaClienteCadastro = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
 $temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
 
@@ -445,12 +446,24 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
         $joinReunioesDetalhe = $temTabelaReunioes
             ? "
                 LEFT JOIN LATERAL (
-                    SELECT er.id AS meeting_id, er.me_event_snapshot
+                    SELECT er.id AS meeting_id, er.me_event_snapshot, er.tipo_evento_real
                     FROM eventos_reunioes er
                     WHERE er.me_event_id = e.me_event_id
                     ORDER BY er.updated_at DESC NULLS LAST, er.id DESC
                     LIMIT 1
                 ) r ON TRUE
+            "
+            : '';
+
+        $joinComercialPainelDetalhe = $temTabelaComercialEventosPainel
+            ? "
+                LEFT JOIN LATERAL (
+                    SELECT tipo_evento_real
+                    FROM comercial_eventos_painel
+                    WHERE espelho_evento_id = e.id
+                    ORDER BY updated_at DESC NULLS LAST, id DESC
+                    LIMIT 1
+                ) cep ON TRUE
             "
             : '';
 
@@ -463,6 +476,14 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
             : "'Evento sem nome'";
 
         $meetingIdDetalheSql = $temTabelaReunioes ? 'COALESCE(r.meeting_id, 0)' : '0';
+        $tipoEventoRealDetalheSql = "''";
+        if ($temTabelaComercialEventosPainel && $temTabelaReunioes) {
+            $tipoEventoRealDetalheSql = "COALESCE(NULLIF(TRIM(cep.tipo_evento_real), ''), NULLIF(TRIM(r.tipo_evento_real), ''), NULLIF(TRIM(r.me_event_snapshot->>'tipo_evento_real'), ''), '')";
+        } elseif ($temTabelaComercialEventosPainel) {
+            $tipoEventoRealDetalheSql = "COALESCE(NULLIF(TRIM(cep.tipo_evento_real), ''), '')";
+        } elseif ($temTabelaReunioes) {
+            $tipoEventoRealDetalheSql = "COALESCE(NULLIF(TRIM(r.tipo_evento_real), ''), NULLIF(TRIM(r.me_event_snapshot->>'tipo_evento_real'), ''), '')";
+        }
 
         $horaFimDetalheSnapshotSql = $temTabelaReunioes
             ? "COALESCE(
@@ -513,6 +534,7 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
                 e.me_event_id,
                 {$meetingIdDetalheSql} AS meeting_id,
                 {$clienteDetalheSelectSql}
+                {$tipoEventoRealDetalheSql} AS tipo_evento_real,
                 e.data_evento::text AS data_evento,
                 COALESCE(TO_CHAR(e.hora_inicio, 'HH24:MI'), '') AS hora_inicio,
                 {$horaFimDetalheSql} AS hora_fim,
@@ -524,6 +546,7 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
                 COALESCE(e.idlocalevento, 0) AS id_local_me
             FROM logistica_eventos_espelho e
             {$joinReunioesDetalhe}
+            {$joinComercialPainelDetalhe}
             {$joinClientesDetalhe}
             WHERE COALESCE(e.arquivado, FALSE) = FALSE
               AND e.id = :evento_id
@@ -1333,6 +1356,14 @@ a.event-function-card:hover {
             ['icon' => '📄', 'title' => 'Contratos e Documentos', 'pill' => ''],
             ['icon' => '❕', 'title' => 'Histórico', 'pill' => '', 'href' => $historicoHref],
         ];
+        if ((string)($eventoSelecionado['tipo_evento_real'] ?? '') === 'formatura') {
+            array_splice($cards, 3, 0, [[
+                'icon' => '🎓',
+                'title' => 'Formatura',
+                'pill' => 'Formandos',
+                'href' => 'index.php?page=eventos_formatura&evento_id=' . (int)$eventoSelecionado['id'],
+            ]]);
+        }
         ?>
         <div class="agenda-detail-layout">
             <aside class="event-side-panel">

@@ -274,6 +274,7 @@ $routes = [
   'agenda' => 'agenda.php',
   'agenda_eventos' => 'agenda_eventos.php',
   'eventos_financeiro' => 'eventos_financeiro.php',
+  'eventos_formatura' => 'eventos_formatura.php',
   'eventos_historico' => 'eventos_historico.php',
   'demandas' => 'demandas.php',
   'trello' => 'demandas_trello.php',
