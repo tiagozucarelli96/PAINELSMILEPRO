@@ -240,6 +240,28 @@ $comoConheceuOptions = [
     'Outro',
 ];
 
+$clientesJs = [];
+foreach ($clientes as $cliente) {
+    $label = trim((string)($cliente['nome_completo'] ?? ''));
+    if (!empty($cliente['telefone_whatsapp'])) {
+        $label .= ' - ' . trim((string)$cliente['telefone_whatsapp']);
+    }
+    $clientesJs[] = [
+        'id' => (int)$cliente['id'],
+        'label' => $label,
+        'search' => mb_strtolower(trim(
+            (string)($cliente['nome_completo'] ?? '') . ' ' .
+            (string)($cliente['email'] ?? '') . ' ' .
+            (string)($cliente['telefone_whatsapp'] ?? '') . ' ' .
+            (string)($cliente['documento_numero'] ?? '')
+        ), 'UTF-8'),
+        'nome_completo' => (string)($cliente['nome_completo'] ?? ''),
+        'email' => (string)($cliente['email'] ?? ''),
+        'telefone_whatsapp' => (string)($cliente['telefone_whatsapp'] ?? ''),
+        'documento_numero' => (string)($cliente['documento_numero'] ?? ''),
+    ];
+}
+
 $errors = [];
 $old = [
     'local_key' => $_POST['local_key'] ?? '',
@@ -251,6 +273,14 @@ $old = [
     'como_conheceu' => $_POST['como_conheceu'] ?? '',
     'convidados' => $_POST['convidados'] ?? '',
 ];
+
+$selectedClientLabel = '';
+foreach ($clientesJs as $clienteOption) {
+    if ((string)$old['cliente_id'] === (string)$clienteOption['id']) {
+        $selectedClientLabel = $clienteOption['label'];
+        break;
+    }
+}
 
 if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     $local = comercial_novo_evento_find_local($locais, (string)$old['local_key']);
@@ -470,10 +500,63 @@ includeSidebar('Novo Evento');
     outline: 3px solid rgba(37, 99, 235, 0.16);
     border-color: #2563eb;
 }
-.client-picker {
+.time-range {
     display: grid;
     grid-template-columns: 0.8fr 1.2fr;
     gap: 10px;
+}
+.client-combobox {
+    position: relative;
+}
+.client-search-input {
+    padding-right: 42px;
+}
+.client-combobox::after {
+    content: "⌄";
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-54%);
+    color: #475569;
+    pointer-events: none;
+    font-size: 1.15rem;
+}
+.client-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    display: none;
+    max-height: 280px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+    z-index: 50;
+}
+.client-results.open {
+    display: block;
+}
+.client-result-item {
+    width: 100%;
+    border: 0;
+    background: #fff;
+    text-align: left;
+    padding: 12px 14px;
+    color: #1f2937;
+    font-weight: 700;
+    cursor: pointer;
+}
+.client-result-item:hover,
+.client-result-item.active {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+.client-empty {
+    padding: 12px 14px;
+    color: #64748b;
+    font-weight: 700;
 }
 .form-footer {
     display: flex;
@@ -502,7 +585,7 @@ includeSidebar('Novo Evento');
     align-items: center;
     justify-content: center;
     padding: 22px;
-    z-index: 2000;
+    z-index: 99999;
 }
 .modal-backdrop.open {
     display: flex;
@@ -559,7 +642,7 @@ includeSidebar('Novo Evento');
         align-items: stretch;
     }
     .form-grid,
-    .client-picker,
+    .time-range,
     .cliente-modal-grid {
         grid-template-columns: 1fr;
     }
@@ -613,35 +696,19 @@ includeSidebar('Novo Evento');
                 </div>
                 <div class="field">
                     <label>Horário de início e término</label>
-                    <div class="client-picker">
+                    <div class="time-range">
                         <input name="hora_inicio" type="time" value="<?= comercial_novo_evento_e($old['hora_inicio']) ?>" required aria-label="Horário de início">
                         <input name="hora_fim" type="time" value="<?= comercial_novo_evento_e($old['hora_fim']) ?>" required aria-label="Horário de término">
                     </div>
                 </div>
                 <div class="field full">
-                    <label for="cliente_id">Cliente</label>
-                    <div class="client-picker">
-                        <input id="cliente-busca" type="search" placeholder="Digite para buscar cliente">
-                        <select id="cliente_id" name="cliente_id" required>
-                            <option value="">Clique aqui para selecione o cliente</option>
-                            <?php foreach ($clientes as $cliente): ?>
-                                <?php
-                                $buscaCliente = trim(($cliente['nome_completo'] ?? '') . ' ' . ($cliente['email'] ?? '') . ' ' . ($cliente['telefone_whatsapp'] ?? '') . ' ' . ($cliente['documento_numero'] ?? ''));
-                                ?>
-                                <option
-                                    value="<?= (int)$cliente['id'] ?>"
-                                    data-search="<?= comercial_novo_evento_e(mb_strtolower($buscaCliente, 'UTF-8')) ?>"
-                                    <?= (string)$old['cliente_id'] === (string)$cliente['id'] ? 'selected' : '' ?>
-                                >
-                                    <?= comercial_novo_evento_e($cliente['nome_completo']) ?>
-                                    <?php if (!empty($cliente['telefone_whatsapp'])): ?>
-                                        - <?= comercial_novo_evento_e($cliente['telefone_whatsapp']) ?>
-                                    <?php endif; ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                    <label for="cliente_search">Cliente</label>
+                    <div class="client-combobox">
+                        <input id="cliente_search" class="client-search-input" type="search" placeholder="Clique aqui para selecione o cliente" value="<?= comercial_novo_evento_e($selectedClientLabel) ?>" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="client-results">
+                        <input id="cliente_id" name="cliente_id" type="hidden" value="<?= comercial_novo_evento_e($old['cliente_id']) ?>">
+                        <div id="client-results" class="client-results" role="listbox"></div>
                     </div>
-                    <button type="button" class="btn btn-link" id="open-client-modal">+ Adicionar novo cliente</button>
+                    <button type="button" class="btn btn-link" id="open-client-modal" data-open-client-modal>+ Adicionar novo cliente</button>
                 </div>
                 <div class="field">
                     <label for="como_conheceu">Como nos conheceu?</label>
@@ -706,30 +773,92 @@ includeSidebar('Novo Evento');
 
 <script>
 (() => {
-    const searchInput = document.getElementById('cliente-busca');
-    const clientSelect = document.getElementById('cliente_id');
-    const allOptions = Array.from(clientSelect.options).map((option) => ({
-        value: option.value,
-        text: option.text,
-        search: option.dataset.search || '',
-        selected: option.selected,
-    }));
+    const clients = <?= json_encode($clientesJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+    const clientSearch = document.getElementById('cliente_search');
+    const clientId = document.getElementById('cliente_id');
+    const clientResults = document.getElementById('client-results');
+    let activeIndex = -1;
 
-    function renderClientOptions(term) {
-        const selectedValue = clientSelect.value;
-        const normalized = String(term || '').trim().toLowerCase();
-        clientSelect.innerHTML = '';
-        allOptions.forEach((item, index) => {
-            if (index > 0 && normalized && !item.search.includes(normalized)) {
-                return;
-            }
-            const option = new Option(item.text, item.value, false, item.value === selectedValue);
-            option.dataset.search = item.search;
-            clientSelect.add(option);
-        });
+    function normalizeText(value) {
+        return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
 
-    searchInput.addEventListener('input', () => renderClientOptions(searchInput.value));
+    function filteredClients() {
+        const term = normalizeText(clientSearch.value.trim());
+        if (!term) {
+            return clients.slice(0, 50);
+        }
+        return clients.filter((client) => normalizeText(client.search).includes(term)).slice(0, 50);
+    }
+
+    function closeClientResults() {
+        clientResults.classList.remove('open');
+        clientSearch.setAttribute('aria-expanded', 'false');
+        activeIndex = -1;
+    }
+
+    function selectClient(client) {
+        clientId.value = String(client.id);
+        clientSearch.value = client.label;
+        closeClientResults();
+    }
+
+    function renderClientResults() {
+        const results = filteredClients();
+        clientResults.innerHTML = '';
+
+        if (!results.length) {
+            const empty = document.createElement('div');
+            empty.className = 'client-empty';
+            empty.textContent = 'Nenhum cliente encontrado';
+            clientResults.appendChild(empty);
+        } else {
+            results.forEach((client, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'client-result-item' + (index === activeIndex ? ' active' : '');
+                button.textContent = client.label;
+                button.setAttribute('role', 'option');
+                button.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    selectClient(client);
+                });
+                clientResults.appendChild(button);
+            });
+        }
+
+        clientResults.classList.add('open');
+        clientSearch.setAttribute('aria-expanded', 'true');
+    }
+
+    clientSearch.addEventListener('focus', renderClientResults);
+    clientSearch.addEventListener('input', () => {
+        clientId.value = '';
+        activeIndex = -1;
+        renderClientResults();
+    });
+    clientSearch.addEventListener('keydown', (event) => {
+        const results = filteredClients();
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, results.length - 1);
+            renderClientResults();
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            renderClientResults();
+        } else if (event.key === 'Enter' && activeIndex >= 0 && results[activeIndex]) {
+            event.preventDefault();
+            selectClient(results[activeIndex]);
+        } else if (event.key === 'Escape') {
+            closeClientResults();
+        }
+    });
+    document.addEventListener('click', (event) => {
+        if (!event.target.closest('.client-combobox')) {
+            closeClientResults();
+        }
+    });
 
     const backdrop = document.getElementById('client-modal-backdrop');
     const form = document.getElementById('quick-client-form');
@@ -746,7 +875,12 @@ includeSidebar('Novo Evento');
         form.reset();
     };
 
-    document.getElementById('open-client-modal').addEventListener('click', openModal);
+    document.addEventListener('click', (event) => {
+        if (event.target.closest('[data-open-client-modal]')) {
+            event.preventDefault();
+            openModal();
+        }
+    });
     document.getElementById('close-client-modal').addEventListener('click', closeModal);
     document.getElementById('cancel-client-modal').addEventListener('click', closeModal);
     backdrop.addEventListener('click', (event) => {
@@ -780,20 +914,35 @@ includeSidebar('Novo Evento');
                 ? `${client.nome_completo} - ${client.telefone_whatsapp}`
                 : client.nome_completo;
             const search = `${client.nome_completo || ''} ${client.email || ''} ${client.telefone_whatsapp || ''} ${client.documento_numero || ''}`.toLowerCase();
-            allOptions.push({
-                value: String(client.id),
+            const newClient = {
+                id: Number(client.id),
                 text: label,
+                label,
                 search,
-                selected: true,
-            });
-            clientSelect.value = '';
-            renderClientOptions('');
-            clientSelect.value = String(client.id);
-            searchInput.value = client.nome_completo || '';
+                nome_completo: client.nome_completo || '',
+                email: client.email || '',
+                telefone_whatsapp: client.telefone_whatsapp || '',
+                documento_numero: client.documento_numero || '',
+            };
+            clients.push(newClient);
+            selectClient(newClient);
             closeModal();
         } catch (error) {
             errorBox.textContent = error.message;
             errorBox.style.display = 'block';
+        }
+    });
+
+    document.querySelector('.novo-evento-form').addEventListener('submit', (event) => {
+        if (!clientId.value) {
+            const results = filteredClients();
+            if (results.length === 1) {
+                selectClient(results[0]);
+                return;
+            }
+            event.preventDefault();
+            clientSearch.focus();
+            renderClientResults();
         }
     });
 })();
