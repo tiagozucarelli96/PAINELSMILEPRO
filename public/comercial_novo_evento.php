@@ -229,6 +229,42 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'ajax_create_clien
     }
 }
 
+if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_client_inline') {
+    $nome = trim((string)($_POST['nome_completo'] ?? ''));
+    $telefone = trim((string)($_POST['telefone_whatsapp'] ?? ''));
+    $email = trim((string)($_POST['email'] ?? ''));
+    $documento = comercial_novo_evento_digits($_POST['documento_numero'] ?? '');
+
+    if ($nome !== '') {
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO comercial_cadastro_clientes (
+                    tipo_pessoa, nome_completo, email, telefone_whatsapp, documento_tipo,
+                    documento_numero, origem_cliente, origem_importacao, created_by,
+                    created_at, updated_at
+                ) VALUES (
+                    'PF', :nome, :email, :telefone, 'CPF',
+                    :documento, 'Novo evento', 'painel', :created_by,
+                    NOW(), NOW()
+                )
+                RETURNING id
+            ");
+            $stmt->execute([
+                ':nome' => $nome,
+                ':email' => $email,
+                ':telefone' => $telefone,
+                ':documento' => $documento,
+                ':created_by' => $_SESSION['usuario_id'] ?? $_SESSION['id'] ?? null,
+            ]);
+            $clienteNovoId = (int)$stmt->fetchColumn();
+            header('Location: index.php?page=comercial_novo_evento&cliente_id=' . $clienteNovoId);
+            exit;
+        } catch (Throwable $e) {
+            error_log('Falha ao cadastrar cliente inline no novo evento: ' . $e->getMessage());
+        }
+    }
+}
+
 $locais = comercial_novo_evento_locais($pdo);
 $clientes = comercial_novo_evento_clientes($pdo);
 $comoConheceuOptions = [
@@ -242,13 +278,13 @@ $comoConheceuOptions = [
     'Outro',
 ];
 
-$clientesJs = [];
+$clientesOptions = [];
 foreach ($clientes as $cliente) {
     $label = trim((string)($cliente['nome_completo'] ?? ''));
     if (!empty($cliente['telefone_whatsapp'])) {
         $label .= ' - ' . trim((string)$cliente['telefone_whatsapp']);
     }
-    $clientesJs[] = [
+    $clientesOptions[] = [
         'id' => (int)$cliente['id'],
         'label' => $label,
         'search' => mb_strtolower(trim(
@@ -272,22 +308,32 @@ $old = [
     'data_evento' => $_POST['data_evento'] ?? '',
     'hora_inicio' => $_POST['hora_inicio'] ?? '',
     'hora_fim' => $_POST['hora_fim'] ?? '',
-    'cliente_id' => $_POST['cliente_id'] ?? '',
+    'cliente_id' => $_POST['cliente_id'] ?? $_GET['cliente_id'] ?? '',
+    'cliente_label' => trim((string)($_POST['cliente_label'] ?? '')),
     'como_conheceu' => $_POST['como_conheceu'] ?? '',
     'convidados' => $_POST['convidados'] ?? '',
 ];
 
 $selectedClientLabel = '';
-foreach ($clientesJs as $clienteOption) {
+$clientesByLabel = [];
+foreach ($clientesOptions as $clienteOption) {
+    $clientesByLabel[$clienteOption['label']] = (int)$clienteOption['id'];
     if ((string)$old['cliente_id'] === (string)$clienteOption['id']) {
         $selectedClientLabel = $clienteOption['label'];
         break;
     }
 }
+if ($selectedClientLabel === '' && $old['cliente_label'] !== '') {
+    $selectedClientLabel = $old['cliente_label'];
+}
 
 if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     $local = comercial_novo_evento_find_local($locais, (string)$old['local_key']);
     $clienteId = (int)$old['cliente_id'];
+    if ($clienteId <= 0 && $old['cliente_label'] !== '' && isset($clientesByLabel[$old['cliente_label']])) {
+        $clienteId = (int)$clientesByLabel[$old['cliente_label']];
+        $old['cliente_id'] = (string)$clienteId;
+    }
     $cliente = $clienteId > 0 ? comercial_novo_evento_cliente($pdo, $clienteId) : null;
     $convidados = $old['convidados'] !== '' ? (int)$old['convidados'] : null;
 
@@ -512,59 +558,6 @@ includeSidebar('Novo Evento');
     grid-template-columns: 0.8fr 1.2fr;
     gap: 10px;
 }
-.client-combobox {
-    position: relative;
-}
-.client-search-input {
-    padding-right: 42px;
-}
-.client-combobox::after {
-    content: "⌄";
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-54%);
-    color: #475569;
-    pointer-events: none;
-    font-size: 1.15rem;
-}
-.client-results {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    right: 0;
-    display: none;
-    max-height: 280px;
-    overflow-y: auto;
-    background: #fff;
-    border: 1px solid #cbd5e1;
-    border-radius: 12px;
-    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
-    z-index: 50;
-}
-.client-results.open {
-    display: block;
-}
-.client-result-item {
-    width: 100%;
-    border: 0;
-    background: #fff;
-    text-align: left;
-    padding: 12px 14px;
-    color: #1f2937;
-    font-weight: 700;
-    cursor: pointer;
-}
-.client-result-item:hover,
-.client-result-item.active {
-    background: #eff6ff;
-    color: #1d4ed8;
-}
-.client-empty {
-    padding: 12px 14px;
-    color: #64748b;
-    font-weight: 700;
-}
 .form-footer {
     display: flex;
     justify-content: flex-end;
@@ -594,7 +587,8 @@ includeSidebar('Novo Evento');
     padding: 22px;
     z-index: 99999;
 }
-.modal-backdrop.open {
+.modal-backdrop.open,
+.modal-backdrop:target {
     display: flex;
 }
 .cliente-modal {
@@ -714,12 +708,16 @@ includeSidebar('Novo Evento');
                 </div>
                 <div class="field full">
                     <label for="cliente_search">Cliente</label>
-                    <div class="client-combobox">
-                        <input id="cliente_search" class="client-search-input" type="search" placeholder="Clique aqui para selecione o cliente" value="<?= comercial_novo_evento_e($selectedClientLabel) ?>" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="client-results">
+                    <div>
+                        <input id="cliente_search" name="cliente_label" type="search" list="clientes-list" placeholder="Clique aqui para selecione o cliente" value="<?= comercial_novo_evento_e($selectedClientLabel) ?>" autocomplete="off" required>
                         <input id="cliente_id" name="cliente_id" type="hidden" value="<?= comercial_novo_evento_e($old['cliente_id']) ?>">
-                        <div id="client-results" class="client-results" role="listbox"></div>
+                        <datalist id="clientes-list">
+                            <?php foreach ($clientesOptions as $clienteOption): ?>
+                                <option value="<?= comercial_novo_evento_e($clienteOption['label']) ?>" data-id="<?= (int)$clienteOption['id'] ?>"></option>
+                            <?php endforeach; ?>
+                        </datalist>
                     </div>
-                    <button type="button" class="btn btn-link" id="open-client-modal" data-open-client-modal>+ Adicionar novo cliente</button>
+                    <a class="btn btn-link" href="#cliente-modal" id="open-client-modal">+ Adicionar novo cliente</a>
                 </div>
                 <div class="field">
                     <label for="como_conheceu">Como nos conheceu?</label>
@@ -745,14 +743,14 @@ includeSidebar('Novo Evento');
     </section>
 </div>
 
-<div class="modal-backdrop" id="client-modal-backdrop" aria-hidden="true">
+<div class="modal-backdrop" id="cliente-modal" aria-hidden="true">
     <div class="cliente-modal" role="dialog" aria-modal="true" aria-labelledby="client-modal-title">
         <div class="cliente-modal-header">
             <h3 id="client-modal-title">Adicionar novo cliente</h3>
-            <button class="modal-close" type="button" id="close-client-modal" aria-label="Fechar">×</button>
+            <a class="modal-close" href="#" id="close-client-modal" aria-label="Fechar">×</a>
         </div>
-        <form id="quick-client-form">
-            <input type="hidden" name="action" value="ajax_create_client">
+        <form id="quick-client-form" method="post">
+            <input type="hidden" name="action" value="create_client_inline">
             <div class="cliente-modal-body">
                 <div class="alert alert-error" id="client-modal-error" style="display: none;"></div>
                 <div class="cliente-modal-grid">
@@ -775,7 +773,7 @@ includeSidebar('Novo Evento');
                 </div>
             </div>
             <div class="cliente-modal-footer">
-                <button class="btn btn-secondary" type="button" id="cancel-client-modal">Cancelar</button>
+                <a class="btn btn-secondary" href="#" id="cancel-client-modal">Cancelar</a>
                 <button class="btn btn-primary" type="submit">Salvar cliente</button>
             </div>
         </form>
@@ -784,116 +782,58 @@ includeSidebar('Novo Evento');
 
 <script>
 (() => {
-    const clients = <?= json_encode($clientesJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
     const clientSearch = document.getElementById('cliente_search');
     const clientId = document.getElementById('cliente_id');
-    const clientResults = document.getElementById('client-results');
-    let activeIndex = -1;
+    const clientOptions = Array.from(document.querySelectorAll('#clientes-list option'));
 
-    function normalizeText(value) {
-        return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    function syncClientId() {
+        const typed = clientSearch.value.trim();
+        const option = clientOptions.find((item) => item.value === typed);
+        clientId.value = option ? option.dataset.id : '';
     }
 
-    function filteredClients() {
-        const term = normalizeText(clientSearch.value.trim());
-        if (!term) {
-            return clients.slice(0, 50);
-        }
-        return clients.filter((client) => normalizeText(client.search).includes(term)).slice(0, 50);
-    }
+    clientSearch.addEventListener('input', syncClientId);
+    clientSearch.addEventListener('change', syncClientId);
 
-    function closeClientResults() {
-        clientResults.classList.remove('open');
-        clientSearch.setAttribute('aria-expanded', 'false');
-        activeIndex = -1;
-    }
-
-    function selectClient(client) {
-        clientId.value = String(client.id);
-        clientSearch.value = client.label;
-        closeClientResults();
-    }
-
-    function renderClientResults() {
-        const results = filteredClients();
-        clientResults.innerHTML = '';
-
-        if (!results.length) {
-            const empty = document.createElement('div');
-            empty.className = 'client-empty';
-            empty.textContent = 'Nenhum cliente encontrado';
-            clientResults.appendChild(empty);
-        } else {
-            results.forEach((client, index) => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'client-result-item' + (index === activeIndex ? ' active' : '');
-                button.textContent = client.label;
-                button.setAttribute('role', 'option');
-                button.addEventListener('mousedown', (event) => {
-                    event.preventDefault();
-                    selectClient(client);
-                });
-                clientResults.appendChild(button);
-            });
-        }
-
-        clientResults.classList.add('open');
-        clientSearch.setAttribute('aria-expanded', 'true');
-    }
-
-    clientSearch.addEventListener('focus', renderClientResults);
-    clientSearch.addEventListener('input', () => {
-        clientId.value = '';
-        activeIndex = -1;
-        renderClientResults();
-    });
-    clientSearch.addEventListener('keydown', (event) => {
-        const results = filteredClients();
-        if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            activeIndex = Math.min(activeIndex + 1, results.length - 1);
-            renderClientResults();
-        } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            activeIndex = Math.max(activeIndex - 1, 0);
-            renderClientResults();
-        } else if (event.key === 'Enter' && activeIndex >= 0 && results[activeIndex]) {
-            event.preventDefault();
-            selectClient(results[activeIndex]);
-        } else if (event.key === 'Escape') {
-            closeClientResults();
-        }
-    });
-    document.addEventListener('click', (event) => {
-        if (!event.target.closest('.client-combobox')) {
-            closeClientResults();
-        }
-    });
-
-    const backdrop = document.getElementById('client-modal-backdrop');
+    const backdrop = document.getElementById('cliente-modal');
     const form = document.getElementById('quick-client-form');
     const errorBox = document.getElementById('client-modal-error');
-    const openModal = () => {
-        errorBox.style.display = 'none';
+
+    function openModal() {
+        if (errorBox) {
+            errorBox.style.display = 'none';
+        }
         backdrop.classList.add('open');
         backdrop.setAttribute('aria-hidden', 'false');
+        if (window.location.hash !== '#cliente-modal') {
+            window.location.hash = 'cliente-modal';
+        }
         setTimeout(() => document.getElementById('modal_nome_completo').focus(), 0);
-    };
-    const closeModal = () => {
+    }
+
+    function closeModal() {
         backdrop.classList.remove('open');
         backdrop.setAttribute('aria-hidden', 'true');
         form.reset();
-    };
+        if (window.location.hash === '#cliente-modal') {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+    }
 
     document.addEventListener('click', (event) => {
-        if (event.target.closest('[data-open-client-modal]')) {
+        if (event.target.closest('#open-client-modal')) {
             event.preventDefault();
             openModal();
         }
     });
-    document.getElementById('close-client-modal').addEventListener('click', closeModal);
-    document.getElementById('cancel-client-modal').addEventListener('click', closeModal);
+    document.getElementById('close-client-modal').addEventListener('click', (event) => {
+        event.preventDefault();
+        closeModal();
+    });
+    document.getElementById('cancel-client-modal').addEventListener('click', (event) => {
+        event.preventDefault();
+        closeModal();
+    });
     backdrop.addEventListener('click', (event) => {
         if (event.target === backdrop) {
             closeModal();
@@ -907,12 +847,16 @@ includeSidebar('Novo Evento');
 
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        errorBox.style.display = 'none';
+        if (errorBox) {
+            errorBox.style.display = 'none';
+        }
 
         try {
+            const formData = new FormData(form);
+            formData.set('action', 'ajax_create_client');
             const response = await fetch(window.location.href, {
                 method: 'POST',
-                body: new FormData(form),
+                body: formData,
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
             const data = await response.json();
@@ -924,38 +868,36 @@ includeSidebar('Novo Evento');
             const label = client.telefone_whatsapp
                 ? `${client.nome_completo} - ${client.telefone_whatsapp}`
                 : client.nome_completo;
-            const search = `${client.nome_completo || ''} ${client.email || ''} ${client.telefone_whatsapp || ''} ${client.documento_numero || ''}`.toLowerCase();
-            const newClient = {
-                id: Number(client.id),
-                text: label,
-                label,
-                search,
-                nome_completo: client.nome_completo || '',
-                email: client.email || '',
-                telefone_whatsapp: client.telefone_whatsapp || '',
-                documento_numero: client.documento_numero || '',
-            };
-            clients.push(newClient);
-            selectClient(newClient);
+            const option = document.createElement('option');
+            option.value = label;
+            option.dataset.id = String(client.id);
+            document.getElementById('clientes-list').appendChild(option);
+            clientOptions.push(option);
+            clientSearch.value = label;
+            clientId.value = String(client.id);
             closeModal();
         } catch (error) {
-            errorBox.textContent = error.message;
-            errorBox.style.display = 'block';
+            if (errorBox) {
+                errorBox.textContent = error.message;
+                errorBox.style.display = 'block';
+            }
         }
     });
 
     document.querySelector('.novo-evento-form').addEventListener('submit', (event) => {
+        syncClientId();
         if (!clientId.value) {
-            const results = filteredClients();
-            if (results.length === 1) {
-                selectClient(results[0]);
-                return;
-            }
             event.preventDefault();
             clientSearch.focus();
-            renderClientResults();
+            clientSearch.setCustomValidity('Selecione um cliente da lista.');
+            clientSearch.reportValidity();
+            setTimeout(() => clientSearch.setCustomValidity(''), 0);
         }
     });
+
+    if (window.location.hash === '#cliente-modal') {
+        openModal();
+    }
 })();
 </script>
 
