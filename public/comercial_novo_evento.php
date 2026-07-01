@@ -54,6 +54,7 @@ function comercial_novo_evento_ensure_schema(PDO $pdo): void
                 cliente_cadastro_id BIGINT NULL REFERENCES comercial_cadastro_clientes(id) ON DELETE SET NULL,
                 local_evento TEXT NOT NULL,
                 nome_evento TEXT NOT NULL,
+                data_venda DATE NOT NULL DEFAULT CURRENT_DATE,
                 data_evento DATE NOT NULL,
                 hora_inicio TIME NOT NULL,
                 hora_fim TIME NOT NULL,
@@ -65,6 +66,7 @@ function comercial_novo_evento_ensure_schema(PDO $pdo): void
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
         ");
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_eventos_painel ADD COLUMN IF NOT EXISTS data_venda DATE NOT NULL DEFAULT CURRENT_DATE");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_eventos_painel_espelho ON comercial_eventos_painel (espelho_evento_id)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_eventos_painel_cliente ON comercial_eventos_painel (cliente_cadastro_id)");
     } catch (Throwable $e) {
@@ -266,6 +268,7 @@ $errors = [];
 $old = [
     'local_key' => $_POST['local_key'] ?? '',
     'nome_evento' => trim((string)($_POST['nome_evento'] ?? '')),
+    'data_venda' => $_POST['data_venda'] ?? date('Y-m-d'),
     'data_evento' => $_POST['data_evento'] ?? '',
     'hora_inicio' => $_POST['hora_inicio'] ?? '',
     'hora_fim' => $_POST['hora_fim'] ?? '',
@@ -293,6 +296,9 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     }
     if ($old['nome_evento'] === '') {
         $errors[] = 'Informe o nome do evento.';
+    }
+    if ($old['data_venda'] === '') {
+        $errors[] = 'Informe a data da venda.';
     }
     if ($old['data_evento'] === '') {
         $errors[] = 'Informe a data do evento.';
@@ -345,11 +351,11 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
             $stmt = $pdo->prepare("
                 INSERT INTO comercial_eventos_painel (
                     espelho_evento_id, cliente_cadastro_id, local_evento, nome_evento,
-                    data_evento, hora_inicio, hora_fim, como_conheceu, convidados,
+                    data_venda, data_evento, hora_inicio, hora_fim, como_conheceu, convidados,
                     created_by, updated_at
                 ) VALUES (
                     :espelho_evento_id, :cliente_id, :local_evento, :nome_evento,
-                    :data_evento, :hora_inicio, :hora_fim, :como_conheceu, :convidados,
+                    :data_venda, :data_evento, :hora_inicio, :hora_fim, :como_conheceu, :convidados,
                     :created_by, NOW()
                 )
             ");
@@ -358,6 +364,7 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
                 ':cliente_id' => $clienteId,
                 ':local_evento' => $local['localevento'],
                 ':nome_evento' => $old['nome_evento'],
+                ':data_venda' => $old['data_venda'],
                 ':data_evento' => $old['data_evento'],
                 ':hora_inicio' => $old['hora_inicio'],
                 ':hora_fim' => $old['hora_fim'],
@@ -689,6 +696,10 @@ includeSidebar('Novo Evento');
                 <div class="field">
                     <label for="nome_evento">Nome do evento</label>
                     <input id="nome_evento" name="nome_evento" type="text" value="<?= comercial_novo_evento_e($old['nome_evento']) ?>" required>
+                </div>
+                <div class="field">
+                    <label for="data_venda">Data da venda</label>
+                    <input id="data_venda" name="data_venda" type="date" value="<?= comercial_novo_evento_e($old['data_venda']) ?>" required>
                 </div>
                 <div class="field">
                     <label for="data_evento">Data do evento</label>
