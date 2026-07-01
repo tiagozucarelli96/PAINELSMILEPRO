@@ -81,22 +81,26 @@ function comercial_novo_evento_locais(PDO $pdo): array
     try {
         $stmt = $pdo->query("
             SELECT
-                idlocalevento,
-                TRIM(localevento) AS localevento,
+                me_local_id AS idlocalevento,
+                TRIM(me_local_nome) AS localevento,
                 TRIM(COALESCE(space_visivel, '')) AS space_visivel,
-                unidade_interna_id,
-                COUNT(*) AS total
-            FROM logistica_eventos_espelho
-            WHERE TRIM(COALESCE(localevento, '')) <> ''
-            GROUP BY idlocalevento, TRIM(localevento), TRIM(COALESCE(space_visivel, '')), unidade_interna_id
-            ORDER BY total DESC, localevento ASC
+                unidade_interna_id
+            FROM logistica_me_locais
+            WHERE TRIM(COALESCE(me_local_nome, '')) <> ''
+              AND COALESCE(status_mapeamento, 'MAPEADO') = 'MAPEADO'
+            ORDER BY
+                CASE TRIM(COALESCE(space_visivel, ''))
+                    WHEN 'Lisbon 1' THEN 1
+                    WHEN 'Lisbon Garden' THEN 2
+                    WHEN 'DiverKids' THEN 3
+                    WHEN 'Cristal' THEN 4
+                    ELSE 99
+                END,
+                TRIM(COALESCE(space_visivel, me_local_nome)) ASC
         ");
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $row) {
-            $label = trim($row['localevento']);
-            if ($row['space_visivel'] !== '') {
-                $label .= ' - ' . trim($row['space_visivel']);
-            }
+            $label = trim($row['space_visivel']) !== '' ? trim($row['space_visivel']) : trim($row['localevento']);
             $key = sha1(($row['idlocalevento'] ?? '') . '|' . ($row['localevento'] ?? '') . '|' . ($row['space_visivel'] ?? ''));
             $locais[$key] = [
                 'key' => $key,
