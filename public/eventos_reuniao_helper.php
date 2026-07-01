@@ -737,7 +737,7 @@ function eventos_form_template_allowed_categories(): array {
  * Tipos reais de evento suportados internamente.
  */
 function eventos_reuniao_tipos_evento_real_allowed(): array {
-    return ['casamento', '15anos', 'infantil'];
+    return ['casamento', '15anos', 'infantil', 'formatura'];
 }
 
 /**
@@ -790,6 +790,12 @@ function eventos_reuniao_tipos_evento_real_defaults(): array {
             'descricao' => 'Festas infantis e eventos kids.',
             'ativo' => true,
             'ordem' => 30,
+        ],
+        'formatura' => [
+            'label' => 'Formatura',
+            'descricao' => 'Eventos de formatura e celebrações acadêmicas.',
+            'ativo' => true,
+            'ordem' => 40,
         ],
     ];
 }
