@@ -97,6 +97,9 @@ class NotificationDispatcher {
         $sendPush = !empty($channels['push']);
         $sendEmail = !empty($channels['email']);
         $sendWhatsapp = !empty($channels['whatsapp']);
+        if (!$sendWhatsapp && ($sendPush || $sendEmail) && $this->shouldMirrorEmailPushToWhatsapp($payload, $channels)) {
+            $sendWhatsapp = true;
+        }
         if (!$sendInternal && !$sendPush && !$sendEmail && !$sendWhatsapp) {
             return $result;
         }
@@ -472,6 +475,24 @@ class NotificationDispatcher {
         }
 
         return 'smclick';
+    }
+
+    private function shouldMirrorEmailPushToWhatsapp(array $payload, array $channels): bool {
+        if (array_key_exists('whatsapp', $channels)) {
+            return !empty($channels['whatsapp']);
+        }
+
+        if (array_key_exists('whatsapp', $payload)) {
+            return !empty($payload['whatsapp']);
+        }
+
+        $payloadFlag = strtolower(trim((string)($payload['whatsapp_enabled'] ?? $payload['enviar_whatsapp'] ?? '')));
+        if (in_array($payloadFlag, ['0', 'false', 'nao', 'não', 'no', 'off'], true)) {
+            return false;
+        }
+
+        $env = strtolower(trim((string)(painel_env('NOTIFICATION_WHATSAPP_MIRROR_EMAIL_PUSH', 'true') ?? 'true')));
+        return !in_array($env, ['0', 'false', 'nao', 'não', 'no', 'off'], true);
     }
 
     private function sendWhatsappProviderMessage(string $provider, string $sessionKey, string $phoneE164, string $body, string $contactName): bool {
