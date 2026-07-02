@@ -6,12 +6,18 @@ require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/agenda_helper.php';
 require_once __DIR__ . '/sidebar_integration.php';
 
+if (!function_exists('agenda_config_session_bool')) {
+    function agenda_config_session_bool($value): bool {
+        return in_array(strtolower(trim((string)$value)), ['1', 't', 'true', 'on', 'yes', 'y'], true);
+    }
+}
+
 if (empty($_SESSION['logado'])) {
     header('Location: index.php?page=login');
     exit;
 }
 
-$is_superadmin = !empty($_SESSION['perm_superadmin']);
+$is_superadmin = agenda_config_session_bool($_SESSION['perm_superadmin'] ?? false);
 if (!$is_superadmin) {
     header('Location: index.php?page=dashboard&error=' . urlencode('Acesso permitido apenas para superadmin.'));
     exit;

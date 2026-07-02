@@ -7,10 +7,16 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/core/google_calendar_auto_sync.php';
 
+if (!function_exists('agenda_session_bool')) {
+    function agenda_session_bool($value): bool {
+        return in_array(strtolower(trim((string)$value)), ['1', 't', 'true', 'on', 'yes', 'y'], true);
+    }
+}
+
 // Verificar permissões
 $agenda = new AgendaHelper();
 $usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
-$is_superadmin = !empty($_SESSION['perm_superadmin']);
+$is_superadmin = agenda_session_bool($_SESSION['perm_superadmin'] ?? false);
 
 if (!$agenda->canAccessAgenda($usuario_id)) {
     header('Location: index.php?page=dashboard');
