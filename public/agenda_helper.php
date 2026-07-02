@@ -1415,6 +1415,111 @@ class AgendaHelper {
     }
     
     /**
+     * Sugerir opções de horário para visita com base nas possibilidades do cliente.
+     */
+    public function sugerirHorariosVisita(array $filtros): array {
+        $responsavel_id = (int)($filtros['responsavel_id'] ?? 0);
+        $espaco_id = (int)($filtros['espaco_id'] ?? 0);
+        $duracao_minutos = max(15, (int)($filtros['duracao'] ?? 60));
+        $data_inicio = trim((string)($filtros['data_inicio'] ?? ''));
+        $data_fim = trim((string)($filtros['data_fim'] ?? ''));
+        $hora_inicio = trim((string)($filtros['hora_inicio'] ?? ''));
+        $hora_fim = trim((string)($filtros['hora_fim'] ?? ''));
+        $dias_semana = array_values(array_unique(array_map('intval', (array)($filtros['dias_semana'] ?? []))));
+        $dias_semana = array_values(array_filter($dias_semana, static fn($dia) => $dia >= 0 && $dia <= 6));
+        $limite = min(30, max(1, (int)($filtros['limite'] ?? 12)));
+
+        if ($responsavel_id <= 0) {
+            return ['success' => false, 'error' => 'Selecione um responsável.'];
+        }
+        if ($espaco_id <= 0) {
+            return ['success' => false, 'error' => 'Selecione uma unidade.'];
+        }
+        if (!$this->isValidDate($data_inicio) || !$this->isValidDate($data_fim) || $data_fim < $data_inicio) {
+            return ['success' => false, 'error' => 'Informe um período de busca válido.'];
+        }
+        if (!$this->isValidTime($hora_inicio) || !$this->isValidTime($hora_fim) || $hora_fim <= $hora_inicio) {
+            return ['success' => false, 'error' => 'Informe uma janela de horário válida.'];
+        }
+        if (!$dias_semana) {
+            return ['success' => false, 'error' => 'Selecione pelo menos um dia da semana.'];
+        }
+
+        $inicioPeriodo = new DateTimeImmutable($data_inicio);
+        $fimPeriodo = new DateTimeImmutable($data_fim);
+        if ($fimPeriodo->getTimestamp() - $inicioPeriodo->getTimestamp() > 90 * 24 * 60 * 60) {
+            return ['success' => false, 'error' => 'Busque no máximo 90 dias por vez.'];
+        }
+
+        $opcoes = [];
+        $diaAtual = $inicioPeriodo;
+        $agora = time();
+
+        while ($diaAtual <= $fimPeriodo && count($opcoes) < $limite) {
+            $data = $diaAtual->format('Y-m-d');
+            $dow = (int)$diaAtual->format('w');
+
+            if (in_array($dow, $dias_semana, true)) {
+                $slotInicio = strtotime($data . ' ' . $hora_inicio);
+                $janelaFim = strtotime($data . ' ' . $hora_fim);
+
+                while ($slotInicio !== false && $janelaFim !== false && ($slotInicio + ($duracao_minutos * 60)) <= $janelaFim && count($opcoes) < $limite) {
+                    if ($slotInicio < $agora) {
+                        $slotInicio += 30 * 60;
+                        continue;
+                    }
+
+                    $slotFim = $slotInicio + ($duracao_minutos * 60);
+                    $inicioFormatado = date('Y-m-d H:i:s', $slotInicio);
+                    $fimFormatado = date('Y-m-d H:i:s', $slotFim);
+
+                    if (!$this->estaDentroDaDisponibilidade($responsavel_id, $slotInicio, $slotFim)) {
+                        $slotInicio += 30 * 60;
+                        continue;
+                    }
+
+                    $conflitos = $this->verificarConflitos($responsavel_id, $espaco_id, $inicioFormatado, $fimFormatado);
+                    if ($conflitos['conflito_responsavel'] || $conflitos['conflito_espaco'] || $conflitos['conflito_transito']) {
+                        $slotInicio += 30 * 60;
+                        continue;
+                    }
+
+                    $opcoes[] = [
+                        'inicio' => $inicioFormatado,
+                        'fim' => $fimFormatado,
+                        'data_label' => date('d/m/Y', $slotInicio),
+                        'hora_label' => date('H:i', $slotInicio) . ' - ' . date('H:i', $slotFim),
+                        'dia_semana' => $this->nomeDiaSemana((int)date('w', $slotInicio)),
+                    ];
+
+                    $slotInicio += 30 * 60;
+                }
+            }
+
+            $diaAtual = $diaAtual->modify('+1 day');
+        }
+
+        return [
+            'success' => true,
+            'opcoes' => $opcoes,
+            'message' => $opcoes ? null : 'Nenhum horário livre encontrado com esses critérios.',
+        ];
+    }
+
+    private function nomeDiaSemana(int $dia): string {
+        $dias = [
+            0 => 'Domingo',
+            1 => 'Segunda',
+            2 => 'Terça',
+            3 => 'Quarta',
+            4 => 'Quinta',
+            5 => 'Sexta',
+            6 => 'Sábado',
+        ];
+        return $dias[$dia] ?? '';
+    }
+
+    /**
      * Sugerir próximo horário livre
      */
     public function sugerirProximoHorario($responsavel_id, $espaco_id, $duracao_minutos = 60, $inicio_base = null) {

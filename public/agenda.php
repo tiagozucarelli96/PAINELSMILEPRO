@@ -104,23 +104,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
             break;
             
         case 'sugerir_horario':
-            $responsavel_id = $_POST['responsavel_id'];
-            $espaco_id = $_POST['espaco_id'] ?: null;
-            $duracao = $_POST['duracao'] ?? 60;
-            $inicio_base = $_POST['inicio_base'] ?? null;
-
-            $sugestao = $agenda->sugerirProximoHorario($responsavel_id, $espaco_id, $duracao, $inicio_base);
-            if ($sugestao) {
-                $response = [
-                    'success' => true,
-                    'sugestao' => $sugestao
-                ];
-            } else {
-                $response = [
-                    'success' => false,
-                    'error' => 'Nenhum horário livre encontrado para os próximos dias.'
-                ];
-            }
+            $response = $agenda->sugerirHorariosVisita([
+                'responsavel_id' => $_POST['responsavel_id'] ?? null,
+                'espaco_id' => $_POST['espaco_id'] ?? null,
+                'duracao' => $_POST['duracao'] ?? 60,
+                'data_inicio' => $_POST['data_inicio'] ?? null,
+                'data_fim' => $_POST['data_fim'] ?? null,
+                'hora_inicio' => $_POST['hora_inicio'] ?? null,
+                'hora_fim' => $_POST['hora_fim'] ?? null,
+                'dias_semana' => json_decode($_POST['dias_semana'] ?? '[]', true),
+                'limite' => $_POST['limite'] ?? 12,
+            ]);
             break;
     }
     } catch (Exception $e) {
@@ -313,6 +307,69 @@ includeSidebar('Agenda');
         .legend-text {
             font-size: 0.9rem;
             color: #374151;
+        }
+
+        .suggestion-modal-content {
+            max-width: 900px;
+        }
+
+        .weekday-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .weekday-option {
+            align-items: center;
+            background: #f8fafc;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            display: flex;
+            font-weight: 700;
+            gap: 8px;
+            padding: 10px 12px;
+        }
+
+        .weekday-option input {
+            width: auto;
+        }
+
+        .suggestion-results {
+            display: grid;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .suggestion-result {
+            align-items: center;
+            background: #f8fafc;
+            border: 1px solid #dbe3ef;
+            border-radius: 10px;
+            display: flex;
+            gap: 14px;
+            justify-content: space-between;
+            padding: 14px 16px;
+        }
+
+        .suggestion-result strong {
+            color: #0f172a;
+            display: block;
+        }
+
+        .suggestion-result span {
+            color: #64748b;
+            display: block;
+            font-size: .92rem;
+            margin-top: 3px;
+        }
+
+        .empty-suggestions {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 10px;
+            color: #92400e;
+            font-weight: 700;
+            padding: 14px 16px;
         }
 
         /* Modal Styles Modernos */
@@ -517,6 +574,9 @@ includeSidebar('Agenda');
                         </button>
                         <button class="btn btn-outline" onclick="openEventModal('bloqueio')">
                             🚫 Bloqueio
+                        </button>
+                        <button class="btn btn-outline" onclick="openSuggestionModal()">
+                            ⏰ Sugerir Horário
                         </button>
                     <?php endif; ?>
                     <button class="btn btn-outline" onclick="calendar.today()">
@@ -795,14 +855,125 @@ includeSidebar('Agenda');
                     <button type="button" class="btn btn-primary" id="forceBtn" onclick="forceConflict()" style="display: none;">
                         ⚡ Forçar Conflito
                     </button>
-                    <button type="button" class="btn btn-outline" onclick="suggestTime()">
-                        ⏰ Sugerir Horário
-                    </button>
                     <button type="submit" class="btn btn-success">
                         ✅ Salvar
                     </button>
                 </div>
             </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Sugestão de Horário -->
+    <div id="suggestionModal" class="modal">
+        <div class="modal-content suggestion-modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">⏰ Sugerir Horário</h2>
+                <button class="close-button" onclick="closeSuggestionModal()">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <form id="suggestionForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="suggestResponsavel">Responsável *</label>
+                            <select id="suggestResponsavel" required>
+                                <option value="">Selecione...</option>
+                                <?php foreach ($usuarios as $user): ?>
+                                    <?php
+                                        $user_login = trim((string)($user['login'] ?? ''));
+                                        $user_login_key = strtolower($user_login);
+                                        $can_receive_visit = in_array($user_login_key, $visita_responsaveis_logins, true);
+                                    ?>
+                                    <?php if ($can_receive_visit): ?>
+                                        <option value="<?= (int)$user['id'] ?>">
+                                            <?= htmlspecialchars($user_login !== '' ? $user_login : $user['nome']) ?>
+                                        </option>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="suggestEspaco">Unidade *</label>
+                            <select id="suggestEspaco" required>
+                                <option value="">Selecione...</option>
+                                <?php foreach ($espacos as $espaco): ?>
+                                    <option value="<?= (int)$espaco['id'] ?>"><?= htmlspecialchars((string)$espaco['nome']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="suggestTipo">Tipo de visita *</label>
+                            <select id="suggestTipo" required>
+                                <option value="">Selecione...</option>
+                                <?php foreach (($agenda_global_settings['visit_type_durations'] ?? []) as $visit_type => $duration): ?>
+                                    <option value="<?= htmlspecialchars((string)$visit_type) ?>" data-duration="<?= (int)$duration ?>">
+                                        <?= htmlspecialchars((string)$visit_type) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="suggestDuracao">Duração</label>
+                            <select id="suggestDuracao" required>
+                                <?php foreach ($duration_options as $duration_option): ?>
+                                    <option value="<?= (int)$duration_option ?>" <?= (int)$duration_option === 60 ? 'selected' : '' ?>>
+                                        <?= (int)$duration_option ?> minutos
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="suggestDataInicio">A partir de *</label>
+                            <input type="date" id="suggestDataInicio" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="suggestDataFim">Buscar até *</label>
+                            <input type="date" id="suggestDataFim" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="suggestHoraInicio">Cliente pode a partir de *</label>
+                            <input type="time" id="suggestHoraInicio" value="09:00" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="suggestHoraFim">Cliente pode até *</label>
+                            <input type="time" id="suggestHoraFim" value="21:00" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Dias que o cliente pode *</label>
+                        <div class="weekday-list">
+                            <label class="weekday-option"><input type="checkbox" name="suggestWeekday" value="1"> Segunda</label>
+                            <label class="weekday-option"><input type="checkbox" name="suggestWeekday" value="2"> Terça</label>
+                            <label class="weekday-option"><input type="checkbox" name="suggestWeekday" value="3"> Quarta</label>
+                            <label class="weekday-option"><input type="checkbox" name="suggestWeekday" value="4"> Quinta</label>
+                            <label class="weekday-option"><input type="checkbox" name="suggestWeekday" value="5"> Sexta</label>
+                            <label class="weekday-option"><input type="checkbox" name="suggestWeekday" value="6"> Sábado</label>
+                            <label class="weekday-option"><input type="checkbox" name="suggestWeekday" value="0"> Domingo</label>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" onclick="closeSuggestionModal()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary" id="runSuggestionBtn">Buscar horários</button>
+                    </div>
+                </form>
+
+                <div id="suggestionResults" class="suggestion-results"></div>
             </div>
         </div>
     </div>
@@ -1340,6 +1511,10 @@ includeSidebar('Agenda');
             d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
             return d.toISOString().slice(0, 16);
         }
+
+        function parseLocalDateTime(value) {
+            return new Date(String(value).replace(' ', 'T'));
+        }
         
         // Auto-preencer data fim ao preencher data início
         document.getElementById('inicio').addEventListener('change', function() {
@@ -1399,71 +1574,134 @@ includeSidebar('Agenda');
             calendar.refetchEvents();
         }
         
-        // Sugerir horário
-        function suggestTime() {
-            const responsavel = document.getElementById('responsavel').value;
-            const espaco = document.getElementById('espaco').value;
-            const inicio = document.getElementById('inicio').value;
-            const fim = document.getElementById('fim').value;
-            
-            if (!responsavel) {
-                customAlert('Selecione um responsável primeiro', '⚠️ Validação');
+        function openSuggestionModal() {
+            const modal = document.getElementById('suggestionModal');
+            const today = new Date();
+            const end = new Date();
+            end.setDate(today.getDate() + 30);
+
+            document.getElementById('suggestionForm').reset();
+            document.getElementById('suggestionResults').innerHTML = '';
+            document.getElementById('suggestDataInicio').value = formatDateOnly(today);
+            document.getElementById('suggestDataFim').value = formatDateOnly(end);
+            document.getElementById('suggestHoraInicio').value = '09:00';
+            document.getElementById('suggestHoraFim').value = '21:00';
+
+            document.querySelectorAll('input[name="suggestWeekday"]').forEach(input => {
+                input.checked = ['1', '2', '3', '4', '5', '6'].includes(input.value);
+            });
+
+            modal.classList.add('active');
+        }
+
+        function closeSuggestionModal() {
+            document.getElementById('suggestionModal').classList.remove('active');
+        }
+
+        function formatDateOnly(date) {
+            const d = new Date(date);
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            return d.toISOString().slice(0, 10);
+        }
+
+        function renderSuggestionResults(opcoes, message = '') {
+            const results = document.getElementById('suggestionResults');
+            results.innerHTML = '';
+
+            if (!opcoes || opcoes.length === 0) {
+                results.innerHTML = `<div class="empty-suggestions">${escapeHtml(message || 'Nenhum horário livre encontrado com esses critérios.')}</div>`;
                 return;
             }
-            
-            // Calcular duração em minutos
-            let duracao = Math.round((new Date(fim) - new Date(inicio)) / (1000 * 60));
-            if (!Number.isFinite(duracao) || duracao <= 0) {
-                duracao = 60;
-            }
-            
-            // Mostrar loading
-            const suggestBtn = document.querySelector('button[onclick="suggestTime()"]');
-            if (suggestBtn) {
-                const originalText = suggestBtn.innerHTML;
-                suggestBtn.innerHTML = '⏳ Buscando...';
-                suggestBtn.disabled = true;
-            }
-            
-            fetch('agenda.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `acao=sugerir_horario&responsavel_id=${encodeURIComponent(responsavel)}&espaco_id=${encodeURIComponent(espaco)}&duracao=${encodeURIComponent(duracao)}&inicio_base=${encodeURIComponent(inicio || '')}`
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Erro na requisição: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success && data.sugestao) {
-                    const sugestao = data.sugestao;
-                    
-                    // Aplicar sugestão diretamente nos campos
-                    document.getElementById('inicio').value = formatDateTimeLocal(new Date(sugestao.inicio));
-                    document.getElementById('fim').value = formatDateTimeLocal(new Date(sugestao.fim));
-                    
-                    // Mostrar feedback
-                    showSuggestionFeedback('Horário sugerido aplicado com sucesso!');
-                } else {
-                    showSuggestionFeedback(data.error || 'Nenhum horário livre encontrado para os próximos dias.');
-                }
-            })
-            .catch(error => {
-                console.error('Erro ao sugerir horário:', error);
-                showSuggestionFeedback('Erro ao buscar horários disponíveis.');
-            })
-            .finally(() => {
-                // Restaurar botão
-                if (suggestBtn) {
-                    suggestBtn.innerHTML = '🕐 Sugerir Horário';
-                    suggestBtn.disabled = false;
-                }
+
+            opcoes.forEach((opcao) => {
+                const item = document.createElement('div');
+                item.className = 'suggestion-result';
+                item.innerHTML = `
+                    <div>
+                        <strong>${escapeHtml(opcao.dia_semana)} - ${escapeHtml(opcao.data_label)}</strong>
+                        <span>${escapeHtml(opcao.hora_label)}</span>
+                    </div>
+                    <button type="button" class="btn btn-primary">Usar horário</button>
+                `;
+                item.querySelector('button').addEventListener('click', () => useSuggestedSlot(opcao));
+                results.appendChild(item);
             });
         }
+
+        function useSuggestedSlot(opcao) {
+            const responsavel = document.getElementById('suggestResponsavel').value;
+            const espaco = document.getElementById('suggestEspaco').value;
+            const tipo = document.getElementById('suggestTipo').value;
+            const duracao = document.getElementById('suggestDuracao').value;
+
+            closeSuggestionModal();
+            openEventModal('visita');
+
+            document.getElementById('responsavel').value = responsavel;
+            document.getElementById('espaco').value = espaco;
+            document.getElementById('visitTipo').value = tipo;
+            document.getElementById('visitDuracao').value = duracao;
+            document.getElementById('inicio').value = formatDateTimeLocal(parseLocalDateTime(opcao.inicio));
+            document.getElementById('fim').value = formatDateTimeLocal(parseLocalDateTime(opcao.fim));
+            updateVisitTitle();
+            showToast('Horário aplicado na nova visita.', 'success');
+        }
+
+        document.getElementById('suggestTipo').addEventListener('change', function() {
+            const selected = this.options[this.selectedIndex];
+            const duration = selected ? selected.getAttribute('data-duration') : '';
+            if (duration) {
+                document.getElementById('suggestDuracao').value = duration;
+            }
+        });
+
+        document.getElementById('suggestionForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const dias = Array.from(document.querySelectorAll('input[name="suggestWeekday"]:checked')).map(input => Number(input.value));
+            if (!dias.length) {
+                customAlert('Selecione pelo menos um dia que o cliente pode.', 'Validação');
+                return;
+            }
+
+            const params = new URLSearchParams();
+            params.set('acao', 'sugerir_horario');
+            params.set('responsavel_id', document.getElementById('suggestResponsavel').value);
+            params.set('espaco_id', document.getElementById('suggestEspaco').value);
+            params.set('duracao', document.getElementById('suggestDuracao').value);
+            params.set('data_inicio', document.getElementById('suggestDataInicio').value);
+            params.set('data_fim', document.getElementById('suggestDataFim').value);
+            params.set('hora_inicio', document.getElementById('suggestHoraInicio').value);
+            params.set('hora_fim', document.getElementById('suggestHoraFim').value);
+            params.set('dias_semana', JSON.stringify(dias));
+            params.set('limite', '12');
+
+            const button = document.getElementById('runSuggestionBtn');
+            button.disabled = true;
+            button.textContent = 'Buscando...';
+            document.getElementById('suggestionResults').innerHTML = '';
+
+            fetch('agenda.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString()
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    renderSuggestionResults([], data.error || 'Não foi possível buscar horários.');
+                    return;
+                }
+                renderSuggestionResults(data.opcoes || [], data.message || '');
+            })
+            .catch(() => {
+                renderSuggestionResults([], 'Erro ao buscar horários disponíveis.');
+            })
+            .finally(() => {
+                button.disabled = false;
+                button.textContent = 'Buscar horários';
+            });
+        });
         
         // Função para mostrar toast/snackbar
         function showToast(message, type = 'success') {
@@ -1539,42 +1777,6 @@ includeSidebar('Agenda');
                         toast.remove();
                     }
                 }, 300);
-            }, 3000);
-        }
-        
-        // Mostrar feedback da sugestão
-        function showSuggestionFeedback(message) {
-            // Remover feedback anterior
-            const existingFeedback = document.getElementById('suggestionFeedback');
-            if (existingFeedback) {
-                existingFeedback.remove();
-            }
-            
-            // Criar novo feedback
-            const feedback = document.createElement('div');
-            feedback.id = 'suggestionFeedback';
-            feedback.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #10b981;
-                color: white;
-                padding: 12px 20px;
-                border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                z-index: 1001;
-                font-size: 14px;
-                font-weight: 500;
-            `;
-            feedback.textContent = message;
-            
-            document.body.appendChild(feedback);
-            
-            // Remover após 3 segundos
-            setTimeout(() => {
-                if (feedback.parentNode) {
-                    feedback.remove();
-                }
             }, 3000);
         }
         
@@ -1867,6 +2069,12 @@ includeSidebar('Agenda');
         document.getElementById('eventModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeEventModal();
+            }
+        });
+
+        document.getElementById('suggestionModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeSuggestionModal();
             }
         });
         
