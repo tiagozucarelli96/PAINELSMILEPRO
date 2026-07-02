@@ -529,6 +529,9 @@ includeSidebar('Agenda');
                     <a href="index.php?page=agenda_config" class="btn btn-outline">
                         ⚙️ Config
                     </a>
+                    <a href="index.php?page=agenda_disponibilidade" class="btn btn-outline" style="text-decoration: none;">
+                        🕒 Disponibilidade
+                    </a>
                     <a href="index.php?page=google_calendar_config" class="btn btn-outline" style="text-decoration: none;">
                         📅 Google Calendar
                     </a>

@@ -51,6 +51,7 @@ return [
     
     // Agenda
     'agenda_config' => 'perm_superadmin',
+    'agenda_disponibilidade' => 'perm_superadmin',
     'agenda_relatorios' => 'perm_agenda',
     'agenda_eventos' => 'perm_agenda_eventos',
     'eventos_financeiro' => 'perm_agenda_eventos',

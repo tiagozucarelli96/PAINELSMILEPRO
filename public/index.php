@@ -272,6 +272,7 @@ $routes = [
   'google_calendar_config' => 'google_calendar_config.php',
   'google_calendar_debug' => 'google_calendar_debug.php',
   'agenda' => 'agenda.php',
+  'agenda_disponibilidade' => 'agenda_disponibilidade.php',
   'agenda_eventos' => 'agenda_eventos.php',
   'eventos_financeiro' => 'eventos_financeiro.php',
   'eventos_documentos' => 'eventos_documentos.php',
@@ -369,6 +370,7 @@ $routes = [
 
   // Agenda
   'agenda_config' => 'agenda_config.php',
+  'agenda_disponibilidade' => 'agenda_disponibilidade.php',
   'agenda_relatorios' => 'agenda_relatorios.php',
 
   // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)

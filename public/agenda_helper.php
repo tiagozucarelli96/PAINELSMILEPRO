@@ -12,6 +12,8 @@ class AgendaHelper {
     private $emailHelper;
     private $notificationDispatcher;
     private $permissionValueCache = [];
+    private $availabilityConfiguredCache = [];
+    private $availabilityRulesCache = [];
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
@@ -22,6 +24,7 @@ class AgendaHelper {
         $this->ensureGoogleSyncSchema();
         $this->ensureVisitDetailsSchema();
         $this->ensureAgendaSettingsSchema();
+        $this->ensureAvailabilitySchema();
     }
 
     /**
@@ -79,6 +82,43 @@ class AgendaHelper {
             ");
         } catch (Throwable $e) {
             error_log('[AGENDA_CONFIG_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
+        }
+    }
+
+    private function ensureAvailabilitySchema(): void {
+        if (!$this->pdo instanceof PDO) {
+            return;
+        }
+
+        try {
+            $this->pdo->exec("
+                CREATE TABLE IF NOT EXISTS agenda_disponibilidade (
+                    id SERIAL PRIMARY KEY,
+                    usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                    tipo VARCHAR(20) NOT NULL DEFAULT 'disponivel',
+                    recorrencia VARCHAR(20) NOT NULL DEFAULT 'semanal',
+                    dia_semana SMALLINT,
+                    data_especifica DATE,
+                    hora_inicio TIME NOT NULL,
+                    hora_fim TIME NOT NULL,
+                    valido_de DATE NOT NULL,
+                    valido_ate DATE,
+                    observacao TEXT,
+                    ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                    criado_por_usuario_id INT REFERENCES usuarios(id) ON DELETE SET NULL,
+                    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+                    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+                    CONSTRAINT agenda_disponibilidade_tipo_chk CHECK (tipo IN ('disponivel', 'bloqueio')),
+                    CONSTRAINT agenda_disponibilidade_recorrencia_chk CHECK (recorrencia IN ('semanal', 'data')),
+                    CONSTRAINT agenda_disponibilidade_dia_chk CHECK (dia_semana IS NULL OR dia_semana BETWEEN 0 AND 6),
+                    CONSTRAINT agenda_disponibilidade_periodo_chk CHECK (hora_fim > hora_inicio),
+                    CONSTRAINT agenda_disponibilidade_validade_chk CHECK (valido_ate IS NULL OR valido_ate >= valido_de)
+                )
+            ");
+            $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_agenda_disp_usuario ON agenda_disponibilidade(usuario_id, ativo)");
+            $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_agenda_disp_periodo ON agenda_disponibilidade(usuario_id, valido_de, valido_ate)");
+        } catch (Throwable $e) {
+            error_log('[AGENDA_DISPONIBILIDADE_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
         }
     }
 
@@ -1004,6 +1044,210 @@ class AgendaHelper {
         $stmt->execute([$usuario_id, $horas]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    public function obterDisponibilidades(?int $usuario_id = null): array {
+        $where = '';
+        $params = [];
+        if ($usuario_id && $usuario_id > 0) {
+            $where = 'WHERE ad.usuario_id = :usuario_id';
+            $params[':usuario_id'] = $usuario_id;
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT ad.*, u.nome AS usuario_nome, u.login AS usuario_login
+            FROM agenda_disponibilidade ad
+            JOIN usuarios u ON u.id = ad.usuario_id
+            {$where}
+            ORDER BY u.nome ASC, ad.ativo DESC, ad.valido_de DESC, ad.dia_semana ASC, ad.hora_inicio ASC
+        ");
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function salvarDisponibilidade(array $dados): array {
+        try {
+            $usuario_id = (int)($dados['usuario_id'] ?? 0);
+            $tipo = (string)($dados['tipo'] ?? 'disponivel');
+            $recorrencia = (string)($dados['recorrencia'] ?? 'semanal');
+            $dia_semana = isset($dados['dia_semana']) && $dados['dia_semana'] !== '' ? (int)$dados['dia_semana'] : null;
+            $data_especifica = trim((string)($dados['data_especifica'] ?? ''));
+            $hora_inicio = trim((string)($dados['hora_inicio'] ?? ''));
+            $hora_fim = trim((string)($dados['hora_fim'] ?? ''));
+            $valido_de = trim((string)($dados['valido_de'] ?? ''));
+            $valido_ate = trim((string)($dados['valido_ate'] ?? ''));
+            $observacao = trim((string)($dados['observacao'] ?? ''));
+            $ativo = !empty($dados['ativo']);
+            $criado_por = (int)($dados['criado_por_usuario_id'] ?? 0);
+
+            if ($usuario_id <= 0) {
+                return ['success' => false, 'error' => 'Selecione um responsável.'];
+            }
+            if (!in_array($tipo, ['disponivel', 'bloqueio'], true)) {
+                return ['success' => false, 'error' => 'Tipo de regra inválido.'];
+            }
+            if (!in_array($recorrencia, ['semanal', 'data'], true)) {
+                return ['success' => false, 'error' => 'Recorrência inválida.'];
+            }
+            if ($recorrencia === 'semanal' && ($dia_semana === null || $dia_semana < 0 || $dia_semana > 6)) {
+                return ['success' => false, 'error' => 'Selecione o dia da semana.'];
+            }
+            if ($recorrencia === 'data' && !$this->isValidDate($data_especifica)) {
+                return ['success' => false, 'error' => 'Informe a data específica.'];
+            }
+            if (!$this->isValidDate($valido_de)) {
+                return ['success' => false, 'error' => 'Informe a data inicial de validade.'];
+            }
+            if ($valido_ate !== '' && !$this->isValidDate($valido_ate)) {
+                return ['success' => false, 'error' => 'Informe uma data final válida.'];
+            }
+            if (!$this->isValidTime($hora_inicio) || !$this->isValidTime($hora_fim) || $hora_fim <= $hora_inicio) {
+                return ['success' => false, 'error' => 'Informe um intervalo de horário válido.'];
+            }
+
+            $stmt = $this->pdo->prepare("
+                INSERT INTO agenda_disponibilidade (
+                    usuario_id, tipo, recorrencia, dia_semana, data_especifica,
+                    hora_inicio, hora_fim, valido_de, valido_ate, observacao,
+                    ativo, criado_por_usuario_id, atualizado_em
+                ) VALUES (
+                    :usuario_id, :tipo, :recorrencia, :dia_semana, :data_especifica,
+                    :hora_inicio, :hora_fim, :valido_de, :valido_ate, :observacao,
+                    :ativo, :criado_por_usuario_id, NOW()
+                )
+            ");
+            $stmt->execute([
+                ':usuario_id' => $usuario_id,
+                ':tipo' => $tipo,
+                ':recorrencia' => $recorrencia,
+                ':dia_semana' => $recorrencia === 'semanal' ? $dia_semana : null,
+                ':data_especifica' => $recorrencia === 'data' ? $data_especifica : null,
+                ':hora_inicio' => $hora_inicio,
+                ':hora_fim' => $hora_fim,
+                ':valido_de' => $valido_de,
+                ':valido_ate' => $valido_ate !== '' ? $valido_ate : null,
+                ':observacao' => $observacao,
+                ':ativo' => $ativo,
+                ':criado_por_usuario_id' => $criado_por > 0 ? $criado_por : null,
+            ]);
+
+            return ['success' => true, 'id' => (int)$this->pdo->lastInsertId()];
+        } catch (Throwable $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    public function excluirDisponibilidade(int $id): array {
+        try {
+            $stmt = $this->pdo->prepare("DELETE FROM agenda_disponibilidade WHERE id = ?");
+            $stmt->execute([$id]);
+            return ['success' => true];
+        } catch (Throwable $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    private function responsavelTemDisponibilidadeConfigurada(int $usuario_id): bool {
+        if (array_key_exists($usuario_id, $this->availabilityConfiguredCache)) {
+            return $this->availabilityConfiguredCache[$usuario_id];
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT 1
+            FROM agenda_disponibilidade
+            WHERE usuario_id = ?
+              AND ativo = TRUE
+              AND tipo = 'disponivel'
+            LIMIT 1
+        ");
+        $stmt->execute([$usuario_id]);
+        $this->availabilityConfiguredCache[$usuario_id] = (bool)$stmt->fetchColumn();
+        return $this->availabilityConfiguredCache[$usuario_id];
+    }
+
+    private function obterRegrasDisponibilidadeData(int $usuario_id, string $data): array {
+        $cacheKey = $usuario_id . '|' . $data;
+        if (array_key_exists($cacheKey, $this->availabilityRulesCache)) {
+            return $this->availabilityRulesCache[$cacheKey];
+        }
+
+        $dow = (int)date('w', strtotime($data));
+        $stmt = $this->pdo->prepare("
+            SELECT *
+            FROM agenda_disponibilidade
+            WHERE usuario_id = :usuario_id
+              AND ativo = TRUE
+              AND valido_de <= :data
+              AND (valido_ate IS NULL OR valido_ate >= :data)
+              AND (
+                    (recorrencia = 'semanal' AND dia_semana = :dia_semana)
+                    OR
+                    (recorrencia = 'data' AND data_especifica = :data)
+              )
+            ORDER BY tipo ASC, hora_inicio ASC
+        ");
+        $stmt->execute([
+            ':usuario_id' => $usuario_id,
+            ':data' => $data,
+            ':dia_semana' => $dow,
+        ]);
+        $this->availabilityRulesCache[$cacheKey] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $this->availabilityRulesCache[$cacheKey];
+    }
+
+    private function estaDentroDaDisponibilidade(int $usuario_id, int $inicio_ts, int $fim_ts): bool {
+        if (!$this->responsavelTemDisponibilidadeConfigurada($usuario_id)) {
+            return true;
+        }
+
+        $data = date('Y-m-d', $inicio_ts);
+        if ($data !== date('Y-m-d', $fim_ts)) {
+            return false;
+        }
+
+        $regras = $this->obterRegrasDisponibilidadeData($usuario_id, $data);
+        $disponiveis = array_filter($regras, static fn($regra) => ($regra['tipo'] ?? '') === 'disponivel');
+        if (!$disponiveis) {
+            return false;
+        }
+
+        $dentroDisponivel = false;
+        foreach ($disponiveis as $regra) {
+            $janelaInicio = strtotime($data . ' ' . $regra['hora_inicio']);
+            $janelaFim = strtotime($data . ' ' . $regra['hora_fim']);
+            if ($janelaInicio !== false && $janelaFim !== false && $inicio_ts >= $janelaInicio && $fim_ts <= $janelaFim) {
+                $dentroDisponivel = true;
+                break;
+            }
+        }
+        if (!$dentroDisponivel) {
+            return false;
+        }
+
+        foreach ($regras as $regra) {
+            if (($regra['tipo'] ?? '') !== 'bloqueio') {
+                continue;
+            }
+            $bloqueioInicio = strtotime($data . ' ' . $regra['hora_inicio']);
+            $bloqueioFim = strtotime($data . ' ' . $regra['hora_fim']);
+            if ($bloqueioInicio !== false && $bloqueioFim !== false && $inicio_ts < $bloqueioFim && $fim_ts > $bloqueioInicio) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isValidDate(string $date): bool {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return false;
+        }
+        $parts = array_map('intval', explode('-', $date));
+        return checkdate($parts[1], $parts[2], $parts[0]);
+    }
+
+    private function isValidTime(string $time): bool {
+        return (bool)preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time);
+    }
     
     /**
      * Enviar notificação de evento
@@ -1183,16 +1427,23 @@ class AgendaHelper {
         }
 
         $inicio_ts = $this->roundUpToStep($base_ts, 30 * 60);
-        $limite_busca = $inicio_ts + (14 * 24 * 60 * 60);
+        $limite_busca = $inicio_ts + (45 * 24 * 60 * 60);
 
         while ($inicio_ts < $limite_busca) {
             $fim_ts = $inicio_ts + ($duracao_minutos * 60);
+            $inicio_formatado = date('Y-m-d H:i:s', $inicio_ts);
+            $fim_formatado = date('Y-m-d H:i:s', $fim_ts);
+
+            if (!$this->estaDentroDaDisponibilidade($responsavel_id, $inicio_ts, $fim_ts)) {
+                $inicio_ts += 30 * 60;
+                continue;
+            }
 
             $where_espaco = '';
             $params = [
                 ':responsavel_id' => $responsavel_id,
-                ':inicio' => date('Y-m-d H:i:s', $inicio_ts),
-                ':fim' => date('Y-m-d H:i:s', $fim_ts)
+                ':inicio' => $inicio_formatado,
+                ':fim' => $fim_formatado
             ];
             if ($espaco_id !== null) {
                 $where_espaco = "
@@ -1223,9 +1474,18 @@ class AgendaHelper {
             $conflito = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$conflito) {
+                $conflitosAgenda = $this->verificarConflitos($responsavel_id, $espaco_id, $inicio_formatado, $fim_formatado);
+                if ($conflitosAgenda['conflito_responsavel'] || $conflitosAgenda['conflito_espaco'] || $conflitosAgenda['conflito_transito']) {
+                    $fim_conflito = strtotime((string)($conflitosAgenda['evento_conflito_fim'] ?? ''));
+                    $inicio_ts = $fim_conflito && $fim_conflito > $inicio_ts
+                        ? $this->roundUpToStep($fim_conflito, 30 * 60)
+                        : $inicio_ts + (30 * 60);
+                    continue;
+                }
+
                 return [
-                    'inicio' => date('Y-m-d H:i:s', $inicio_ts),
-                    'fim' => date('Y-m-d H:i:s', $fim_ts)
+                    'inicio' => $inicio_formatado,
+                    'fim' => $fim_formatado
                 ];
             }
 
