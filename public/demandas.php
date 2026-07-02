@@ -498,12 +498,18 @@ includeSidebar('Demandas');
                     </div>
                     <div class="field" id="create-responsavel-user-wrap">
                         <label for="create-responsavel-id">Usuário responsável</label>
-                        <select id="create-responsavel-id" name="responsavel_id"></select>
+                        <select id="create-responsavel-id" name="responsavel_id" onchange="toggleJordaoOption()"></select>
                     </div>
                     <div class="field hidden" id="create-responsavel-setor-wrap">
                         <label for="create-responsavel-setor">Setor responsável</label>
                         <select id="create-responsavel-setor" name="responsavel_setor"></select>
                     </div>
+                </div>
+                <div class="field hidden" id="create-jordao-wrap">
+                    <label>
+                        <input type="checkbox" id="create-enviar-jordao" name="enviar_jordao" value="1">
+                        Enviar para o Jordão?
+                    </label>
                 </div>
                 <div class="grid-2">
                     <div class="field">
@@ -586,7 +592,9 @@ const state = {
     demandas: [],
     usuarios: [],
     setores: [],
-    isAdmin: false
+    isAdmin: false,
+    creating: false,
+    createRequestKey: ''
 };
 
 const statusLabels = {
@@ -653,6 +661,27 @@ function toggleResponsavelFields(prefix) {
     const tipo = document.getElementById(`${prefix}-responsavel-tipo`).value;
     document.getElementById(`${prefix}-responsavel-user-wrap`).classList.toggle('hidden', tipo !== 'usuario');
     document.getElementById(`${prefix}-responsavel-setor-wrap`).classList.toggle('hidden', tipo !== 'setor');
+    if (prefix === 'create') {
+        toggleJordaoOption();
+    }
+}
+
+function isGustavoUser(user) {
+    const label = `${user?.nome || ''} ${user?.login || ''} ${user?.label_usuario || ''}`.toLowerCase();
+    return label.includes('gustavo');
+}
+
+function toggleJordaoOption() {
+    const tipo = document.getElementById('create-responsavel-tipo').value;
+    const selectedId = Number(document.getElementById('create-responsavel-id').value || 0);
+    const user = state.usuarios.find(item => Number(item.id) === selectedId);
+    const show = tipo === 'usuario' && !!user && isGustavoUser(user);
+    const wrap = document.getElementById('create-jordao-wrap');
+    const checkbox = document.getElementById('create-enviar-jordao');
+    wrap.classList.toggle('hidden', !show);
+    if (!show) {
+        checkbox.checked = false;
+    }
 }
 
 function toggleEventSearch() {
@@ -984,9 +1013,36 @@ async function openHistory(id) {
 
 function openCreateModal() {
     document.getElementById('create-form').reset();
+    state.creating = false;
+    state.createRequestKey = '';
+    setCreateSubmitting(false);
     toggleResponsavelFields('create');
     toggleEventSearch();
     openModal('create-modal');
+}
+
+function makeCreateRequestKey(formData) {
+    const parts = [
+        Date.now(),
+        formData.get('titulo') || '',
+        formData.get('responsavel_tipo') || '',
+        formData.get('responsavel_id') || '',
+        formData.get('responsavel_setor') || ''
+    ];
+    return btoa(unescape(encodeURIComponent(parts.join('|')))).replace(/=+$/g, '').slice(0, 80);
+}
+
+function setCreateSubmitting(isSubmitting) {
+    const form = document.getElementById('create-form');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const cancelBtn = form.querySelector('.modal-foot .btn:not(.btn-primary)');
+    if (submitBtn) {
+        submitBtn.disabled = isSubmitting;
+        submitBtn.textContent = isSubmitting ? 'Criando...' : 'Criar demanda';
+    }
+    if (cancelBtn) {
+        cancelBtn.disabled = isSubmitting;
+    }
 }
 
 document.getElementById('tabs').addEventListener('click', event => {
@@ -1000,7 +1056,14 @@ document.getElementById('tabs').addEventListener('click', event => {
 
 document.getElementById('create-form').addEventListener('submit', async event => {
     event.preventDefault();
+    if (state.creating) return;
+    state.creating = true;
+    setCreateSubmitting(true);
     const data = new FormData(event.currentTarget);
+    if (!state.createRequestKey) {
+        state.createRequestKey = makeCreateRequestKey(data);
+    }
+    data.append('request_key', state.createRequestKey);
     data.append('action', 'create');
     try {
         const result = await fetchJson(API, { method: 'POST', body: data });
@@ -1009,6 +1072,10 @@ document.getElementById('create-form').addEventListener('submit', async event =>
         await openDetail(result.id);
     } catch (error) {
         alert(error.message);
+    } finally {
+        state.creating = false;
+        state.createRequestKey = '';
+        setCreateSubmitting(false);
     }
 });
 

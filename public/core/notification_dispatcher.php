@@ -255,6 +255,67 @@ class NotificationDispatcher {
         );
     }
 
+    public function sendWhatsappMediaDirect(
+        string $phone,
+        string $mediaUrl,
+        string $filename = '',
+        string $caption = '',
+        string $mimeType = '',
+        array $payload = []
+    ): bool {
+        $phoneE164 = $this->normalizePhoneE164($phone);
+        $mediaUrl = trim($mediaUrl);
+        if ($phoneE164 === '' || $mediaUrl === '') {
+            return false;
+        }
+
+        $provider = $this->getWhatsappProvider($payload);
+        if ($provider !== 'smclick') {
+            error_log('[NOTIFICATION_DISPATCHER] Envio de mídia WhatsApp disponível apenas via SMClick.');
+            return false;
+        }
+
+        return $this->sendSmclickWhatsappMedia($phoneE164, $mediaUrl, $filename, $caption, $mimeType);
+    }
+
+    public function dispatchWhatsappMedia(array $recipients, array $media, array $payload = []): array {
+        $normalizedRecipients = $this->normalizeRecipients($recipients);
+        $result = [
+            'total_destinatarios' => count($normalizedRecipients),
+            'enviados_whatsapp_media' => 0,
+            'falhas_whatsapp_media' => 0,
+            'whatsapps_sem_numero' => 0,
+        ];
+
+        if (empty($normalizedRecipients)) {
+            return $result;
+        }
+
+        $this->hydrateRecipientPhones($normalizedRecipients);
+        $mediaUrl = trim((string)($media['url'] ?? $media['media_url'] ?? ''));
+        $filename = trim((string)($media['filename'] ?? $media['nome_original'] ?? ''));
+        $caption = trim((string)($media['caption'] ?? $media['message'] ?? ''));
+        $mimeType = trim((string)($media['mime_type'] ?? ''));
+
+        foreach ($normalizedRecipients as $recipient) {
+            $phone = (string)($recipient['phone'] ?? '');
+            if ($this->normalizePhoneE164($phone) === '') {
+                $result['whatsapps_sem_numero']++;
+                $result['falhas_whatsapp_media']++;
+                continue;
+            }
+
+            $ok = $this->sendWhatsappMediaDirect($phone, $mediaUrl, $filename, $caption, $mimeType, $payload);
+            if ($ok) {
+                $result['enviados_whatsapp_media']++;
+            } else {
+                $result['falhas_whatsapp_media']++;
+            }
+        }
+
+        return $result;
+    }
+
     private function normalizeRecipients(array $recipients): array {
         $buffer = [];
         foreach ($recipients as $recipient) {
@@ -610,6 +671,215 @@ class NotificationDispatcher {
         }
 
         return $ok;
+    }
+
+    private function sendSmclickWhatsappMedia(string $phoneE164, string $mediaUrl, string $filename, string $caption, string $mimeType): bool {
+        $apiKey = trim((string)(painel_env('SMCLICK_API_KEY', '') ?? ''));
+        $instanceId = trim((string)(painel_env('SMCLICK_INSTANCE_ID', '') ?? ''));
+        $baseUrl = rtrim((string)(painel_env('SMCLICK_API_BASE_URL', 'https://api.smclick.com.br') ?? 'https://api.smclick.com.br'), '/');
+        $telephone = $this->normalizePhoneDigits($phoneE164);
+
+        if ($apiKey === '' || $instanceId === '' || $baseUrl === '' || $telephone === '' || trim($mediaUrl) === '') {
+            error_log('[NOTIFICATION_DISPATCHER] SMClick mídia WhatsApp nao configurada: verifique SMCLICK_API_KEY, SMCLICK_INSTANCE_ID, telefone e URL do anexo.');
+            return false;
+        }
+
+        $media = $this->fetchRemoteMediaDataUri($mediaUrl, $mimeType);
+        if (!$media) {
+            return false;
+        }
+
+        $resolvedMime = (string)$media['mime_type'];
+        $isImage = stripos($resolvedMime, 'image/') === 0;
+        $filename = trim($filename);
+        if ($filename === '') {
+            $filename = $this->filenameFromUrl($mediaUrl, $isImage ? 'imagem' : 'arquivo');
+        }
+
+        $content = [
+            'telephone' => $telephone,
+            'base64' => (string)$media['data_uri'],
+        ];
+        $type = $isImage ? 'image' : 'file';
+        if ($isImage) {
+            $content['message'] = trim($caption);
+        } else {
+            $content['filename'] = $filename;
+        }
+
+        $payload = json_encode([
+            'instance' => $instanceId,
+            'type' => $type,
+            'content' => $content,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if (!is_string($payload)) {
+            return false;
+        }
+
+        $url = $baseUrl . '/instances/messages';
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            if ($ch === false) {
+                return false;
+            }
+
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => [
+                    'Accept: application/json',
+                    'Content-Type: application/json',
+                    'X-API-KEY: ' . $apiKey,
+                ],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT => 20,
+            ]);
+            $response = curl_exec($ch);
+            $statusCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            $ok = $statusCode >= 200 && $statusCode < 300;
+            if (!$ok) {
+                error_log("[NOTIFICATION_DISPATCHER] Falha SMClick mídia {$telephone}: HTTP {$statusCode} " . ($curlError !== '' ? $curlError : (is_string($response) ? $response : '')));
+            }
+
+            return $ok;
+        }
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => "Accept: application/json\r\nContent-Type: application/json\r\nX-API-KEY: {$apiKey}\r\n",
+                'content' => $payload,
+                'timeout' => 15,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $response = @file_get_contents($url, false, $context);
+        $headers = $http_response_header ?? [];
+        $statusLine = $headers[0] ?? '';
+        preg_match('/\s(\d{3})\s/', $statusLine, $matches);
+        $statusCode = isset($matches[1]) ? (int)$matches[1] : 0;
+        $ok = $statusCode >= 200 && $statusCode < 300;
+
+        if (!$ok) {
+            error_log("[NOTIFICATION_DISPATCHER] Falha SMClick mídia {$telephone}: HTTP {$statusCode} " . (is_string($response) ? $response : ''));
+        }
+
+        return $ok;
+    }
+
+    private function fetchRemoteMediaDataUri(string $mediaUrl, string $mimeHint = ''): ?array {
+        $mediaUrl = trim($mediaUrl);
+        if (!preg_match('#^https?://#i', $mediaUrl)) {
+            error_log('[NOTIFICATION_DISPATCHER] URL de mídia inválida para SMClick: ' . $mediaUrl);
+            return null;
+        }
+
+        $maxBytes = max(1024 * 1024, (int)(painel_env('SMCLICK_MAX_MEDIA_BYTES', '8388608') ?? '8388608'));
+        $body = '';
+        $contentType = '';
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init($mediaUrl);
+            if ($ch === false) {
+                return null;
+            }
+
+            curl_setopt_array($ch, [
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_USERAGENT => 'PainelSmilePro/1.0',
+                CURLOPT_HEADERFUNCTION => static function ($curl, string $header) use (&$contentType): int {
+                    if (stripos($header, 'Content-Type:') === 0) {
+                        $contentType = trim(substr($header, strlen('Content-Type:')));
+                    }
+                    return strlen($header);
+                },
+                CURLOPT_WRITEFUNCTION => static function ($curl, string $chunk) use (&$body, $maxBytes): int {
+                    if (strlen($body) + strlen($chunk) > $maxBytes) {
+                        return 0;
+                    }
+                    $body .= $chunk;
+                    return strlen($chunk);
+                },
+            ]);
+
+            $success = curl_exec($ch);
+            $statusCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($success === false || $statusCode < 200 || $statusCode >= 300 || $body === '') {
+                error_log("[NOTIFICATION_DISPATCHER] Falha ao baixar mídia SMClick: HTTP {$statusCode} " . ($curlError !== '' ? $curlError : $mediaUrl));
+                return null;
+            }
+        } else {
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 15,
+                    'ignore_errors' => true,
+                    'header' => "User-Agent: PainelSmilePro/1.0\r\n",
+                ],
+            ]);
+            $body = (string)@file_get_contents($mediaUrl, false, $context, 0, $maxBytes + 1);
+            if ($body === '' || strlen($body) > $maxBytes) {
+                error_log('[NOTIFICATION_DISPATCHER] Falha ao baixar mídia SMClick ou arquivo acima do limite: ' . $mediaUrl);
+                return null;
+            }
+            foreach (($http_response_header ?? []) as $header) {
+                if (stripos($header, 'Content-Type:') === 0) {
+                    $contentType = trim(substr($header, strlen('Content-Type:')));
+                    break;
+                }
+            }
+        }
+
+        $mime = trim(explode(';', $contentType)[0]);
+        if ($mime === '') {
+            $mime = trim($mimeHint);
+        }
+        if ($mime === '' || $mime === 'application/octet-stream') {
+            $mime = $this->mimeFromUrl($mediaUrl) ?: ($mime !== '' ? $mime : 'application/octet-stream');
+        }
+
+        return [
+            'mime_type' => $mime,
+            'data_uri' => 'data:' . $mime . ';base64,' . base64_encode($body),
+        ];
+    }
+
+    private function mimeFromUrl(string $url): string {
+        $path = (string)(parse_url($url, PHP_URL_PATH) ?: '');
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $map = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'pdf' => 'application/pdf',
+            'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls' => 'application/vnd.ms-excel',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'txt' => 'text/plain',
+        ];
+
+        return $map[$ext] ?? '';
+    }
+
+    private function filenameFromUrl(string $url, string $fallback): string {
+        $path = (string)(parse_url($url, PHP_URL_PATH) ?: '');
+        $name = trim(urldecode(basename($path)));
+        return $name !== '' && $name !== '/' ? $name : $fallback;
     }
 
     private function insertInternalNotification(int $usuarioId, string $tipo, string $titulo, string $mensagem, string $urlDestino, ?int $referenciaId): bool {

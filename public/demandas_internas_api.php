@@ -61,10 +61,12 @@ function demandasInternasEnsureSchema(PDO $pdo): void
             prioridade VARCHAR(20) NOT NULL DEFAULT 'normal' CHECK (prioridade IN ('baixa', 'normal', 'alta', 'urgente')),
             prazo DATE NOT NULL,
             encerrada_em TIMESTAMPTZ,
+            request_key VARCHAR(120),
             criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     ");
+    $pdo->exec("ALTER TABLE demandas_internas ADD COLUMN IF NOT EXISTS request_key VARCHAR(120)");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS demandas_internas_mensagens (
@@ -118,6 +120,7 @@ function demandasInternasEnsureSchema(PDO $pdo): void
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_demandas_internas_responsavel ON demandas_internas(responsavel_tipo, responsavel_id, responsavel_setor)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_demandas_internas_criador ON demandas_internas(criador_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_demandas_internas_status ON demandas_internas(status)");
+    $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_demandas_internas_request_key ON demandas_internas(request_key) WHERE request_key IS NOT NULL");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_demandas_internas_citacoes_usuario ON demandas_internas_citacoes(usuario_id)");
 }
 
@@ -156,6 +159,32 @@ function demandasInternasBuildUrl(int $demandaId = 0): string
     return $proto . '://' . $host . $path;
 }
 
+function demandasInternasAbsoluteUrl(string $url): string
+{
+    $url = trim($url);
+    if ($url === '') {
+        return '';
+    }
+    if (preg_match('#^https?://#i', $url)) {
+        return $url;
+    }
+    if (strpos($url, '//') === 0) {
+        return 'https:' . $url;
+    }
+
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return $url;
+    }
+
+    $proto = trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    if ($proto === '') {
+        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    }
+
+    return $proto . '://' . $host . '/' . ltrim($url, '/');
+}
+
 function demandasInternasUsuariosDestino(PDO $pdo, string $responsavelTipo, int $responsavelId, string $responsavelSetor): array
 {
     if ($responsavelTipo === 'usuario' && $responsavelId > 0) {
@@ -177,6 +206,29 @@ function demandasInternasUsuariosDestino(PDO $pdo, string $responsavelTipo, int 
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+function demandasInternasUsuarioEhGustavo(PDO $pdo, int $usuarioId): bool
+{
+    if ($usuarioId <= 0) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT nome, login
+        FROM usuarios
+        WHERE id = :id
+        LIMIT 1
+    ");
+    $stmt->execute([':id' => $usuarioId]);
+    $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$usuario) {
+        return false;
+    }
+
+    $label = trim((string)($usuario['nome'] ?? '') . ' ' . (string)($usuario['login'] ?? ''));
+    $label = function_exists('mb_strtolower') ? mb_strtolower($label, 'UTF-8') : strtolower($label);
+    return strpos($label, 'gustavo') !== false;
+}
+
 function demandasInternasNotificarCriacao(
     PDO $pdo,
     int $demandaId,
@@ -185,7 +237,8 @@ function demandasInternasNotificarCriacao(
     string $responsavelTipo,
     int $responsavelId,
     string $responsavelSetor,
-    string $prazo
+    string $prazo,
+    bool $enviarJordao = false
 ): void {
     try {
         $destinatarios = demandasInternasUsuariosDestino($pdo, $responsavelTipo, $responsavelId, $responsavelSetor);
@@ -232,6 +285,15 @@ function demandasInternasNotificarCriacao(
             'whatsapp' => true,
         ]);
         error_log('[DEMANDAS INTERNAS] Notificações criação #' . $demandaId . ': ' . json_encode($resultadoNotificacao, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        if ($enviarJordao && $responsavelTipo === 'usuario' && demandasInternasUsuarioEhGustavo($pdo, $responsavelId)) {
+            $okJordao = $dispatcher->sendWhatsappDirect(
+                '+5512981497097',
+                $whatsappMensagem,
+                'Jordão'
+            );
+            error_log('[DEMANDAS INTERNAS] Cópia WhatsApp Jordão demanda #' . $demandaId . ': ' . ($okJordao ? 'enviada' : 'falhou'));
+        }
     } catch (Throwable $e) {
         error_log('[DEMANDAS INTERNAS] Falha ao notificar criação da demanda #' . $demandaId . ': ' . $e->getMessage());
     }
@@ -413,6 +475,24 @@ function demandasInternasNotificarAtualizacaoWhatsapp(PDO $pdo, int $demandaId, 
         ], [
             'whatsapp' => true,
         ]);
+
+        if ($tipo === 'anexo' && is_array($anexo)) {
+            $mediaUrl = demandasInternasAbsoluteUrl((string)($anexo['url'] ?? ''));
+            if ($mediaUrl !== '') {
+                $nomeAnexo = trim((string)($anexo['nome_original'] ?? 'Arquivo anexado'));
+                $resultadoMedia = $dispatcher->dispatchWhatsappMedia(array_values($destinatariosPorId), [
+                    'url' => $mediaUrl,
+                    'filename' => $nomeAnexo,
+                    'mime_type' => (string)($anexo['mime_type'] ?? ''),
+                    'caption' => trim(
+                        "📎 *Anexo da demanda #{$demandaId}*\n" .
+                        "📝 {$tituloDemanda}\n" .
+                        ($nomeAnexo !== '' ? "Arquivo: {$nomeAnexo}" : '')
+                    ),
+                ]);
+                error_log('[DEMANDAS INTERNAS] Envio mídia WhatsApp demanda #' . $demandaId . ': ' . json_encode($resultadoMedia, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            }
+        }
     } catch (Throwable $e) {
         error_log('[DEMANDAS INTERNAS] Falha ao notificar atualização WhatsApp da demanda #' . $demandaId . ': ' . $e->getMessage());
     }
@@ -694,6 +774,9 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
     $prazo = trim((string)($_POST['prazo'] ?? ''));
     $status = 'aberta';
     $prioridade = (string)($_POST['prioridade'] ?? 'normal');
+    $requestKey = preg_replace('/[^a-zA-Z0-9._:-]/', '', (string)($_POST['request_key'] ?? '')) ?? '';
+    $requestKey = substr($requestKey, 0, 120);
+    $enviarJordao = !empty($_POST['enviar_jordao']);
 
     if ($titulo === '' || $prazo === '') {
         demandasInternasJson(['success' => false, 'error' => 'Título e prazo são obrigatórios.'], 422);
@@ -704,37 +787,63 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
     if ($responsavelTipo === 'setor' && $responsavelSetor === '') {
         demandasInternasJson(['success' => false, 'error' => 'Informe o setor responsável.'], 422);
     }
+    if ($requestKey !== '') {
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM demandas_internas
+            WHERE request_key = :request_key
+            LIMIT 1
+        ");
+        $stmt->execute([':request_key' => $requestKey]);
+        $existingId = (int)($stmt->fetchColumn() ?: 0);
+        if ($existingId > 0) {
+            demandasInternasJson(['success' => true, 'id' => $existingId, 'duplicated' => true]);
+        }
+    }
 
-    $stmt = $pdo->prepare("
-        INSERT INTO demandas_internas (
-            titulo, descricao, criador_id, responsavel_tipo, responsavel_id, responsavel_setor,
-            evento_tipo, evento_id, evento_data, evento_local, evento_nome, evento_whatsapp,
-            status, prioridade, prazo
-        ) VALUES (
-            :titulo, :descricao, :criador_id, :responsavel_tipo, :responsavel_id, :responsavel_setor,
-            :evento_tipo, :evento_id, :evento_data, :evento_local, :evento_nome, :evento_whatsapp,
-            :status, :prioridade, :prazo
-        )
-        RETURNING id
-    ");
-    $stmt->execute([
-        ':titulo' => $titulo,
-        ':descricao' => $descricao,
-        ':criador_id' => $userId,
-        ':responsavel_tipo' => $responsavelTipo,
-        ':responsavel_id' => $responsavelTipo === 'usuario' ? $responsavelId : null,
-        ':responsavel_setor' => $responsavelTipo === 'setor' ? $responsavelSetor : null,
-        ':evento_tipo' => trim((string)($_POST['evento_tipo'] ?? '')) ?: null,
-        ':evento_id' => (int)($_POST['evento_id'] ?? 0) ?: null,
-        ':evento_data' => trim((string)($_POST['evento_data'] ?? '')) ?: null,
-        ':evento_local' => trim((string)($_POST['evento_local'] ?? '')) ?: null,
-        ':evento_nome' => trim((string)($_POST['evento_nome'] ?? '')) ?: null,
-        ':evento_whatsapp' => trim((string)($_POST['evento_whatsapp'] ?? '')) ?: null,
-        ':status' => $status,
-        ':prioridade' => $prioridade,
-        ':prazo' => $prazo,
-    ]);
-    $demandaId = (int)$stmt->fetchColumn();
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO demandas_internas (
+                titulo, descricao, criador_id, responsavel_tipo, responsavel_id, responsavel_setor,
+                evento_tipo, evento_id, evento_data, evento_local, evento_nome, evento_whatsapp,
+                status, prioridade, prazo, request_key
+            ) VALUES (
+                :titulo, :descricao, :criador_id, :responsavel_tipo, :responsavel_id, :responsavel_setor,
+                :evento_tipo, :evento_id, :evento_data, :evento_local, :evento_nome, :evento_whatsapp,
+                :status, :prioridade, :prazo, :request_key
+            )
+            RETURNING id
+        ");
+        $stmt->execute([
+            ':titulo' => $titulo,
+            ':descricao' => $descricao,
+            ':criador_id' => $userId,
+            ':responsavel_tipo' => $responsavelTipo,
+            ':responsavel_id' => $responsavelTipo === 'usuario' ? $responsavelId : null,
+            ':responsavel_setor' => $responsavelTipo === 'setor' ? $responsavelSetor : null,
+            ':evento_tipo' => trim((string)($_POST['evento_tipo'] ?? '')) ?: null,
+            ':evento_id' => (int)($_POST['evento_id'] ?? 0) ?: null,
+            ':evento_data' => trim((string)($_POST['evento_data'] ?? '')) ?: null,
+            ':evento_local' => trim((string)($_POST['evento_local'] ?? '')) ?: null,
+            ':evento_nome' => trim((string)($_POST['evento_nome'] ?? '')) ?: null,
+            ':evento_whatsapp' => trim((string)($_POST['evento_whatsapp'] ?? '')) ?: null,
+            ':status' => $status,
+            ':prioridade' => $prioridade,
+            ':prazo' => $prazo,
+            ':request_key' => $requestKey !== '' ? $requestKey : null,
+        ]);
+        $demandaId = (int)$stmt->fetchColumn();
+    } catch (PDOException $e) {
+        if ($requestKey !== '' && $e->getCode() === '23505') {
+            $stmt = $pdo->prepare("SELECT id FROM demandas_internas WHERE request_key = :request_key LIMIT 1");
+            $stmt->execute([':request_key' => $requestKey]);
+            $existingId = (int)($stmt->fetchColumn() ?: 0);
+            if ($existingId > 0) {
+                demandasInternasJson(['success' => true, 'id' => $existingId, 'duplicated' => true]);
+            }
+        }
+        throw $e;
+    }
 
     demandasInternasLog($pdo, $demandaId, $userId, 'demanda_criada', 'Demanda criada.');
     if ($responsavelTipo === 'usuario') {
@@ -751,7 +860,8 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
         $responsavelTipo,
         $responsavelId,
         $responsavelSetor,
-        $prazo
+        $prazo,
+        $enviarJordao
     );
 
     demandasInternasJson(['success' => true, 'id' => $demandaId]);
