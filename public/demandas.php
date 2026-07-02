@@ -229,6 +229,9 @@ includeSidebar('Demandas');
     gap: 0.45rem;
 }
 .attachment-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     border: 1px solid #d7dee9;
     background: #fff;
     color: #1f4f82;
@@ -236,6 +239,21 @@ includeSidebar('Demandas');
     border-radius: 6px;
     padding: 0.35rem 0.55rem;
     font-size: 0.82rem;
+}
+.attachment-remove {
+    border: 0;
+    background: #eef2f7;
+    color: #667085;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 800;
+    line-height: 1;
+}
+.attachment-remove:hover {
+    background: #fee2e2;
+    color: #b91c1c;
 }
 .composer {
     border-top: 1px solid #e7ebf2;
@@ -787,7 +805,10 @@ function renderDetail(d, mensagens, anexos) {
         </div>
         <div class="attachments">
             ${anexos.length ? anexos.map(a => `
-                <a class="attachment-link" href="${escapeHtml(a.url || '#')}" target="_blank" rel="noopener">${escapeHtml(a.nome_original)}</a>
+                <span class="attachment-link">
+                    <a href="${escapeHtml(a.url || '#')}" target="_blank" rel="noopener">${escapeHtml(a.nome_original)}</a>
+                    <button class="attachment-remove" type="button" title="Remover anexo" onclick="removeAttachment(event, ${Number(d.id)}, ${Number(a.id)})">×</button>
+                </span>
             `).join('') : '<span class="pill">Sem anexos</span>'}
         </div>
         <form class="composer" onsubmit="sendMessage(event, ${Number(d.id)})">
@@ -910,6 +931,20 @@ async function attachGalleryImage(galleryId) {
     await fetchJson(API, { method: 'POST', body: data });
     closeModal('gallery-modal');
     await openDetail(galleryDemandId);
+}
+
+async function removeAttachment(event, demandaId, anexoId) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!confirm('Remover este anexo da demanda?')) {
+        return;
+    }
+    const data = new FormData();
+    data.append('action', 'delete_attachment');
+    data.append('demanda_id', demandaId);
+    data.append('anexo_id', anexoId);
+    await fetchJson(API, { method: 'POST', body: data });
+    await openDetail(demandaId);
 }
 
 async function forwardDemand(id) {

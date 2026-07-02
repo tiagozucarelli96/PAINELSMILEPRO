@@ -215,7 +215,7 @@ function demandasInternasNotificarCriacao(
         );
 
         $dispatcher = new NotificationDispatcher($pdo);
-        $dispatcher->dispatch($destinatarios, [
+        $resultadoNotificacao = $dispatcher->dispatch($destinatarios, [
             'tipo' => 'demanda_interna_criada',
             'referencia_id' => $demandaId,
             'titulo' => 'Nova demanda interna',
@@ -231,6 +231,7 @@ function demandasInternasNotificarCriacao(
             'email' => true,
             'whatsapp' => true,
         ]);
+        error_log('[DEMANDAS INTERNAS] Notificações criação #' . $demandaId . ': ' . json_encode($resultadoNotificacao, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     } catch (Throwable $e) {
         error_log('[DEMANDAS INTERNAS] Falha ao notificar criação da demanda #' . $demandaId . ': ' . $e->getMessage());
     }
@@ -911,6 +912,39 @@ function demandasInternasAttach(PDO $pdo, int $userId, bool $isAdmin): void
     demandasInternasJson(['success' => true]);
 }
 
+function demandasInternasDeleteAttachment(PDO $pdo, int $userId, bool $isAdmin): void
+{
+    $demandaId = (int)($_POST['demanda_id'] ?? 0);
+    $anexoId = (int)($_POST['anexo_id'] ?? 0);
+    if ($demandaId <= 0 || $anexoId <= 0 || !demandasInternasUserCanAccess($pdo, $demandaId, $userId, $isAdmin)) {
+        demandasInternasJson(['success' => false, 'error' => 'Anexo não encontrado.'], 404);
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT id, nome_original
+        FROM demandas_internas_anexos
+        WHERE id = :anexo_id AND demanda_id = :demanda_id
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':anexo_id' => $anexoId,
+        ':demanda_id' => $demandaId,
+    ]);
+    $anexo = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$anexo) {
+        demandasInternasJson(['success' => false, 'error' => 'Anexo não encontrado.'], 404);
+    }
+
+    $stmt = $pdo->prepare("DELETE FROM demandas_internas_anexos WHERE id = :anexo_id AND demanda_id = :demanda_id");
+    $stmt->execute([
+        ':anexo_id' => $anexoId,
+        ':demanda_id' => $demandaId,
+    ]);
+
+    demandasInternasLog($pdo, $demandaId, $userId, 'arquivo_removido', 'Arquivo removido: ' . (string)$anexo['nome_original']);
+    demandasInternasJson(['success' => true]);
+}
+
 function demandasInternasGallerySearch(PDO $pdo): void
 {
     $q = '%' . trim((string)($_GET['q'] ?? '')) . '%';
@@ -1123,6 +1157,8 @@ try {
         demandasInternasForward($pdo, $userId, $isAdmin);
     } elseif ($action === 'attach') {
         demandasInternasAttach($pdo, $userId, $isAdmin);
+    } elseif ($action === 'delete_attachment') {
+        demandasInternasDeleteAttachment($pdo, $userId, $isAdmin);
     } elseif ($action === 'gallery_search') {
         demandasInternasGallerySearch($pdo);
     } elseif ($action === 'attach_gallery') {
