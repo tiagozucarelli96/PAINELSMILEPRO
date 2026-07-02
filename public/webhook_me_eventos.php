@@ -292,6 +292,14 @@ function processarWebhook($data) {
 
         if ($status === 'cancelado') {
             try {
+                require_once __DIR__ . '/me_eventos_pendencias_helper.php';
+                $pendenciaCancelada = me_eventos_pendencias_cancelar_por_me_evento($pdo, (int)$evento_id, 'Evento cancelado na ME via webhook.');
+                logWebhook("Pendência comercial ME cancelada: " . json_encode($pendenciaCancelada, JSON_UNESCAPED_UNICODE));
+            } catch (Throwable $e) {
+                logWebhook("Aviso: falha ao cancelar pendência comercial ME: " . $e->getMessage());
+            }
+
+            try {
                 $stmtArchive = $pdo->prepare("
                     UPDATE logistica_eventos_espelho
                     SET arquivado = TRUE,

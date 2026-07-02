@@ -7,6 +7,7 @@
  */
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/eventos_me_helper.php';
 
 function me_eventos_pendencias_marker_fresh(): bool
 {
@@ -103,6 +104,10 @@ function me_eventos_pendencias_registrar(
     if ($meEventId <= 0) {
         return ['ok' => false, 'error' => 'Evento ME inválido.'];
     }
+    if (eventos_me_evento_cancelado($eventoData) || eventos_me_evento_cancelado_por_webhook($pdo, $meEventId)) {
+        me_eventos_pendencias_cancelar_por_me_evento($pdo, $meEventId, 'Evento cancelado na ME.');
+        return ['ok' => false, 'error' => 'Evento cancelado na ME; pendência comercial não criada.'];
+    }
 
     $nomeEvento = me_eventos_pendencias_pick($eventoData, ['nomeevento', 'nome_evento', 'nome'], 'Evento sem nome');
     $dataEvento = me_eventos_pendencias_normalizar_data(me_eventos_pendencias_pick($eventoData, ['dataevento', 'data_evento', 'data']));
@@ -153,11 +158,72 @@ function me_eventos_pendencias_registrar(
     }
 }
 
+function me_eventos_pendencias_cancelar_por_me_evento(PDO $pdo, int $meEventId, string $motivo = 'Evento cancelado na ME.'): array
+{
+    me_eventos_pendencias_ensure_schema($pdo);
+    if ($meEventId <= 0) {
+        return ['ok' => false, 'updated' => 0];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE me_eventos_pendencias_comercial
+            SET status = 'cancelado',
+                observacoes = TRIM(BOTH E'\n' FROM CONCAT(COALESCE(observacoes, ''), CASE WHEN COALESCE(observacoes, '') = '' THEN '' ELSE E'\n' END, :motivo)),
+                updated_at = NOW()
+            WHERE me_event_id = :me_event_id
+              AND status = 'pendente'
+        ");
+        $stmt->execute([
+            ':me_event_id' => $meEventId,
+            ':motivo' => $motivo,
+        ]);
+        return ['ok' => true, 'updated' => $stmt->rowCount()];
+    } catch (Throwable $e) {
+        error_log('me_eventos_pendencias_cancelar_por_me_evento: ' . $e->getMessage());
+        return ['ok' => false, 'updated' => 0, 'error' => $e->getMessage()];
+    }
+}
+
+function me_eventos_pendencias_row_cancelada(PDO $pdo, array $row): bool
+{
+    $meEventId = (int)($row['me_event_id'] ?? 0);
+
+    $payload = json_decode((string)($row['payload_json'] ?? ''), true);
+    if (is_array($payload) && eventos_me_evento_cancelado($payload)) {
+        return true;
+    }
+
+    $snapshot = json_decode((string)($row['me_event_snapshot'] ?? ''), true);
+    if (is_array($snapshot) && eventos_me_evento_cancelado($snapshot)) {
+        return true;
+    }
+
+    if ($meEventId > 0 && eventos_me_evento_cancelado_por_webhook($pdo, $meEventId)) {
+        return true;
+    }
+
+    if ($meEventId > 0 && function_exists('eventos_me_request')) {
+        $resp = eventos_me_request('GET', '/api/v1/events/' . $meEventId);
+        if (empty($resp['ok']) && in_array((int)($resp['code'] ?? 0), [404, 410], true)) {
+            return true;
+        }
+        if (!empty($resp['ok'])) {
+            $event = $resp['data']['data'] ?? $resp['data'] ?? null;
+            if (is_array($event) && eventos_me_evento_cancelado($event)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 function me_eventos_pendencias_buscar_proxima(PDO $pdo): ?array
 {
     me_eventos_pendencias_ensure_schema($pdo);
     $stmt = $pdo->query("
-        SELECT p.*, r.pacote_evento_id
+        SELECT p.*, r.pacote_evento_id, r.me_event_snapshot
         FROM me_eventos_pendencias_comercial p
         LEFT JOIN eventos_reunioes r ON r.id = p.meeting_id
         WHERE p.status = 'pendente'
@@ -168,10 +234,17 @@ function me_eventos_pendencias_buscar_proxima(PDO $pdo): ?array
               LIMIT 1
           )
         ORDER BY p.created_at ASC, p.id ASC
-        LIMIT 1
+        LIMIT 100
     ");
-    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-    return $row ?: null;
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        if (me_eventos_pendencias_row_cancelada($pdo, $row)) {
+            me_eventos_pendencias_cancelar_por_me_evento($pdo, (int)($row['me_event_id'] ?? 0), 'Evento cancelado na ME; aviso comercial arquivado automaticamente.');
+            continue;
+        }
+        unset($row['me_event_snapshot']);
+        return $row;
+    }
+    return null;
 }
 
 function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados, int $userId): array
