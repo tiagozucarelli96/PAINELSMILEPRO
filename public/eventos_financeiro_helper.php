@@ -18,6 +18,11 @@ function eventos_financeiro_ensure_schema(PDO $pdo): void
             id BIGSERIAL PRIMARY KEY,
             nome VARCHAR(180) NOT NULL,
             descricao TEXT NULL,
+            categoria VARCHAR(20) NOT NULL DEFAULT 'Pacote',
+            valor_venda NUMERIC(12,2) NULL,
+            valor_pacote NUMERIC(12,2) NULL,
+            pessoas_base INTEGER NULL,
+            valor_convidado_adicional NUMERIC(12,2) NULL,
             oculto BOOLEAN NOT NULL DEFAULT FALSE,
             created_by_user_id INTEGER NULL,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -26,6 +31,11 @@ function eventos_financeiro_ensure_schema(PDO $pdo): void
             deleted_by_user_id INTEGER NULL
         )
     ");
+    $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS categoria VARCHAR(20) NOT NULL DEFAULT 'Pacote'");
+    $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_venda NUMERIC(12,2) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_pacote NUMERIC(12,2) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS pessoas_base INTEGER NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NULL");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS eventos_financeiro_pedidos (
@@ -66,6 +76,15 @@ function eventos_financeiro_ensure_schema(PDO $pdo): void
     ");
 
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_pedidos_evento ON eventos_financeiro_pedidos(evento_id)");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS quantidade INTEGER NOT NULL DEFAULT 1");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS valor_base NUMERIC(12,2) NOT NULL DEFAULT 0");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS valor_adicional NUMERIC(12,2) NOT NULL DEFAULT 0");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS desconto NUMERIC(12,2) NOT NULL DEFAULT 0");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS data_venda DATE NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS detalhes_html TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS deleted_by INTEGER NULL");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_pedidos_evento_ativos ON eventos_financeiro_pedidos(evento_id, deleted_at)");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS carteira VARCHAR(20) NOT NULL DEFAULT 'manual'");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS modo_pagamento VARCHAR(30) NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS unidade VARCHAR(120) NULL");
@@ -124,7 +143,7 @@ function eventos_financeiro_evento(PDO $pdo, int $eventoId): ?array
 function eventos_financeiro_resumo(PDO $pdo, int $eventoId): array
 {
     eventos_financeiro_ensure_schema($pdo);
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(valor), 0) FROM eventos_financeiro_pedidos WHERE evento_id = :evento_id");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(valor), 0) FROM eventos_financeiro_pedidos WHERE evento_id = :evento_id AND deleted_at IS NULL");
     $stmt->execute([':evento_id' => $eventoId]);
     $contratado = (float)$stmt->fetchColumn();
 
@@ -152,11 +171,16 @@ function eventos_financeiro_listar_pedidos(PDO $pdo, int $eventoId): array
 {
     eventos_financeiro_ensure_schema($pdo);
     $stmt = $pdo->prepare("
-        SELECT p.*, pe.nome AS pacote_nome
+        SELECT p.*,
+               pe.nome AS pacote_nome,
+               pe.categoria AS pacote_categoria,
+               pe.pessoas_base AS pacote_pessoas_base,
+               pe.valor_convidado_adicional AS pacote_valor_convidado_adicional
         FROM eventos_financeiro_pedidos p
         LEFT JOIN logistica_pacotes_evento pe ON pe.id = p.pacote_evento_id
         WHERE p.evento_id = :evento_id
-        ORDER BY p.id DESC
+          AND p.deleted_at IS NULL
+        ORDER BY COALESCE(p.data_venda, p.created_at::date) DESC, p.id DESC
     ");
     $stmt->execute([':evento_id' => $eventoId]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -177,14 +201,40 @@ function eventos_financeiro_listar_receitas(PDO $pdo, int $eventoId): array
 
 function eventos_financeiro_salvar_pedido(PDO $pdo, int $eventoId, int $pacoteId, string $descricao, float $valor, int $userId): array
 {
+    return eventos_financeiro_salvar_pedido_detalhado($pdo, $eventoId, 0, $pacoteId, $descricao, $valor, 1, 0.0, 0.0, null, '', $userId);
+}
+
+function eventos_financeiro_salvar_pedido_detalhado(
+    PDO $pdo,
+    int $eventoId,
+    int $pedidoId,
+    int $pacoteId,
+    string $descricao,
+    float $valorBase,
+    int $quantidade,
+    float $valorAdicional,
+    float $desconto,
+    ?string $dataVenda,
+    string $detalhesHtml,
+    int $userId
+): array
+{
     eventos_financeiro_ensure_schema($pdo);
     $descricao = trim($descricao);
+    $detalhesHtml = trim($detalhesHtml);
+    $quantidade = max(1, $quantidade);
+    $valorBase = round(max(0, $valorBase), 2);
+    $valorAdicional = round(max(0, $valorAdicional), 2);
+    $desconto = round(max(0, $desconto), 2);
+
     if ($pacoteId > 0) {
         $stmt = $pdo->prepare("
-            SELECT nome,
-                   COALESCE(valor_pacote, valor_venda, 0) AS valor_padrao
+            SELECT nome, descricao,
+                   COALESCE(valor_pacote, valor_venda, 0) AS valor_padrao,
+                   COALESCE(valor_convidado_adicional, 0) AS adicional_padrao
             FROM logistica_pacotes_evento
             WHERE id = :id
+              AND deleted_at IS NULL
             LIMIT 1
         ");
         $stmt->execute([':id' => $pacoteId]);
@@ -192,29 +242,96 @@ function eventos_financeiro_salvar_pedido(PDO $pdo, int $eventoId, int $pacoteId
         if ($descricao === '') {
             $descricao = trim((string)($pacote['nome'] ?? ''));
         }
-        if ($valor <= 0 && isset($pacote['valor_padrao'])) {
-            $valor = (float)$pacote['valor_padrao'];
+        if ($valorBase <= 0 && isset($pacote['valor_padrao'])) {
+            $valorBase = (float)$pacote['valor_padrao'];
+        }
+        if ($valorAdicional <= 0 && isset($pacote['adicional_padrao'])) {
+            $valorAdicional = (float)$pacote['adicional_padrao'];
+        }
+        if ($detalhesHtml === '' && trim((string)($pacote['descricao'] ?? '')) !== '') {
+            $detalhesHtml = trim((string)$pacote['descricao']);
         }
     }
     if ($descricao === '') {
         return ['ok' => false, 'error' => 'Informe a descrição ou selecione um pacote.'];
     }
+    $valor = round(max(0, ($valorBase * $quantidade) + $valorAdicional - $desconto), 2);
     if ($valor <= 0) {
         return ['ok' => false, 'error' => 'Informe um valor maior que zero.'];
     }
 
+    if ($pedidoId > 0) {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_financeiro_pedidos
+            SET pacote_evento_id = :pacote_evento_id,
+                descricao = :descricao,
+                valor = :valor,
+                quantidade = :quantidade,
+                valor_base = :valor_base,
+                valor_adicional = :valor_adicional,
+                desconto = :desconto,
+                data_venda = CAST(NULLIF(:data_venda, '') AS DATE),
+                detalhes_html = :detalhes_html,
+                updated_at = NOW()
+            WHERE id = :id
+              AND evento_id = :evento_id
+              AND deleted_at IS NULL
+        ");
+        $stmt->execute([
+            ':id' => $pedidoId,
+            ':evento_id' => $eventoId,
+            ':pacote_evento_id' => $pacoteId > 0 ? $pacoteId : null,
+            ':descricao' => $descricao,
+            ':valor' => $valor,
+            ':quantidade' => $quantidade,
+            ':valor_base' => $valorBase,
+            ':valor_adicional' => $valorAdicional,
+            ':desconto' => $desconto,
+            ':data_venda' => $dataVenda ?: '',
+            ':detalhes_html' => $detalhesHtml !== '' ? $detalhesHtml : null,
+        ]);
+        return ['ok' => true, 'mode' => 'updated'];
+    }
+
     $stmt = $pdo->prepare("
-        INSERT INTO eventos_financeiro_pedidos (evento_id, pacote_evento_id, descricao, valor, created_by)
-        VALUES (:evento_id, :pacote_evento_id, :descricao, :valor, :created_by)
+        INSERT INTO eventos_financeiro_pedidos
+            (evento_id, pacote_evento_id, descricao, valor, quantidade, valor_base, valor_adicional, desconto, data_venda, detalhes_html, created_by)
+        VALUES
+            (:evento_id, :pacote_evento_id, :descricao, :valor, :quantidade, :valor_base, :valor_adicional, :desconto,
+             CAST(NULLIF(:data_venda, '') AS DATE), :detalhes_html, :created_by)
     ");
     $stmt->execute([
         ':evento_id' => $eventoId,
         ':pacote_evento_id' => $pacoteId > 0 ? $pacoteId : null,
         ':descricao' => $descricao,
         ':valor' => $valor,
+        ':quantidade' => $quantidade,
+        ':valor_base' => $valorBase,
+        ':valor_adicional' => $valorAdicional,
+        ':desconto' => $desconto,
+        ':data_venda' => $dataVenda ?: '',
+        ':detalhes_html' => $detalhesHtml !== '' ? $detalhesHtml : null,
         ':created_by' => $userId > 0 ? $userId : null,
     ]);
     return ['ok' => true];
+}
+
+function eventos_financeiro_excluir_pedido(PDO $pdo, int $eventoId, int $pedidoId, int $userId): bool
+{
+    eventos_financeiro_ensure_schema($pdo);
+    if ($eventoId <= 0 || $pedidoId <= 0) {
+        return false;
+    }
+    $stmt = $pdo->prepare("
+        DELETE FROM eventos_financeiro_pedidos
+        WHERE id = :id
+          AND evento_id = :evento_id
+    ");
+    $stmt->execute([
+        ':id' => $pedidoId,
+        ':evento_id' => $eventoId,
+    ]);
+    return $stmt->rowCount() > 0;
 }
 
 function eventos_financeiro_salvar_receita_manual(PDO $pdo, int $eventoId, string $descricao, string $forma, float $valor, ?string $vencimento, string $status, int $userId): array

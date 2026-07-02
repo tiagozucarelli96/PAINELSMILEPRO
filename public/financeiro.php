@@ -385,38 +385,108 @@ function financeiro_mes_label(DateTimeImmutable $month): string
     return $meses[(int)$month->format('n')] . ' - ' . $month->format('Y');
 }
 
+function financeiro_formatura_financeiro_exists(PDO $pdo): bool
+{
+    static $exists = null;
+    if ($exists !== null) {
+        return $exists;
+    }
+    try {
+        $exists = trim((string)$pdo->query("SELECT to_regclass('public.eventos_formatura_financeiro')")->fetchColumn()) !== '';
+    } catch (Throwable $e) {
+        $exists = false;
+    }
+    return $exists;
+}
+
 function financeiro_listar_receitas(PDO $pdo, array $filters, string $monthStart, string $monthEnd): array
 {
     eventos_financeiro_ensure_schema($pdo);
     $where = [
-        "r.status <> 'cancelado'",
-        "COALESCE(r.vencimento, r.created_at::date) >= CAST(:month_start AS DATE)",
-        "COALESCE(r.vencimento, r.created_at::date) < CAST(:month_end AS DATE)",
+        "x.status <> 'cancelado'",
+        "x.data_ref >= CAST(:month_start AS DATE)",
+        "x.data_ref < CAST(:month_end AS DATE)",
     ];
     $params = [':month_start' => $monthStart, ':month_end' => $monthEnd];
 
     if (($filters['status'] ?? '') !== '') {
-        $where[] = 'r.status = :status';
+        $where[] = 'x.status = :status';
         $params[':status'] = $filters['status'];
     }
     if (($filters['unidade'] ?? '') !== '') {
-        $where[] = 'COALESCE(r.unidade, e.space_visivel, \'\') = :unidade';
+        $where[] = 'x.unidade_busca = :unidade';
         $params[':unidade'] = $filters['unidade'];
     }
     if (($filters['q'] ?? '') !== '') {
-        $where[] = '(r.descricao ILIKE :q OR e.nome_evento ILIKE :q)';
+        $where[] = '(x.descricao ILIKE :q OR x.nome_evento ILIKE :q OR COALESCE(x.responsavel, \'\') ILIKE :q)';
         $params[':q'] = '%' . $filters['q'] . '%';
     }
 
-    $stmt = $pdo->prepare("
-        SELECT r.*,
+    $sources = ["
+        SELECT r.id,
+               r.evento_id,
+               r.descricao,
+               r.forma_pagamento,
+               r.valor,
+               r.parcela_numero,
+               r.parcelas_total,
+               r.vencimento,
+               r.status,
+               r.asaas_payment_id,
+               r.asaas_invoice_url,
+               r.carteira,
+               r.modo_pagamento,
+               r.unidade,
+               r.created_at,
                e.nome_evento,
                e.space_visivel AS evento_unidade,
-               e.data_evento::text AS data_evento
+               e.data_evento::text AS data_evento,
+               'evento'::text AS origem_financeira,
+               NULL::BIGINT AS formando_id,
+               NULL::text AS responsavel,
+               COALESCE(r.vencimento, r.created_at::date) AS data_ref,
+               COALESCE(r.unidade, e.space_visivel, '') AS unidade_busca
         FROM eventos_financeiro_receitas r
         LEFT JOIN logistica_eventos_espelho e ON e.id = r.evento_id
+    "];
+
+    if (financeiro_formatura_financeiro_exists($pdo)) {
+        $sources[] = "
+            SELECT fin.id,
+                   fin.evento_id,
+                   fin.descricao || ' - ' || f.nome_formando AS descricao,
+                   fin.forma_pagamento,
+                   fin.valor,
+                   fin.parcela_numero,
+                   fin.parcelas_total,
+                   fin.vencimento,
+                   fin.status,
+                   fin.asaas_payment_id,
+                   fin.asaas_invoice_url,
+                   fin.carteira,
+                   fin.modo_pagamento,
+                   fin.unidade,
+                   fin.created_at,
+                   e.nome_evento,
+                   e.space_visivel AS evento_unidade,
+                   e.data_evento::text AS data_evento,
+                   'formatura'::text AS origem_financeira,
+                   fin.formando_id,
+                   f.nome_formando AS responsavel,
+                   COALESCE(fin.vencimento, fin.created_at::date) AS data_ref,
+                   COALESCE(fin.unidade, e.space_visivel, '') AS unidade_busca
+            FROM eventos_formatura_financeiro fin
+            JOIN eventos_formatura_formandos f ON f.id = fin.formando_id
+            LEFT JOIN logistica_eventos_espelho e ON e.id = fin.evento_id
+            WHERE f.deleted_at IS NULL
+        ";
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM (" . implode("\nUNION ALL\n", $sources) . ") x
         WHERE " . implode(' AND ', $where) . "
-        ORDER BY COALESCE(r.vencimento, r.created_at::date) DESC, r.id DESC
+        ORDER BY x.data_ref DESC, x.id DESC
         LIMIT 500
     ");
     $stmt->execute($params);
@@ -474,6 +544,18 @@ function financeiro_resumo(PDO $pdo, string $monthStart, string $monthEnd): arra
     $stmt->execute([':start' => $monthStart, ':end' => $monthEnd]);
     $receitasTotal = (float)$stmt->fetchColumn();
 
+    if (financeiro_formatura_financeiro_exists($pdo)) {
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(SUM(valor), 0)
+            FROM eventos_formatura_financeiro
+            WHERE status <> 'cancelado'
+              AND COALESCE(vencimento, created_at::date) >= CAST(:start AS DATE)
+              AND COALESCE(vencimento, created_at::date) < CAST(:end AS DATE)
+        ");
+        $stmt->execute([':start' => $monthStart, ':end' => $monthEnd]);
+        $receitasTotal += (float)$stmt->fetchColumn();
+    }
+
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(valor), 0)
         FROM eventos_financeiro_receitas
@@ -483,6 +565,18 @@ function financeiro_resumo(PDO $pdo, string $monthStart, string $monthEnd): arra
     ");
     $stmt->execute([':start' => $monthStart, ':end' => $monthEnd]);
     $recebido = (float)$stmt->fetchColumn();
+
+    if (financeiro_formatura_financeiro_exists($pdo)) {
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(SUM(valor), 0)
+            FROM eventos_formatura_financeiro
+            WHERE status = 'pago'
+              AND COALESCE(vencimento, created_at::date) >= CAST(:start AS DATE)
+              AND COALESCE(vencimento, created_at::date) < CAST(:end AS DATE)
+        ");
+        $stmt->execute([':start' => $monthStart, ':end' => $monthEnd]);
+        $recebido += (float)$stmt->fetchColumn();
+    }
 
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(valor), 0)
@@ -740,13 +834,22 @@ $despesas = financeiro_listar_despesas($pdo, $filters, $monthStart, $monthEnd);
 
 $unidades = [];
 try {
-    $stmt = $pdo->query("
+    $unidadesSql = "
         SELECT DISTINCT COALESCE(r.unidade, e.space_visivel) AS nome
         FROM eventos_financeiro_receitas r
         LEFT JOIN logistica_eventos_espelho e ON e.id = r.evento_id
         WHERE TRIM(COALESCE(r.unidade, e.space_visivel, '')) <> ''
-        ORDER BY 1
-    ");
+    ";
+    if (financeiro_formatura_financeiro_exists($pdo)) {
+        $unidadesSql .= "
+            UNION
+            SELECT DISTINCT COALESCE(fin.unidade, e.space_visivel) AS nome
+            FROM eventos_formatura_financeiro fin
+            LEFT JOIN logistica_eventos_espelho e ON e.id = fin.evento_id
+            WHERE TRIM(COALESCE(fin.unidade, e.space_visivel, '')) <> ''
+        ";
+    }
+    $stmt = $pdo->query("SELECT nome FROM ({$unidadesSql}) u ORDER BY nome");
     $unidades = array_values(array_filter(array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [])));
 } catch (Throwable $e) {
     $unidades = [];
@@ -960,6 +1063,8 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                 <td>
                                     <?php if (!empty($receita['asaas_invoice_url'])): ?>
                                         <a href="<?= h((string)$receita['asaas_invoice_url']) ?>" target="_blank" rel="noopener">Abrir</a>
+                                    <?php elseif (($receita['origem_financeira'] ?? '') === 'formatura' && !empty($receita['formando_id'])): ?>
+                                        <a href="index.php?page=eventos_formatura&evento_id=<?= (int)$receita['evento_id'] ?>&formando_id=<?= (int)$receita['formando_id'] ?>">Formando</a>
                                     <?php else: ?>
                                         <a href="index.php?page=eventos_financeiro&evento_id=<?= (int)$receita['evento_id'] ?>">Evento</a>
                                     <?php endif; ?>

@@ -38,17 +38,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string)($_POST['action'] ?? '');
 
     if ($action === 'add_pedido') {
-        $result = eventos_financeiro_salvar_pedido(
+        $result = eventos_financeiro_salvar_pedido_detalhado(
             $pdo,
             $eventoId,
+            (int)($_POST['pedido_id'] ?? 0),
             (int)($_POST['pacote_evento_id'] ?? 0),
             (string)($_POST['descricao'] ?? ''),
-            eventos_financeiro_money($_POST['valor'] ?? 0),
+            eventos_financeiro_money($_POST['valor_base'] ?? 0),
+            (int)($_POST['quantidade'] ?? 1),
+            eventos_financeiro_money($_POST['valor_adicional'] ?? 0),
+            eventos_financeiro_money($_POST['desconto'] ?? 0),
+            trim((string)($_POST['data_venda'] ?? '')) ?: null,
+            (string)($_POST['detalhes_html'] ?? ''),
             $userId
         );
-        $messages[] = !empty($result['ok']) ? 'Pedido lançado no contratado.' : '';
+        $messages[] = !empty($result['ok']) ? (((string)($result['mode'] ?? '') === 'updated') ? 'Pedido atualizado no contratado.' : 'Pedido lançado no contratado.') : '';
         if (empty($result['ok'])) {
             $errors[] = (string)($result['error'] ?? 'Não foi possível lançar o pedido.');
+        }
+    }
+
+    if ($action === 'delete_pedido') {
+        if (eventos_financeiro_excluir_pedido($pdo, $eventoId, (int)($_POST['pedido_id'] ?? 0), $userId)) {
+            $messages[] = 'Pedido removido do contratado.';
+        } else {
+            $errors[] = 'Não foi possível remover o pedido.';
         }
     }
 
@@ -104,6 +118,21 @@ $resumo = eventos_financeiro_resumo($pdo, $eventoId);
 $pedidos = eventos_financeiro_listar_pedidos($pdo, $eventoId);
 $receitas = eventos_financeiro_listar_receitas($pdo, $eventoId);
 $pacotes = pacotes_evento_listar($pdo, false);
+$pacotesJson = array_map(static function (array $pacote): array {
+    $categoria = trim((string)($pacote['categoria'] ?? 'Pacote'));
+    $valorBase = $categoria === 'Pacote'
+        ? (float)($pacote['valor_pacote'] ?? 0)
+        : (float)($pacote['valor_venda'] ?? 0);
+    return [
+        'id' => (int)($pacote['id'] ?? 0),
+        'nome' => (string)($pacote['nome'] ?? ''),
+        'categoria' => $categoria,
+        'descricao' => (string)($pacote['descricao'] ?? ''),
+        'valorBase' => $valorBase,
+        'valorAdicional' => (float)($pacote['valor_convidado_adicional'] ?? 0),
+        'pessoasBase' => (int)($pacote['pessoas_base'] ?? 0),
+    ];
+}, $pacotes);
 
 $unidades = [];
 try {
@@ -167,15 +196,15 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
 .table-wrap{overflow:auto;border:1px solid #e2e8f0;border-radius:10px}.finance-table{width:100%;border-collapse:collapse;background:#fff;min-width:920px}.finance-table th{background:#64727f;color:#fff;text-align:left;padding:.85rem;font-size:.82rem;text-transform:uppercase}.finance-table td{border-bottom:1px solid #e2e8f0;padding:.85rem;vertical-align:middle}
 .badge{display:inline-flex;border-radius:999px;padding:.28rem .65rem;font-size:.76rem;font-weight:900}.badge-pendente{background:#fef3c7;color:#92400e}.badge-pago{background:#dcfce7;color:#166534}.badge-vencido{background:#fee2e2;color:#991b1b}.badge-cancelado{background:#e2e8f0;color:#475569}
 .badge-receita{background:#58c786;color:#fff}.wallet{font-weight:900;color:#475569}.wallet small{display:block;color:#64748b;font-weight:700;margin-top:.25rem}.muted{color:#64748b;font-size:.88rem}.money{font-weight:900;color:#374151}
-.pedido-form{display:grid;grid-template-columns:1.2fr 1.4fr .7fr auto;gap:.8rem;align-items:end;margin-bottom:1rem}
+.pedido-summary-line{display:flex;justify-content:space-between;gap:.75rem;align-items:center;padding:.42rem 0;border-bottom:1px dashed #dbe3ef}.pedido-summary-line:last-child{border-bottom:0}.pedido-total-line{font-size:1.15rem;font-weight:900;color:#1e3a8a}.pedido-meta{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.35rem}.pedido-chip{display:inline-flex;border-radius:999px;background:#eef6ff;color:#1d4ed8;font-weight:900;font-size:.76rem;padding:.22rem .55rem}.pedido-actions{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}.icon-btn{width:34px;height:34px;border:0;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-weight:900;text-decoration:none}.icon-btn.edit{background:#f4c44e;color:#fff}.icon-btn.delete{background:#e94c42;color:#fff}.pedido-total-bar{margin-top:1rem;background:#5ebfd4;color:#fff;border-radius:10px;padding:1rem;text-align:right;font-weight:900;font-size:1.05rem}
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.modal-backdrop.open{display:flex}
 .modal{width:min(1040px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(15,23,42,.28)}
 .modal-header{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:1rem 1.15rem;border-bottom:1px solid #e2e8f0}.modal-title{margin:0;color:#1e293b;font-weight:900}.modal-close{width:38px;height:38px;border:0;border-radius:999px;background:#f1f5f9;color:#334155;font-size:1.25rem;cursor:pointer}
-.modal-body{padding:1rem;display:grid;gap:1rem}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.9rem}.field.full{grid-column:1/-1}.choice-row{display:flex;gap:.65rem;flex-wrap:wrap}.choice{border:1px solid #dbe3ef;background:#fff;border-radius:999px;padding:.62rem .9rem;font-weight:900;cursor:pointer}.choice.active{background:#1e3a8a;color:#fff;border-color:#1e3a8a}
+.modal-body{padding:1rem;display:grid;gap:1rem}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.9rem}.field.full{grid-column:1/-1}.choice-row{display:flex;gap:.65rem;flex-wrap:wrap}.choice{border:1px solid #dbe3ef;background:#fff;border-radius:999px;padding:.62rem .9rem;font-weight:900;cursor:pointer}.choice.active{background:#1e3a8a;color:#fff;border-color:#1e3a8a}.pedido-modal-grid{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:1rem;align-items:start}.pedido-side{background:#fff8db;border-left:4px solid #f4c44e;border-radius:12px;padding:1rem;position:sticky;top:0}.pedido-side h3{margin:0 0 .7rem;color:#374151;font-size:1rem}.detail-preview{border:1px solid #dbe3ef;background:#f8fafc;border-radius:10px;padding:.75rem;min-height:92px;max-height:180px;overflow:auto;color:#475569}
 .parcelas-box{border:1px solid #dbe3ef;border-radius:12px;padding:1rem;background:#f8fafc}.parcelas-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:.8rem}.parcelas-table{width:100%;border-collapse:collapse}.parcelas-table th{font-size:.76rem;text-transform:uppercase;color:#64748b;text-align:left;padding:.4rem}.parcelas-table td{padding:.4rem}.parcelas-table input{padding:.58rem .65rem}
 .modal-actions{display:flex;justify-content:flex-end;gap:.7rem;padding:1rem;border-top:1px solid #e2e8f0}
 .hidden{display:none!important}
-@media(max-width:1050px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pedido-form{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}}
+@media(max-width:1050px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid{grid-template-columns:1fr}.pedido-modal-grid{grid-template-columns:1fr}.pedido-side{position:static}}
 @media(max-width:650px){.summary-grid{grid-template-columns:1fr}.finance-top{align-items:flex-start;flex-direction:column}.tab-panel{padding:1rem .75rem}.tabs{padding:.75rem .75rem 0}}
 </style>
 
@@ -258,44 +287,116 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
         </div>
 
         <div class="tab-panel" id="tab-pedidos">
-            <div class="panel-toolbar"><h2 class="panel-title">Pedidos</h2></div>
-            <form method="post" class="pedido-form" id="pedido-form">
-                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
-                <input type="hidden" name="action" value="add_pedido">
-                <div>
-                    <label>Pacote/serviço/produto</label>
-                    <select name="pacote_evento_id" id="pedido-pacote">
-                        <option value="0" data-valor="">Selecionar item</option>
-                        <?php foreach ($pacotes as $pacote): ?>
-                            <?php $valorPadrao = (float)($pacote['valor_pacote'] ?? $pacote['valor_venda'] ?? 0); ?>
-                            <option value="<?= (int)$pacote['id'] ?>" data-valor="<?= h((string)$valorPadrao) ?>" data-nome="<?= h((string)$pacote['nome']) ?>">
-                                <?= h((string)$pacote['nome']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div><label>Descrição</label><input name="descricao" id="pedido-descricao" placeholder="Ex: Pacote Prata 100"></div>
-                <div><label>Valor</label><input name="valor" id="pedido-valor" inputmode="decimal" placeholder="R$ 0,00"></div>
-                <button class="btn btn-green" type="submit">Adicionar pedido</button>
-            </form>
+            <div class="panel-toolbar">
+                <h2 class="panel-title">Pedidos</h2>
+                <button class="btn btn-blue" type="button" data-open-pedido>+ Adicionar produto e serviço</button>
+            </div>
 
             <div class="table-wrap">
                 <table class="finance-table">
-                    <thead><tr><th>Item</th><th>Cadastro</th><th>Valor</th></tr></thead>
+                    <thead><tr><th>Item</th><th>Data</th><th>Qtd.</th><th>Valores</th><th>Total</th><th>Ações</th></tr></thead>
                     <tbody>
                     <?php foreach ($pedidos as $pedido): ?>
+                        <?php
+                        $quantidadePedido = max(1, (int)($pedido['quantidade'] ?? 1));
+                        $valorBasePedido = (float)($pedido['valor_base'] ?? $pedido['valor'] ?? 0);
+                        $valorAdicionalPedido = (float)($pedido['valor_adicional'] ?? 0);
+                        $descontoPedido = (float)($pedido['desconto'] ?? 0);
+                        $pedidoData = (string)($pedido['data_venda'] ?? '');
+                        ?>
                         <tr>
-                            <td><?= h((string)$pedido['descricao']) ?></td>
-                            <td><?= h((string)($pedido['pacote_nome'] ?? '-')) ?></td>
+                            <td>
+                                <strong><?= h((string)$pedido['descricao']) ?></strong>
+                                <div class="muted"><?= h((string)($pedido['pacote_nome'] ?? 'Item manual')) ?></div>
+                                <div class="pedido-meta">
+                                    <?php if (!empty($pedido['pacote_categoria'])): ?><span class="pedido-chip"><?= h((string)$pedido['pacote_categoria']) ?></span><?php endif; ?>
+                                    <?php if ((int)($pedido['pacote_pessoas_base'] ?? 0) > 0): ?><span class="pedido-chip"><?= (int)$pedido['pacote_pessoas_base'] ?> convidados base</span><?php endif; ?>
+                                </div>
+                            </td>
+                            <td><?= h($pedidoData !== '' ? brDateOnly($pedidoData) : brDateOnly((string)($pedido['created_at'] ?? ''))) ?></td>
+                            <td><?= (int)$quantidadePedido ?></td>
+                            <td>
+                                <div>Base: <strong><?= h(format_currency($valorBasePedido)) ?></strong></div>
+                                <?php if ($valorAdicionalPedido > 0): ?><div>Adicional: <strong><?= h(format_currency($valorAdicionalPedido)) ?></strong></div><?php endif; ?>
+                                <?php if ($descontoPedido > 0): ?><div>Desconto: <strong><?= h(format_currency($descontoPedido)) ?></strong></div><?php endif; ?>
+                            </td>
                             <td><span class="money"><?= h(format_currency($pedido['valor'])) ?></span></td>
+                            <td>
+                                <div class="pedido-actions">
+                                    <button class="icon-btn edit" type="button" title="Editar"
+                                        data-edit-pedido
+                                        data-id="<?= (int)$pedido['id'] ?>"
+                                        data-pacote-id="<?= (int)($pedido['pacote_evento_id'] ?? 0) ?>"
+                                        data-descricao="<?= h((string)$pedido['descricao']) ?>"
+                                        data-quantidade="<?= (int)$quantidadePedido ?>"
+                                        data-valor-base="<?= h((string)$valorBasePedido) ?>"
+                                        data-valor-adicional="<?= h((string)$valorAdicionalPedido) ?>"
+                                        data-desconto="<?= h((string)$descontoPedido) ?>"
+                                        data-data-venda="<?= h($pedidoData) ?>"
+                                        data-detalhes="<?= h((string)($pedido['detalhes_html'] ?? '')) ?>">✎</button>
+                                    <form method="post" onsubmit="return confirm('Remover este pedido do contratado?')">
+                                        <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                                        <input type="hidden" name="action" value="delete_pedido">
+                                        <input type="hidden" name="pedido_id" value="<?= (int)$pedido['id'] ?>">
+                                        <button class="icon-btn delete" type="submit" title="Excluir">×</button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (!$pedidos): ?><tr><td colspan="3" class="muted">Nenhum pedido lançado.</td></tr><?php endif; ?>
+                    <?php if (!$pedidos): ?><tr><td colspan="6" class="muted">Nenhum pedido lançado.</td></tr><?php endif; ?>
                     </tbody>
                 </table>
             </div>
+            <div class="pedido-total-bar">TOTAL CONTRATADO: <?= h(format_currency($resumo['contratado'])) ?></div>
         </div>
     </section>
+</div>
+
+<div class="modal-backdrop" id="pedido-modal" role="dialog" aria-modal="true" aria-labelledby="pedido-title">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title" id="pedido-title">Adicionar produto e serviço</h2>
+            <button class="modal-close" type="button" data-close-pedido>×</button>
+        </div>
+        <form method="post" id="pedido-modal-form">
+            <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+            <input type="hidden" name="action" value="add_pedido">
+            <input type="hidden" name="pedido_id" id="pedido-id" value="0">
+            <div class="modal-body">
+                <div class="pedido-modal-grid">
+                    <div class="form-grid">
+                        <div class="field"><label>Data da venda</label><input type="date" name="data_venda" id="pedido-data-venda" value="<?= h(date('Y-m-d')) ?>"></div>
+                        <div class="field"><label>Pacote, serviço ou produto</label><select name="pacote_evento_id" id="pedido-pacote">
+                            <option value="0">Selecione o item</option>
+                            <?php foreach ($pacotes as $pacote): ?>
+                                <option value="<?= (int)$pacote['id'] ?>"><?= h((string)$pacote['nome']) ?> · <?= h((string)($pacote['categoria'] ?? 'Pacote')) ?></option>
+                            <?php endforeach; ?>
+                        </select></div>
+                        <div class="field full"><label>Descrição</label><input name="descricao" id="pedido-descricao" placeholder="Ex: Pacote Encanto, painel adicional, serviço extra"></div>
+                        <div class="field"><label>Quantidade</label><input type="number" name="quantidade" id="pedido-quantidade" min="1" step="1" value="1"></div>
+                        <div class="field"><label>Valor Base</label><input name="valor_base" id="pedido-valor-base" inputmode="decimal" placeholder="R$ 0,00"></div>
+                        <div class="field"><label>Convidado adicional / valor adicional</label><input name="valor_adicional" id="pedido-valor-adicional" inputmode="decimal" placeholder="R$ 0,00"></div>
+                        <div class="field"><label>Desconto</label><input name="desconto" id="pedido-desconto" inputmode="decimal" placeholder="R$ 0,00"></div>
+                        <div class="field full"><label>Detalhes cadastrados</label><textarea name="detalhes_html" id="pedido-detalhes" placeholder="Detalhes do pacote, serviço ou produto"></textarea></div>
+                        <div class="field full"><label>Prévia dos detalhes</label><div class="detail-preview" id="pedido-detail-preview">Selecione um item para carregar os detalhes cadastrados.</div></div>
+                    </div>
+                    <aside class="pedido-side">
+                        <h3>Resumo</h3>
+                        <div class="pedido-summary-line"><span>Valor base</span><strong id="pedido-resumo-base">R$ 0,00</strong></div>
+                        <div class="pedido-summary-line"><span>Quantidade</span><strong id="pedido-resumo-qtd">1</strong></div>
+                        <div class="pedido-summary-line"><span>Adicional</span><strong id="pedido-resumo-adicional">R$ 0,00</strong></div>
+                        <div class="pedido-summary-line"><span>Desconto</span><strong id="pedido-resumo-desconto">R$ 0,00</strong></div>
+                        <div class="pedido-summary-line pedido-total-line"><span>Total</span><strong id="pedido-resumo-total">R$ 0,00</strong></div>
+                    </aside>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" type="button" data-close-pedido>Cancelar</button>
+                <button class="btn btn-green" type="submit">Salvar pedido</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <div class="modal-backdrop" id="receita-modal" role="dialog" aria-modal="true" aria-labelledby="receita-title">
@@ -378,12 +479,99 @@ document.querySelectorAll('.tab-btn').forEach((button) => {
     });
 });
 
+const pacotesFinanceiro = <?= json_encode($pacotesJson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const pacoteMap = new Map(pacotesFinanceiro.map((item) => [String(item.id), item]));
+const pedidoModal = document.getElementById('pedido-modal');
+const pedidoForm = document.getElementById('pedido-modal-form');
+const pedidoId = document.getElementById('pedido-id');
 const pacoteSelect = document.getElementById('pedido-pacote');
-pacoteSelect?.addEventListener('change', () => {
-    const option = pacoteSelect.options[pacoteSelect.selectedIndex];
-    const valor = moneyToNumber(option.dataset.valor || '0');
-    if (option.dataset.nome) document.getElementById('pedido-descricao').value = option.dataset.nome;
-    if (valor > 0) document.getElementById('pedido-valor').value = numberToMoney(valor);
+const pedidoDescricao = document.getElementById('pedido-descricao');
+const pedidoQuantidade = document.getElementById('pedido-quantidade');
+const pedidoValorBase = document.getElementById('pedido-valor-base');
+const pedidoValorAdicional = document.getElementById('pedido-valor-adicional');
+const pedidoDesconto = document.getElementById('pedido-desconto');
+const pedidoDataVenda = document.getElementById('pedido-data-venda');
+const pedidoDetalhes = document.getElementById('pedido-detalhes');
+const pedidoDetailPreview = document.getElementById('pedido-detail-preview');
+const pedidoTitle = document.getElementById('pedido-title');
+
+function formatCurrencyLabel(value) {
+    return 'R$ ' + numberToMoney(value);
+}
+function syncPedidoResumo() {
+    const base = moneyToNumber(pedidoValorBase?.value);
+    const qtd = Math.max(1, Number(pedidoQuantidade?.value || 1));
+    const adicional = moneyToNumber(pedidoValorAdicional?.value);
+    const desconto = moneyToNumber(pedidoDesconto?.value);
+    const total = Math.max(0, (base * qtd) + adicional - desconto);
+    document.getElementById('pedido-resumo-base').textContent = formatCurrencyLabel(base);
+    document.getElementById('pedido-resumo-qtd').textContent = String(qtd);
+    document.getElementById('pedido-resumo-adicional').textContent = formatCurrencyLabel(adicional);
+    document.getElementById('pedido-resumo-desconto').textContent = formatCurrencyLabel(desconto);
+    document.getElementById('pedido-resumo-total').textContent = formatCurrencyLabel(total);
+    if (pedidoDetailPreview) {
+        const detalhes = pedidoDetalhes?.value || '';
+        pedidoDetailPreview.innerHTML = detalhes.trim() ? detalhes : 'Sem detalhes cadastrados.';
+    }
+}
+function fillPedidoFromPacote(overrideExisting = false) {
+    const item = pacoteMap.get(String(pacoteSelect?.value || '0'));
+    if (!item) {
+        syncPedidoResumo();
+        return;
+    }
+    if (overrideExisting || !pedidoDescricao.value.trim()) pedidoDescricao.value = item.nome || '';
+    if (overrideExisting || moneyToNumber(pedidoValorBase.value) <= 0) pedidoValorBase.value = numberToMoney(item.valorBase || 0);
+    if (overrideExisting || moneyToNumber(pedidoValorAdicional.value) <= 0) pedidoValorAdicional.value = numberToMoney(item.valorAdicional || 0);
+    if (overrideExisting || !pedidoDetalhes.value.trim()) pedidoDetalhes.value = item.descricao || '';
+    syncPedidoResumo();
+}
+function resetPedidoForm() {
+    pedidoForm?.reset();
+    if (pedidoId) pedidoId.value = '0';
+    if (pedidoTitle) pedidoTitle.textContent = 'Adicionar produto e serviço';
+    if (pedidoDataVenda) pedidoDataVenda.value = '<?= h(date('Y-m-d')) ?>';
+    if (pedidoQuantidade) pedidoQuantidade.value = '1';
+    if (pedidoValorBase) pedidoValorBase.value = '0,00';
+    if (pedidoValorAdicional) pedidoValorAdicional.value = '0,00';
+    if (pedidoDesconto) pedidoDesconto.value = '0,00';
+    syncPedidoResumo();
+}
+function openPedidoModal(data = null) {
+    resetPedidoForm();
+    if (data) {
+        if (pedidoTitle) pedidoTitle.textContent = 'Editar produto e serviço';
+        pedidoId.value = data.id || '0';
+        pacoteSelect.value = data.pacoteId || '0';
+        pedidoDescricao.value = data.descricao || '';
+        pedidoQuantidade.value = data.quantidade || '1';
+        pedidoValorBase.value = numberToMoney(data.valorBase || 0);
+        pedidoValorAdicional.value = numberToMoney(data.valorAdicional || 0);
+        pedidoDesconto.value = numberToMoney(data.desconto || 0);
+        pedidoDataVenda.value = data.dataVenda || '<?= h(date('Y-m-d')) ?>';
+        pedidoDetalhes.value = data.detalhes || '';
+    }
+    pedidoModal?.classList.add('open');
+    syncPedidoResumo();
+}
+document.querySelector('[data-open-pedido]')?.addEventListener('click', () => openPedidoModal());
+document.querySelectorAll('[data-close-pedido]').forEach((button) => button.addEventListener('click', () => pedidoModal?.classList.remove('open')));
+pedidoModal?.addEventListener('click', (event) => { if (event.target === pedidoModal) pedidoModal.classList.remove('open'); });
+pacoteSelect?.addEventListener('change', () => fillPedidoFromPacote(true));
+[pedidoQuantidade, pedidoValorBase, pedidoValorAdicional, pedidoDesconto, pedidoDetalhes].forEach((el) => el?.addEventListener('input', syncPedidoResumo));
+[pedidoValorBase, pedidoValorAdicional, pedidoDesconto].forEach((el) => el?.addEventListener('blur', () => { el.value = numberToMoney(moneyToNumber(el.value)); syncPedidoResumo(); }));
+document.querySelectorAll('[data-edit-pedido]').forEach((button) => {
+    button.addEventListener('click', () => openPedidoModal({
+        id: button.dataset.id || '0',
+        pacoteId: button.dataset.pacoteId || '0',
+        descricao: button.dataset.descricao || '',
+        quantidade: button.dataset.quantidade || '1',
+        valorBase: Number(button.dataset.valorBase || 0),
+        valorAdicional: Number(button.dataset.valorAdicional || 0),
+        desconto: Number(button.dataset.desconto || 0),
+        dataVenda: button.dataset.dataVenda || '',
+        detalhes: button.dataset.detalhes || '',
+    }));
 });
 
 const receitaModal = document.getElementById('receita-modal');
@@ -434,7 +622,12 @@ receitaModal?.addEventListener('click', (event) => { if (event.target === receit
 document.querySelectorAll('[data-receita-tipo]').forEach((button) => button.addEventListener('click', () => { receitaTipo = button.dataset.receitaTipo; updateReceitaMode(); }));
 [receitaValor, receitaParcelas, receitaVencimento, carteiraSelect].forEach((el) => el?.addEventListener('input', updateReceitaMode));
 carteiraSelect?.addEventListener('change', updateReceitaMode);
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape') receitaModal?.classList.remove('open'); });
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        receitaModal?.classList.remove('open');
+        pedidoModal?.classList.remove('open');
+    }
+});
 updateReceitaMode();
 </script>
 
