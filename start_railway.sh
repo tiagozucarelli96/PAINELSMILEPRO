@@ -7,7 +7,7 @@ set -euo pipefail
 # Obter porta do Railway ou usar padrão
 PORT=${PORT:-8080}
 GOOGLE_WORKER_ENABLED=${GOOGLE_WORKER_ENABLED:-1}
-PHP_CLI_SERVER_WORKERS=${PHP_CLI_SERVER_WORKERS:-4}
+PHP_CLI_SERVER_WORKERS=${PHP_CLI_SERVER_WORKERS:-10}
 APP_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 echo "🚀 Iniciando servidor PHP na porta $PORT"
