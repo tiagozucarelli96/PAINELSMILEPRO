@@ -363,12 +363,9 @@ function eventos_formatura_data_hora_br(?string $date): string
 
 function eventos_formatura_public_url(string $path): string
 {
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
-    if ($host === '') {
-        return $path;
-    }
-    return $scheme . '://' . $host . '/' . ltrim($path, '/');
+    return function_exists('eventos_documentos_public_url')
+        ? eventos_documentos_public_url($path)
+        : '/' . ltrim($path, '/');
 }
 
 function eventos_formatura_mapa_tags(array $evento, array $formando, array $financeiroFormando, array $itensContratados = []): array

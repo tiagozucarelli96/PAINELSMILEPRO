@@ -390,11 +390,25 @@ function eventos_documentos_excluir(PDO $pdo, int $eventoId, int $documentoId, i
 function eventos_documentos_public_url(string $path): string
 {
     $path = ltrim($path, '/');
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? '';
+    $forwardedProto = strtolower(trim(explode(',', (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+    if ($forwardedProto === 'http' || $forwardedProto === 'https') {
+        $scheme = $forwardedProto;
+    } elseif (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        $scheme = 'https';
+    } elseif (!empty($_SERVER['REQUEST_SCHEME'])) {
+        $scheme = strtolower((string)$_SERVER['REQUEST_SCHEME']);
+    } else {
+        $scheme = 'https';
+    }
+
+    $host = (string)($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '');
     if ($host === '') {
         return $path;
     }
+    if ($scheme === 'http' && !preg_match('/^(localhost|127\.0\.0\.1|\[?::1\]?)(:\d+)?$/', $host)) {
+        $scheme = 'https';
+    }
+
     $base = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/index.php'), '/\\');
     if ($base === '' || $base === '.') {
         $base = '';

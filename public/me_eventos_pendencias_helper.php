@@ -169,7 +169,7 @@ function me_eventos_pendencias_cancelar_por_me_evento(PDO $pdo, int $meEventId, 
         $stmt = $pdo->prepare("
             UPDATE me_eventos_pendencias_comercial
             SET status = 'cancelado',
-                observacoes = TRIM(BOTH E'\n' FROM CONCAT(COALESCE(observacoes, ''), CASE WHEN COALESCE(observacoes, '') = '' THEN '' ELSE E'\n' END, :motivo)),
+                observacoes = TRIM(BOTH E'\n' FROM CONCAT(COALESCE(observacoes, ''), CASE WHEN COALESCE(observacoes, '') = '' THEN '' ELSE E'\n' END, CAST(:motivo AS text))),
                 updated_at = NOW()
             WHERE me_event_id = :me_event_id
               AND status = 'pendente'

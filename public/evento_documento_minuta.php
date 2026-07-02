@@ -7,11 +7,9 @@
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_documentos_helper.php';
 
-eventos_documentos_ensure_schema($pdo);
-
 $token = trim((string)($_GET['token'] ?? ''));
 $documento = null;
-if ($token !== '') {
+if ($token !== '' && eventos_documentos_table_exists($pdo, 'eventos_documentos')) {
     $stmt = $pdo->prepare("
         SELECT d.*, e.nome_evento
         FROM eventos_documentos d
