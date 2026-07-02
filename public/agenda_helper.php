@@ -962,6 +962,14 @@ class AgendaHelper {
      */
     public function excluirEvento($evento_id) {
         try {
+            if (!is_scalar($evento_id) || !preg_match('/^\d+$/', (string)$evento_id)) {
+                return [
+                    'success' => false,
+                    'error' => 'Evento do Google Calendar não pode ser excluído pela Agenda interna.'
+                ];
+            }
+
+            $evento_id = (int)$evento_id;
             $evento = $this->getAgendaEventoForGoogle($evento_id);
             if ($evento) {
                 $this->deleteEventoFromGoogleIfLinked($evento);

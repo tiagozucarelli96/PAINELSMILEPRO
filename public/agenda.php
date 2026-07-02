@@ -1354,7 +1354,7 @@ includeSidebar('Agenda');
                 setVisitDetailsMode(false);
                 resetVisitDetailsFields();
                 const eventTipo = event.extendedProps.tipo;
-                const isGoogleEvent = eventTipo === 'google';
+                const isGoogleEvent = eventTipo === 'google' || String(event.id || '').startsWith('google_');
                 
                 // Configurar título e campos baseado no tipo
                 if (isGoogleEvent) {
@@ -1914,17 +1914,21 @@ includeSidebar('Agenda');
         
         // Excluir evento
         async function deleteEvent() {
+            const eventId = document.getElementById('eventId').value;
+            if (!/^\d+$/.test(String(eventId))) {
+                await customAlert('Este evento veio do Google Calendar e não pode ser excluído pela Agenda interna.', 'Evento do Google');
+                return;
+            }
+
             const confirmado = await customConfirm('Tem certeza que deseja excluir este evento?', '⚠️ Confirmar Exclusão');
             if (!confirmado) return;
-            
-            const eventId = document.getElementById('eventId').value;
             
             fetch('agenda.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `acao=excluir_evento&evento_id=${eventId}`
+                body: `acao=excluir_evento&evento_id=${encodeURIComponent(eventId)}`
             })
             .then(response => response.json())
             .then(data => {
