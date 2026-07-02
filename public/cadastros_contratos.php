@@ -89,6 +89,12 @@ function cadastros_contratos_route_int_param(string $name, array $params): int
     return 0;
 }
 
+function cadastros_contratos_redirect_lista(): void
+{
+    header('Location: index.php?page=cadastros_contratos#modelos');
+    exit;
+}
+
 contratos_modelos_ensure_schema($pdo);
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
@@ -112,8 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("UPDATE contrato_modelos SET ativo = NOT ativo, updated_at = NOW() WHERE id = :id");
             $stmt->execute([':id' => $id]);
             $_SESSION['cadastros_contratos_success'] = 'Status do modelo atualizado.';
-            header('Location: index.php?page=cadastros_contratos');
-            exit;
+            cadastros_contratos_redirect_lista();
         } catch (Throwable $e) {
             error_log('cadastros_contratos toggle: ' . $e->getMessage());
             $errors[] = 'Não foi possível atualizar o modelo.';
@@ -158,8 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                     $_SESSION['cadastros_contratos_success'] = 'Modelo cadastrado com sucesso.';
                 }
-                header('Location: index.php?page=cadastros_contratos');
-                exit;
+                cadastros_contratos_redirect_lista();
             } catch (Throwable $e) {
                 error_log('cadastros_contratos save: ' . $e->getMessage());
                 $errors[] = 'Não foi possível salvar o modelo.';
@@ -279,7 +283,7 @@ includeSidebar('Contratos');
     <?php if ($success !== ''): ?><div class="contratos-alert success"><?= cadastros_contratos_e($success) ?></div><?php endif; ?>
     <?php foreach ($errors as $error): ?><div class="contratos-alert error"><?= cadastros_contratos_e((string)$error) ?></div><?php endforeach; ?>
 
-    <section class="contratos-card">
+    <section class="contratos-card" id="modelos">
         <div class="contratos-card-header"><h2 class="contratos-card-title">Modelos cadastrados</h2></div>
         <div class="contratos-table-wrap">
             <table class="contratos-table">
