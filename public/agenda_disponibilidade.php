@@ -159,13 +159,51 @@ includeSidebar('Agenda');
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         margin-bottom: 22px;
-        padding: 20px;
+        padding: 0;
+        overflow: hidden;
     }
 
-    .section h2 {
+    .section-header {
+        align-items: center;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 18px;
+    }
+
+    .section-header h2 {
         color: #334155;
         font-size: 1.2rem;
-        margin: 0 0 16px;
+        margin: 0;
+    }
+
+    .section-body {
+        padding: 18px;
+    }
+
+    .rule-layout {
+        display: grid;
+        gap: 16px;
+    }
+
+    .rule-block {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 16px;
+    }
+
+    .rule-block-title {
+        color: #1e3a8a;
+        font-size: .95rem;
+        font-weight: 800;
+        margin: 0 0 12px;
+        text-transform: uppercase;
+    }
+
+    .two-columns {
+        grid-template-columns: 1.1fr .9fr;
     }
 
     .form-grid {
@@ -205,23 +243,47 @@ includeSidebar('Agenda');
         align-items: center;
         display: flex;
         gap: 8px;
-        margin-top: 28px;
+        margin-top: 0;
     }
 
     .checkbox-row input {
         width: auto;
     }
 
+    .active-card {
+        align-items: center;
+        align-self: end;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        color: #1e3a8a;
+        min-height: 42px;
+        padding: 10px 12px;
+    }
+
     .form-actions {
+        background: #f8fafc;
+        border-top: 1px solid #e2e8f0;
         display: flex;
         gap: 10px;
         justify-content: flex-end;
         margin-top: 18px;
+        padding: 14px 18px;
+    }
+
+    .rules-empty {
+        color: #64748b;
+        margin: 0;
+        padding: 18px;
     }
 
     .rules-table {
         border-collapse: collapse;
         width: 100%;
+    }
+
+    .rules-table-wrap {
+        padding: 0 18px 18px;
     }
 
     .rules-table th,
@@ -268,6 +330,10 @@ includeSidebar('Agenda');
             align-items: stretch;
         }
 
+        .two-columns {
+            grid-template-columns: 1fr;
+        }
+
         .rules-table {
             display: block;
             overflow-x: auto;
@@ -296,81 +362,108 @@ includeSidebar('Agenda');
 
         <form method="post" class="section" id="availabilityForm">
             <input type="hidden" name="acao" value="salvar">
-            <h2>Nova regra</h2>
-
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="usuario_id">Responsável</label>
-                    <select id="usuario_id" name="usuario_id" required>
-                        <option value="">Selecione...</option>
-                        <?php foreach ($usuarios as $usuario): ?>
-                            <option value="<?= (int)$usuario['id'] ?>">
-                                <?= htmlspecialchars((string)($usuario['login'] ?: $usuario['nome'])) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="tipo">Tipo</label>
-                    <select id="tipo" name="tipo" required>
-                        <option value="disponivel">Disponível para visitas</option>
-                        <option value="bloqueio">Bloqueio</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="recorrencia">Regra</label>
-                    <select id="recorrencia" name="recorrencia" required onchange="toggleRecurrenceFields()">
-                        <option value="semanal">Semanal</option>
-                        <option value="data">Data específica</option>
-                    </select>
-                </div>
-
-                <div class="form-group" id="weekdayGroup">
-                    <label for="dia_semana">Dia da semana</label>
-                    <select id="dia_semana" name="dia_semana">
-                        <?php foreach ($dias_semana as $dia => $label): ?>
-                            <option value="<?= $dia ?>"><?= htmlspecialchars($label) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="form-group" id="specificDateGroup" style="display: none;">
-                    <label for="data_especifica">Data específica</label>
-                    <input type="date" id="data_especifica" name="data_especifica">
-                </div>
-
-                <div class="form-group">
-                    <label for="hora_inicio">Início</label>
-                    <input type="time" id="hora_inicio" name="hora_inicio" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="hora_fim">Fim</label>
-                    <input type="time" id="hora_fim" name="hora_fim" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="valido_de">Válida a partir de</label>
-                    <input type="date" id="valido_de" name="valido_de" value="<?= date('Y-m-d') ?>" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="valido_ate">Válida até</label>
-                    <input type="date" id="valido_ate" name="valido_ate">
-                    <span class="muted">Deixe vazio para regra sem data final.</span>
-                </div>
-
-                <label class="checkbox-row">
-                    <input type="checkbox" name="ativo" value="1" checked>
-                    Regra ativa
-                </label>
+            <div class="section-header">
+                <h2>Nova regra</h2>
+                <span class="muted">Crie uma janela disponível ou um bloqueio dentro da escala.</span>
             </div>
 
-            <div class="form-group" style="margin-top: 14px;">
-                <label for="observacao">Observação</label>
-                <textarea id="observacao" name="observacao" placeholder="Ex.: horário de almoço, agenda especial da semana, folga, etc."></textarea>
+            <div class="section-body">
+                <div class="rule-layout">
+                    <div class="rule-block">
+                        <p class="rule-block-title">Responsável e tipo</p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="usuario_id">Responsável</label>
+                                <select id="usuario_id" name="usuario_id" required>
+                                    <option value="">Selecione...</option>
+                                    <?php foreach ($usuarios as $usuario): ?>
+                                        <option value="<?= (int)$usuario['id'] ?>">
+                                            <?= htmlspecialchars((string)($usuario['login'] ?: $usuario['nome'])) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="tipo">Tipo</label>
+                                <select id="tipo" name="tipo" required>
+                                    <option value="disponivel">Disponível para visitas</option>
+                                    <option value="bloqueio">Bloqueio</option>
+                                </select>
+                            </div>
+
+                            <label class="checkbox-row active-card">
+                                <input type="checkbox" name="ativo" value="1" checked>
+                                Regra ativa
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-grid two-columns">
+                        <div class="rule-block">
+                            <p class="rule-block-title">Quando acontece</p>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="recorrencia">Regra</label>
+                                    <select id="recorrencia" name="recorrencia" required onchange="toggleRecurrenceFields()">
+                                        <option value="semanal">Semanal</option>
+                                        <option value="data">Data específica</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group" id="weekdayGroup">
+                                    <label for="dia_semana">Dia da semana</label>
+                                    <select id="dia_semana" name="dia_semana">
+                                        <?php foreach ($dias_semana as $dia => $label): ?>
+                                            <option value="<?= $dia ?>"><?= htmlspecialchars($label) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+
+                                <div class="form-group" id="specificDateGroup" style="display: none;">
+                                    <label for="data_especifica">Data específica</label>
+                                    <input type="date" id="data_especifica" name="data_especifica">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rule-block">
+                            <p class="rule-block-title">Horário</p>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="hora_inicio">Início</label>
+                                    <input type="time" id="hora_inicio" name="hora_inicio" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="hora_fim">Fim</label>
+                                    <input type="time" id="hora_fim" name="hora_fim" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rule-block">
+                        <p class="rule-block-title">Validade e observação</p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="valido_de">Válida a partir de</label>
+                                <input type="date" id="valido_de" name="valido_de" value="<?= date('Y-m-d') ?>" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="valido_ate">Válida até</label>
+                                <input type="date" id="valido_ate" name="valido_ate">
+                                <span class="muted">Deixe vazio para regra sem data final.</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 14px;">
+                            <label for="observacao">Observação</label>
+                            <textarea id="observacao" name="observacao" placeholder="Ex.: horário de almoço, agenda especial da semana, folga, etc."></textarea>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="form-actions">
@@ -379,68 +472,73 @@ includeSidebar('Agenda');
         </form>
 
         <div class="section">
-            <h2>Regras cadastradas</h2>
+            <div class="section-header">
+                <h2>Regras cadastradas</h2>
+                <span class="muted"><?= count($regras) ?> regra(s)</span>
+            </div>
             <?php if (!$regras): ?>
-                <p class="muted">Nenhuma regra cadastrada ainda. Enquanto um responsável não tiver disponibilidade cadastrada, a sugestão usa apenas os eventos e bloqueios da Agenda.</p>
+                <p class="rules-empty">Nenhuma regra cadastrada ainda. Enquanto um responsável não tiver disponibilidade cadastrada, a sugestão usa apenas os eventos e bloqueios da Agenda.</p>
             <?php else: ?>
-                <table class="rules-table">
-                    <thead>
-                        <tr>
-                            <th>Responsável</th>
-                            <th>Tipo</th>
-                            <th>Quando</th>
-                            <th>Horário</th>
-                            <th>Validade</th>
-                            <th>Status</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($regras as $regra): ?>
-                            <?php
-                                $tipo = (string)$regra['tipo'];
-                                $recorrencia = (string)$regra['recorrencia'];
-                                $quando = $recorrencia === 'data'
-                                    ? date('d/m/Y', strtotime((string)$regra['data_especifica']))
-                                    : ($dias_semana[(int)$regra['dia_semana']] ?? '-');
-                                $validade = date('d/m/Y', strtotime((string)$regra['valido_de']));
-                                if (!empty($regra['valido_ate'])) {
-                                    $validade .= ' até ' . date('d/m/Y', strtotime((string)$regra['valido_ate']));
-                                } else {
-                                    $validade .= ' em diante';
-                                }
-                            ?>
+                <div class="rules-table-wrap">
+                    <table class="rules-table">
+                        <thead>
                             <tr>
-                                <td>
-                                    <strong><?= htmlspecialchars((string)($regra['usuario_login'] ?: $regra['usuario_nome'])) ?></strong>
-                                    <?php if (!empty($regra['observacao'])): ?>
-                                        <div class="muted"><?= htmlspecialchars((string)$regra['observacao']) ?></div>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <span class="badge <?= $tipo === 'bloqueio' ? 'badge-block' : 'badge-ok' ?>">
-                                        <?= $tipo === 'bloqueio' ? 'Bloqueio' : 'Disponível' ?>
-                                    </span>
-                                </td>
-                                <td><?= htmlspecialchars($quando) ?></td>
-                                <td>
-                                    <?= htmlspecialchars(substr((string)$regra['hora_inicio'], 0, 5)) ?>
-                                    -
-                                    <?= htmlspecialchars(substr((string)$regra['hora_fim'], 0, 5)) ?>
-                                </td>
-                                <td><?= htmlspecialchars($validade) ?></td>
-                                <td><?= !empty($regra['ativo']) ? 'Ativa' : 'Inativa' ?></td>
-                                <td>
-                                    <form method="post" onsubmit="return confirm('Remover esta regra?');">
-                                        <input type="hidden" name="acao" value="excluir">
-                                        <input type="hidden" name="id" value="<?= (int)$regra['id'] ?>">
-                                        <button type="submit" class="btn btn-danger">Remover</button>
-                                    </form>
-                                </td>
+                                <th>Responsável</th>
+                                <th>Tipo</th>
+                                <th>Quando</th>
+                                <th>Horário</th>
+                                <th>Validade</th>
+                                <th>Status</th>
+                                <th></th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($regras as $regra): ?>
+                                <?php
+                                    $tipo = (string)$regra['tipo'];
+                                    $recorrencia = (string)$regra['recorrencia'];
+                                    $quando = $recorrencia === 'data'
+                                        ? date('d/m/Y', strtotime((string)$regra['data_especifica']))
+                                        : ($dias_semana[(int)$regra['dia_semana']] ?? '-');
+                                    $validade = date('d/m/Y', strtotime((string)$regra['valido_de']));
+                                    if (!empty($regra['valido_ate'])) {
+                                        $validade .= ' até ' . date('d/m/Y', strtotime((string)$regra['valido_ate']));
+                                    } else {
+                                        $validade .= ' em diante';
+                                    }
+                                ?>
+                                <tr>
+                                    <td>
+                                        <strong><?= htmlspecialchars((string)($regra['usuario_login'] ?: $regra['usuario_nome'])) ?></strong>
+                                        <?php if (!empty($regra['observacao'])): ?>
+                                            <div class="muted"><?= htmlspecialchars((string)$regra['observacao']) ?></div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <span class="badge <?= $tipo === 'bloqueio' ? 'badge-block' : 'badge-ok' ?>">
+                                            <?= $tipo === 'bloqueio' ? 'Bloqueio' : 'Disponível' ?>
+                                        </span>
+                                    </td>
+                                    <td><?= htmlspecialchars($quando) ?></td>
+                                    <td>
+                                        <?= htmlspecialchars(substr((string)$regra['hora_inicio'], 0, 5)) ?>
+                                        -
+                                        <?= htmlspecialchars(substr((string)$regra['hora_fim'], 0, 5)) ?>
+                                    </td>
+                                    <td><?= htmlspecialchars($validade) ?></td>
+                                    <td><?= !empty($regra['ativo']) ? 'Ativa' : 'Inativa' ?></td>
+                                    <td>
+                                        <form method="post" onsubmit="return confirm('Remover esta regra?');">
+                                            <input type="hidden" name="acao" value="excluir">
+                                            <input type="hidden" name="id" value="<?= (int)$regra['id'] ?>">
+                                            <button type="submit" class="btn btn-danger">Remover</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             <?php endif; ?>
         </div>
     </div>
