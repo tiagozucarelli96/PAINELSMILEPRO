@@ -199,6 +199,72 @@ function comercial_novo_evento_find_local(array $locais, string $key): ?array
     return null;
 }
 
+function comercial_novo_evento_normalize_search(string $value): string
+{
+    $value = trim(mb_strtolower($value, 'UTF-8'));
+    if ($value === '') {
+        return '';
+    }
+    if (function_exists('iconv')) {
+        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($ascii) && $ascii !== '') {
+            $value = $ascii;
+        }
+    }
+    $value = preg_replace('/[^a-z0-9]+/', ' ', $value) ?? '';
+    return trim(preg_replace('/\s+/', ' ', $value) ?? '');
+}
+
+function comercial_novo_evento_resolve_cliente_id(array $clientesOptions, string $label): int
+{
+    $label = trim($label);
+    if ($label === '') {
+        return 0;
+    }
+
+    $normalized = comercial_novo_evento_normalize_search($label);
+    $digits = comercial_novo_evento_digits($label);
+    $matches = [];
+
+    foreach ($clientesOptions as $clienteOption) {
+        $optionId = (int)($clienteOption['id'] ?? 0);
+        if ($optionId <= 0) {
+            continue;
+        }
+
+        $optionLabel = trim((string)($clienteOption['label'] ?? ''));
+        $optionName = trim((string)($clienteOption['nome_completo'] ?? ''));
+        $optionPhone = trim((string)($clienteOption['telefone_whatsapp'] ?? ''));
+        $optionDocument = trim((string)($clienteOption['documento_numero'] ?? ''));
+
+        if ($optionLabel === $label || $optionName === $label) {
+            return $optionId;
+        }
+
+        $optionLabelNorm = comercial_novo_evento_normalize_search($optionLabel);
+        $optionNameNorm = comercial_novo_evento_normalize_search($optionName);
+        if ($normalized !== '' && ($optionLabelNorm === $normalized || $optionNameNorm === $normalized)) {
+            $matches[$optionId] = $optionId;
+            continue;
+        }
+
+        if ($digits !== '') {
+            $optionPhoneDigits = comercial_novo_evento_digits($optionPhone);
+            $optionDocumentDigits = comercial_novo_evento_digits($optionDocument);
+            if ($digits === $optionPhoneDigits || $digits === $optionDocumentDigits) {
+                $matches[$optionId] = $optionId;
+                continue;
+            }
+        }
+
+        if ($normalized !== '' && $optionNameNorm !== '' && str_contains($optionNameNorm, $normalized)) {
+            $matches[$optionId] = $optionId;
+        }
+    }
+
+    return count($matches) === 1 ? (int)array_key_first($matches) : 0;
+}
+
 function comercial_novo_evento_json(array $payload, int $status = 200): void
 {
     http_response_code($status);
@@ -360,8 +426,10 @@ if ($selectedClientLabel === '' && $old['cliente_label'] !== '') {
 if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     $local = comercial_novo_evento_find_local($locais, (string)$old['local_key']);
     $clienteId = (int)$old['cliente_id'];
-    if ($clienteId <= 0 && $old['cliente_label'] !== '' && isset($clientesByLabel[$old['cliente_label']])) {
-        $clienteId = (int)$clientesByLabel[$old['cliente_label']];
+    if ($clienteId <= 0 && $old['cliente_label'] !== '') {
+        $clienteId = isset($clientesByLabel[$old['cliente_label']])
+            ? (int)$clientesByLabel[$old['cliente_label']]
+            : comercial_novo_evento_resolve_cliente_id($clientesOptions, $old['cliente_label']);
         $old['cliente_id'] = (string)$clienteId;
     }
     $cliente = $clienteId > 0 ? comercial_novo_evento_cliente($pdo, $clienteId) : null;
@@ -804,7 +872,13 @@ includeSidebar('Novo Evento');
                         <input id="cliente_id" name="cliente_id" type="hidden" value="<?= comercial_novo_evento_e($old['cliente_id']) ?>">
                         <datalist id="clientes-list">
                             <?php foreach ($clientesOptions as $clienteOption): ?>
-                                <option value="<?= comercial_novo_evento_e($clienteOption['label']) ?>" data-id="<?= (int)$clienteOption['id'] ?>"></option>
+                                <option
+                                    value="<?= comercial_novo_evento_e($clienteOption['label']) ?>"
+                                    data-id="<?= (int)$clienteOption['id'] ?>"
+                                    data-name="<?= comercial_novo_evento_e($clienteOption['nome_completo']) ?>"
+                                    data-phone="<?= comercial_novo_evento_e($clienteOption['telefone_whatsapp']) ?>"
+                                    data-document="<?= comercial_novo_evento_e($clienteOption['documento_numero']) ?>"
+                                ></option>
                             <?php endforeach; ?>
                         </datalist>
                     </div>
@@ -914,9 +988,38 @@ includeSidebar('Novo Evento');
     const clientId = document.getElementById('cliente_id');
     const clientOptions = Array.from(document.querySelectorAll('#clientes-list option'));
 
+    function normalizeClientSearch(value) {
+        return String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    function onlyDigits(value) {
+        return String(value || '').replace(/\D+/g, '');
+    }
+
     function syncClientId() {
         const typed = clientSearch.value.trim();
-        const option = clientOptions.find((item) => item.value === typed);
+        const normalized = normalizeClientSearch(typed);
+        const digits = onlyDigits(typed);
+        let option = clientOptions.find((item) => item.value === typed);
+        if (!option && normalized) {
+            const matches = clientOptions.filter((item) => {
+                const label = normalizeClientSearch(item.value);
+                const name = normalizeClientSearch(item.dataset.name);
+                return label === normalized || name === normalized;
+            });
+            option = matches.length === 1 ? matches[0] : null;
+        }
+        if (!option && digits) {
+            const matches = clientOptions.filter((item) => {
+                return onlyDigits(item.dataset.phone) === digits || onlyDigits(item.dataset.document) === digits;
+            });
+            option = matches.length === 1 ? matches[0] : null;
+        }
         clientId.value = option ? option.dataset.id : '';
     }
 
