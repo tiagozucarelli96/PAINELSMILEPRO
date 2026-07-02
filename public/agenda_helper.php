@@ -1130,6 +1130,9 @@ class AgendaHelper {
                 ':criado_por_usuario_id' => $criado_por > 0 ? $criado_por : null,
             ]);
 
+            $this->availabilityConfiguredCache = [];
+            $this->availabilityRulesCache = [];
+
             return ['success' => true, 'id' => (int)$this->pdo->lastInsertId()];
         } catch (Throwable $e) {
             return ['success' => false, 'error' => $e->getMessage()];
@@ -1140,6 +1143,8 @@ class AgendaHelper {
         try {
             $stmt = $this->pdo->prepare("DELETE FROM agenda_disponibilidade WHERE id = ?");
             $stmt->execute([$id]);
+            $this->availabilityConfiguredCache = [];
+            $this->availabilityRulesCache = [];
             return ['success' => true];
         } catch (Throwable $e) {
             return ['success' => false, 'error' => $e->getMessage()];
