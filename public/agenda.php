@@ -454,20 +454,26 @@ includeSidebar('Agenda');
 
         .conflict-warning {
             background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #dc2626;
-            padding: 15px;
-            border-radius: 8px;
+            border: 2px solid #dc2626;
+            color: #991b1b;
+            padding: 18px;
+            border-radius: 10px;
             margin-bottom: 20px;
+            box-shadow: 0 14px 30px rgba(220, 38, 38, 0.18);
         }
 
         .conflict-warning h4 {
             margin: 0 0 10px 0;
-            font-size: 1.1rem;
+            font-size: 1.2rem;
         }
 
         .conflict-details {
-            font-size: 0.9rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .conflict-details strong {
+            color: #7f1d1d;
         }
 
         @media (max-width: 768px) {
@@ -1801,13 +1807,35 @@ includeSidebar('Agenda');
                     
                     if (data.conflito) {
                         document.getElementById('forcarConflitoInput').value = '0';
-                        const conflitoTitulo = data.conflito.evento_conflito_titulo ? `<br>Evento em conflito: <strong>${escapeHtml(data.conflito.evento_conflito_titulo)}</strong>` : '';
-                        // Mostrar conflito
+                        const conflito = data.conflito;
+                        const conflitoTitulo = conflito.evento_conflito_titulo
+                            ? `<br>Evento em conflito: <strong>${escapeHtml(conflito.evento_conflito_titulo)}</strong>`
+                            : '';
+                        const conflitoEspaco = conflito.evento_conflito_espaco
+                            ? `<br>Unidade/local do conflito: <strong>${escapeHtml(conflito.evento_conflito_espaco)}</strong>`
+                            : '';
+                        const espacoSolicitado = conflito.espaco_solicitado
+                            ? `<br>Unidade/local solicitado: <strong>${escapeHtml(conflito.espaco_solicitado)}</strong>`
+                            : '';
+                        const intervalo = conflito.conflito_transito && conflito.minutos_intervalo !== null
+                            ? `<br>Intervalo disponível: <strong>${escapeHtml(String(conflito.minutos_intervalo))} minuto(s)</strong>`
+                            : '';
+                        const mensagemConflito = conflito.mensagem_conflito
+                            ? escapeHtml(conflito.mensagem_conflito)
+                            : [
+                                conflito.conflito_responsavel ? 'Responsável já tem evento neste horário.' : '',
+                                conflito.conflito_espaco ? 'Espaço já está ocupado.' : '',
+                                conflito.conflito_transito ? 'Responsável não possui 30 minutos para deslocamento entre unidades.' : ''
+                            ].filter(Boolean).join(' ');
+
                         document.getElementById('conflictDetails').innerHTML = `
-                            <strong>Conflito detectado:</strong><br>
-                            ${data.conflito.conflito_responsavel ? 'Responsável já tem evento neste horário' : ''}
-                            ${data.conflito.conflito_espaco ? 'Espaço já está ocupado' : ''}
+                            <strong>Atenção antes de prosseguir:</strong><br>
+                            ${mensagemConflito}
                             ${conflitoTitulo}
+                            ${conflitoEspaco}
+                            ${espacoSolicitado}
+                            ${intervalo}
+                            <br><br><strong>Deseja realmente salvar mesmo assim?</strong>
                         `;
                         document.getElementById('conflictWarning').style.display = 'block';
                         

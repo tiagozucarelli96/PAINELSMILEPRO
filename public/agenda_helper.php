@@ -351,11 +351,203 @@ class AgendaHelper {
      * Verificar conflitos
      */
     public function verificarConflitos($responsavel_id, $espaco_id, $inicio, $fim, $evento_id = null) {
+        $resultado = [
+            'conflito_responsavel' => false,
+            'conflito_espaco' => false,
+            'conflito_transito' => false,
+            'evento_conflito_id' => null,
+            'evento_conflito_titulo' => null,
+            'evento_conflito_inicio' => null,
+            'evento_conflito_fim' => null,
+            'evento_conflito_espaco' => null,
+            'espaco_solicitado' => null,
+            'tipo_conflito' => null,
+            'mensagem_conflito' => null,
+            'minutos_intervalo' => null,
+        ];
+
+        $espacoSolicitado = $this->obterEspacoAgenda($espaco_id);
+        $resultado['espaco_solicitado'] = $espacoSolicitado['nome'] ?? null;
+
+        $paramsBase = [
+            ':inicio' => $inicio,
+            ':fim' => $fim,
+            ':evento_id' => $evento_id ? (int)$evento_id : 0,
+        ];
+
         $stmt = $this->pdo->prepare("
-            SELECT * FROM verificar_conflito_agenda(?, ?, ?, ?, ?)
+            SELECT ae.id, ae.titulo, ae.inicio, ae.fim, ae.espaco_id, esp.nome AS espaco_nome, esp.slug AS espaco_slug
+            FROM agenda_eventos ae
+            LEFT JOIN agenda_espacos esp ON esp.id = ae.espaco_id
+            WHERE ae.responsavel_usuario_id = :responsavel_id
+              AND ae.status != 'cancelado'
+              AND (:evento_id = 0 OR ae.id != :evento_id)
+              AND ae.inicio < :fim
+              AND ae.fim > :inicio
+            ORDER BY ae.inicio ASC
+            LIMIT 1
         ");
-        $stmt->execute([$responsavel_id, $espaco_id, $inicio, $fim, $evento_id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt->execute($paramsBase + [':responsavel_id' => (int)$responsavel_id]);
+        $conflitoResponsavel = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($conflitoResponsavel) {
+            $resultado['conflito_responsavel'] = true;
+            $resultado['tipo_conflito'] = 'responsavel';
+            $resultado['mensagem_conflito'] = 'Este responsável já possui compromisso neste mesmo horário.';
+            return $this->preencherDadosConflito($resultado, $conflitoResponsavel);
+        }
+
+        if ($espaco_id) {
+            $stmt = $this->pdo->prepare("
+                SELECT ae.id, ae.titulo, ae.inicio, ae.fim, ae.espaco_id, esp.nome AS espaco_nome, esp.slug AS espaco_slug
+                FROM agenda_eventos ae
+                LEFT JOIN agenda_espacos esp ON esp.id = ae.espaco_id
+                WHERE ae.espaco_id = :espaco_id
+                  AND ae.tipo = 'visita'
+                  AND ae.status != 'cancelado'
+                  AND (:evento_id = 0 OR ae.id != :evento_id)
+                  AND ae.inicio < :fim
+                  AND ae.fim > :inicio
+                ORDER BY ae.inicio ASC
+                LIMIT 1
+            ");
+            $stmt->execute($paramsBase + [':espaco_id' => (int)$espaco_id]);
+            $conflitoEspaco = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($conflitoEspaco) {
+                $resultado['conflito_espaco'] = true;
+                $resultado['tipo_conflito'] = 'espaco';
+                $resultado['mensagem_conflito'] = 'Este espaço já possui visita neste mesmo horário.';
+                return $this->preencherDadosConflito($resultado, $conflitoEspaco);
+            }
+        }
+
+        $conflitoTransito = $this->verificarConflitoTransito(
+            (int)$responsavel_id,
+            $espacoSolicitado,
+            $inicio,
+            $fim,
+            $evento_id ? (int)$evento_id : null
+        );
+
+        if ($conflitoTransito) {
+            return $this->preencherDadosConflito($resultado, $conflitoTransito);
+        }
+
+        return $resultado;
+    }
+
+    private function obterEspacoAgenda($espaco_id): ?array {
+        if (!$espaco_id) {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare("SELECT id, nome, slug FROM agenda_espacos WHERE id = ? LIMIT 1");
+        $stmt->execute([(int)$espaco_id]);
+        $espaco = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $espaco ?: null;
+    }
+
+    private function grupoDeslocamentoEspaco(?array $espaco): ?string {
+        if (!$espaco || empty($espaco['slug'])) {
+            return null;
+        }
+
+        $slug = strtolower((string)$espaco['slug']);
+        if (in_array($slug, ['garden', 'cristal'], true)) {
+            return 'garden_cristal';
+        }
+
+        return $slug;
+    }
+
+    private function preencherDadosConflito(array $resultado, array $evento): array {
+        $resultado['evento_conflito_id'] = isset($evento['id']) ? (int)$evento['id'] : null;
+        $resultado['evento_conflito_titulo'] = $evento['titulo'] ?? null;
+        $resultado['evento_conflito_inicio'] = $evento['inicio'] ?? null;
+        $resultado['evento_conflito_fim'] = $evento['fim'] ?? null;
+        $resultado['evento_conflito_espaco'] = $evento['espaco_nome'] ?? null;
+
+        if (isset($evento['tipo_conflito'])) {
+            $resultado['tipo_conflito'] = $evento['tipo_conflito'];
+        }
+        if (isset($evento['mensagem_conflito'])) {
+            $resultado['mensagem_conflito'] = $evento['mensagem_conflito'];
+        }
+        if (isset($evento['minutos_intervalo'])) {
+            $resultado['minutos_intervalo'] = (int)$evento['minutos_intervalo'];
+        }
+        if (isset($evento['conflito_transito'])) {
+            $resultado['conflito_transito'] = (bool)$evento['conflito_transito'];
+        }
+
+        return $resultado;
+    }
+
+    private function verificarConflitoTransito(int $responsavel_id, ?array $espacoSolicitado, $inicio, $fim, ?int $evento_id = null): ?array {
+        $grupoSolicitado = $this->grupoDeslocamentoEspaco($espacoSolicitado);
+        if (!$grupoSolicitado) {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT ae.id, ae.titulo, ae.inicio, ae.fim, ae.espaco_id, esp.nome AS espaco_nome, esp.slug AS espaco_slug
+            FROM agenda_eventos ae
+            LEFT JOIN agenda_espacos esp ON esp.id = ae.espaco_id
+            WHERE ae.responsavel_usuario_id = :responsavel_id
+              AND ae.status != 'cancelado'
+              AND ae.espaco_id IS NOT NULL
+              AND (:evento_id = 0 OR ae.id != :evento_id)
+              AND (
+                  (ae.fim <= :inicio AND ae.fim > (:inicio::timestamp - INTERVAL '30 minutes'))
+                  OR
+                  (ae.inicio >= :fim AND ae.inicio < (:fim::timestamp + INTERVAL '30 minutes'))
+              )
+            ORDER BY ABS(EXTRACT(EPOCH FROM (ae.inicio - :inicio::timestamp))) ASC
+            LIMIT 5
+        ");
+        $stmt->execute([
+            ':responsavel_id' => $responsavel_id,
+            ':evento_id' => $evento_id ?: 0,
+            ':inicio' => $inicio,
+            ':fim' => $fim,
+        ]);
+
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $evento) {
+            $grupoEvento = $this->grupoDeslocamentoEspaco([
+                'slug' => $evento['espaco_slug'] ?? null,
+            ]);
+
+            if (!$grupoEvento || $grupoEvento === $grupoSolicitado) {
+                continue;
+            }
+
+            $fimEvento = strtotime((string)$evento['fim']);
+            $inicioEvento = strtotime((string)$evento['inicio']);
+            $inicioSolicitado = strtotime((string)$inicio);
+            $fimSolicitado = strtotime((string)$fim);
+            $intervalo = 0;
+
+            if ($fimEvento <= $inicioSolicitado) {
+                $intervalo = (int)floor(($inicioSolicitado - $fimEvento) / 60);
+            } elseif ($inicioEvento >= $fimSolicitado) {
+                $intervalo = (int)floor(($inicioEvento - $fimSolicitado) / 60);
+            }
+
+            $evento['conflito_transito'] = true;
+            $evento['tipo_conflito'] = 'transito';
+            $evento['minutos_intervalo'] = $intervalo;
+            $evento['mensagem_conflito'] = sprintf(
+                'Este responsável tem apenas %d minuto(s) entre %s e %s. Entre unidades diferentes é necessário intervalo mínimo de 30 minutos.',
+                $intervalo,
+                (string)($evento['espaco_nome'] ?? 'outra unidade'),
+                (string)($espacoSolicitado['nome'] ?? 'esta unidade')
+            );
+
+            return $evento;
+        }
+
+        return null;
     }
     
     /**
@@ -423,7 +615,7 @@ class AgendaHelper {
                     $dados['fim']
                 );
                 
-                if ($conflito['conflito_responsavel'] || $conflito['conflito_espaco']) {
+                if ($conflito['conflito_responsavel'] || $conflito['conflito_espaco'] || $conflito['conflito_transito']) {
                     return [
                         'success' => false,
                         'error' => 'Conflito detectado',
@@ -514,7 +706,7 @@ class AgendaHelper {
                     $evento_id
                 );
                 
-                if ($conflito['conflito_responsavel'] || $conflito['conflito_espaco']) {
+                if ($conflito['conflito_responsavel'] || $conflito['conflito_espaco'] || $conflito['conflito_transito']) {
                     return [
                         'success' => false,
                         'error' => 'Conflito detectado',
