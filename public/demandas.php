@@ -366,7 +366,7 @@ includeSidebar('Demandas');
 .checkbox-field {
     display: flex;
     align-items: center;
-    min-height: 32px;
+    min-height: 24px;
 }
 .checkbox-field label {
     display: inline-flex;
@@ -536,12 +536,13 @@ includeSidebar('Demandas');
                         <label for="create-responsavel-setor">Setor responsável</label>
                         <select id="create-responsavel-setor" name="responsavel_setor"></select>
                     </div>
-                </div>
-                <div class="field checkbox-field hidden" id="create-jordao-wrap">
-                    <label>
-                        <input type="checkbox" id="create-enviar-jordao" name="enviar_jordao" value="1">
-                        Enviar para o Jordão?
-                    </label>
+                    <div></div>
+                    <div class="field checkbox-field hidden" id="create-jordao-wrap">
+                        <label>
+                            <input type="checkbox" id="create-enviar-jordao" name="enviar_jordao" value="1">
+                            Enviar para o Jordão?
+                        </label>
+                    </div>
                 </div>
                 <div class="grid-2">
                     <div class="field">
