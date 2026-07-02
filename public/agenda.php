@@ -706,9 +706,10 @@ includeSidebar('Agenda');
                 </div>
                 <!-- Legenda por usuário -->
                 <?php foreach ($usuarios as $user): ?>
+                    <?php $legend_login = trim((string)($user['login'] ?? '')); ?>
                     <div class="legend-item">
                         <div class="legend-color" style="background-color: <?= htmlspecialchars($user['cor_agenda']) ?>"></div>
-                        <span class="legend-text"><?= htmlspecialchars($user['nome']) ?></span>
+                        <span class="legend-text"><?= htmlspecialchars($legend_login !== '' ? $legend_login : $user['nome']) ?></span>
                     </div>
                 <?php endforeach; ?>
             </div>
