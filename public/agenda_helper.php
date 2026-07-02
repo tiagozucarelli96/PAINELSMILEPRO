@@ -787,6 +787,10 @@ class AgendaHelper {
                     ];
                 }
             }
+            $erroDisponibilidade = $this->validarDisponibilidadeVisita($dados, $inicio_ts, $fim_ts);
+            if ($erroDisponibilidade !== null) {
+                return $erroDisponibilidade;
+            }
 
             // Verificar conflitos se não forçar
             if (!$dados['forcar_conflito']) {
@@ -876,6 +880,10 @@ class AgendaHelper {
                     'success' => false,
                     'error' => 'Selecione um espaço para agendar uma visita.'
                 ];
+            }
+            $erroDisponibilidade = $this->validarDisponibilidadeVisita($dados, $inicio_ts, $fim_ts);
+            if ($erroDisponibilidade !== null) {
+                return $erroDisponibilidade;
             }
 
             // Verificar conflitos se não forçar
@@ -1198,8 +1206,27 @@ class AgendaHelper {
     }
 
     private function responsavelTemDisponibilidadeConfigurada(int $usuario_id): bool {
-        if (array_key_exists($usuario_id, $this->availabilityConfiguredCache)) {
-            return $this->availabilityConfiguredCache[$usuario_id];
+        $cacheKey = 'any|' . $usuario_id;
+        if (array_key_exists($cacheKey, $this->availabilityConfiguredCache)) {
+            return $this->availabilityConfiguredCache[$cacheKey];
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT 1
+            FROM agenda_disponibilidade
+            WHERE usuario_id = ?
+              AND ativo = TRUE
+            LIMIT 1
+        ");
+        $stmt->execute([$usuario_id]);
+        $this->availabilityConfiguredCache[$cacheKey] = (bool)$stmt->fetchColumn();
+        return $this->availabilityConfiguredCache[$cacheKey];
+    }
+
+    private function responsavelTemJanelaDisponivelConfigurada(int $usuario_id): bool {
+        $cacheKey = 'disponivel|' . $usuario_id;
+        if (array_key_exists($cacheKey, $this->availabilityConfiguredCache)) {
+            return $this->availabilityConfiguredCache[$cacheKey];
         }
 
         $stmt = $this->pdo->prepare("
@@ -1211,8 +1238,8 @@ class AgendaHelper {
             LIMIT 1
         ");
         $stmt->execute([$usuario_id]);
-        $this->availabilityConfiguredCache[$usuario_id] = (bool)$stmt->fetchColumn();
-        return $this->availabilityConfiguredCache[$usuario_id];
+        $this->availabilityConfiguredCache[$cacheKey] = (bool)$stmt->fetchColumn();
+        return $this->availabilityConfiguredCache[$cacheKey];
     }
 
     private function obterRegrasDisponibilidadeData(int $usuario_id, string $data): array {
@@ -1256,9 +1283,20 @@ class AgendaHelper {
         }
 
         $regras = $this->obterRegrasDisponibilidadeData($usuario_id, $data);
+        foreach ($regras as $regra) {
+            if (($regra['tipo'] ?? '') !== 'bloqueio') {
+                continue;
+            }
+            $bloqueioInicio = strtotime($data . ' ' . $regra['hora_inicio']);
+            $bloqueioFim = strtotime($data . ' ' . $regra['hora_fim']);
+            if ($bloqueioInicio !== false && $bloqueioFim !== false && $inicio_ts < $bloqueioFim && $fim_ts > $bloqueioInicio) {
+                return false;
+            }
+        }
+
         $disponiveis = array_filter($regras, static fn($regra) => ($regra['tipo'] ?? '') === 'disponivel');
         if (!$disponiveis) {
-            return false;
+            return !$this->responsavelTemJanelaDisponivelConfigurada($usuario_id);
         }
 
         $dentroDisponivel = false;
@@ -1274,18 +1312,23 @@ class AgendaHelper {
             return false;
         }
 
-        foreach ($regras as $regra) {
-            if (($regra['tipo'] ?? '') !== 'bloqueio') {
-                continue;
-            }
-            $bloqueioInicio = strtotime($data . ' ' . $regra['hora_inicio']);
-            $bloqueioFim = strtotime($data . ' ' . $regra['hora_fim']);
-            if ($bloqueioInicio !== false && $bloqueioFim !== false && $inicio_ts < $bloqueioFim && $fim_ts > $bloqueioInicio) {
-                return false;
-            }
+        return true;
+    }
+
+    private function validarDisponibilidadeVisita(array $dados, int $inicio_ts, int $fim_ts): ?array {
+        if (($dados['tipo'] ?? '') !== 'visita') {
+            return null;
         }
 
-        return true;
+        $responsavel_id = (int)($dados['responsavel_usuario_id'] ?? 0);
+        if ($responsavel_id <= 0 || $this->estaDentroDaDisponibilidade($responsavel_id, $inicio_ts, $fim_ts)) {
+            return null;
+        }
+
+        return [
+            'success' => false,
+            'error' => 'Responsável indisponível ou bloqueado no horário selecionado. Ajuste o horário da visita ou a regra em Disponibilidade.'
+        ];
     }
 
     private function isValidDate(string $date): bool {
