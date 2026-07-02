@@ -8,6 +8,21 @@ require_once __DIR__ . '/core/google_calendar_helper.php';
 
 class AgendaHelper {
     private const GOOGLE_TIMEZONE = 'America/Sao_Paulo';
+    private const USER_COLOR_DEFAULTS = ['#1e40af', '#3b82f6', '#3b96f7', ''];
+    private const USER_COLOR_PALETTE = [
+        '#2563eb',
+        '#16a34a',
+        '#9333ea',
+        '#f97316',
+        '#0891b2',
+        '#db2777',
+        '#65a30d',
+        '#7c3aed',
+        '#0d9488',
+        '#ea580c',
+        '#4f46e5',
+        '#be123c',
+    ];
     private $pdo;
     private $emailHelper;
     private $notificationDispatcher;
@@ -25,6 +40,16 @@ class AgendaHelper {
         $this->ensureVisitDetailsSchema();
         $this->ensureAgendaSettingsSchema();
         $this->ensureAvailabilitySchema();
+    }
+
+    public static function corUsuarioAgenda($usuario_id, ?string $corAtual): string {
+        $cor = strtolower(trim((string)$corAtual));
+        if (preg_match('/^#[0-9a-f]{6}$/', $cor) && !in_array($cor, self::USER_COLOR_DEFAULTS, true)) {
+            return $cor;
+        }
+
+        $index = abs((int)$usuario_id) % count(self::USER_COLOR_PALETTE);
+        return self::USER_COLOR_PALETTE[$index];
     }
 
     /**
@@ -500,7 +525,12 @@ class AgendaHelper {
             WHERE ativo = TRUE 
             ORDER BY nome
         ");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($usuarios as &$usuario) {
+            $usuario['cor_agenda'] = self::corUsuarioAgenda($usuario['id'] ?? 0, (string)($usuario['cor_agenda'] ?? ''));
+        }
+        unset($usuario);
+        return $usuarios;
     }
     
     /**
@@ -779,7 +809,7 @@ class AgendaHelper {
             // Obter cor do responsável
             $stmt = $this->pdo->prepare("SELECT cor_agenda FROM usuarios WHERE id = ?");
             $stmt->execute([$dados['responsavel_usuario_id']]);
-            $cor_responsavel = $stmt->fetchColumn();
+            $cor_responsavel = self::corUsuarioAgenda($dados['responsavel_usuario_id'], (string)$stmt->fetchColumn());
             
             // Criar evento - valores padrão: checkboxes desmarcados
             $stmt = $this->pdo->prepare("
@@ -1026,6 +1056,7 @@ class AgendaHelper {
                 ae.responsavel_usuario_id,
                 ae.espaco_id,
                 u.nome as responsavel_nome,
+                u.login as responsavel_login,
                 u.cor_agenda as cor_agenda,
                 esp.nome as espaco_nome,
                 criador.nome as criado_por_nome
@@ -1039,7 +1070,14 @@ class AgendaHelper {
         ");
         
         $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $eventos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($eventos as &$evento) {
+            if (!empty($evento['responsavel_usuario_id'])) {
+                $evento['cor_agenda'] = self::corUsuarioAgenda($evento['responsavel_usuario_id'], (string)($evento['cor_agenda'] ?? ''));
+            }
+        }
+        unset($evento);
+        return $eventos;
     }
     
     /**
