@@ -845,8 +845,15 @@ includeSidebar('Agenda');
                     }
                 },
                 eventDidMount: function(info) {
-                    // Adicionar tooltip
-                    info.el.title = `${info.event.title}\n${info.event.extendedProps.espaco_nome || ''}\n${info.event.start.toLocaleString('pt-BR')} - ${info.event.end.toLocaleString('pt-BR')}`;
+                    const startText = info.event.start
+                        ? info.event.start.toLocaleString('pt-BR')
+                        : '';
+                    const endText = info.event.end
+                        ? info.event.end.toLocaleString('pt-BR')
+                        : startText;
+                    const localText = info.event.extendedProps.espaco_nome || '';
+
+                    info.el.title = `${info.event.title}\n${localText}\n${startText} - ${endText}`;
                 }
             });
             
@@ -943,8 +950,8 @@ includeSidebar('Agenda');
                         document.getElementById('google_event_titulo').textContent = event.title || 'Sem título';
                         
                         // Data/Hora
-                        const startDate = new Date(event.start);
-                        const endDate = new Date(event.end);
+                        const startDate = event.start ? new Date(event.start) : null;
+                        const endDate = event.end ? new Date(event.end) : startDate;
                         const startStr = startDate.toLocaleString('pt-BR', { 
                             day: '2-digit', month: '2-digit', year: 'numeric',
                             hour: '2-digit', minute: '2-digit'
@@ -1033,7 +1040,7 @@ includeSidebar('Agenda');
                 }
                 document.getElementById('titulo').value = event.title;
                 document.getElementById('inicio').value = formatDateTimeLocal(event.start);
-                document.getElementById('fim').value = formatDateTimeLocal(event.end);
+                document.getElementById('fim').value = formatDateTimeLocal(event.end || event.start);
                 document.getElementById('descricao').value = event.extendedProps.descricao || '';
                 document.getElementById('lembrete').value = event.extendedProps.lembrete_minutos || 60;
                 document.getElementById('status').value = event.extendedProps.status || 'agendado';
