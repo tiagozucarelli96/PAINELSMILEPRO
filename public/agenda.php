@@ -133,6 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
 // Obter dados para a página
 $espacos = $agenda->obterEspacos();
 $usuarios = $agenda->obterUsuariosComCores();
+$visita_responsaveis_logins = ['tay', 'marilia', 'tiago zucarelli', 'ays'];
 $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 
 // Renderizar página completa usando sidebar_integration
@@ -524,7 +525,8 @@ includeSidebar('Agenda');
                     <select id="filter_responsavel">
                         <option value="">Todos</option>
                         <?php foreach ($usuarios as $user): ?>
-                            <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['nome']) ?></option>
+                            <?php $filter_login = trim((string)($user['login'] ?? '')); ?>
+                            <option value="<?= $user['id'] ?>"><?= htmlspecialchars($filter_login !== '' ? $filter_login : $user['nome']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -594,7 +596,17 @@ includeSidebar('Agenda');
                         <label for="responsavel">Responsável *</label>
                         <select id="responsavel" name="responsavel_usuario_id" required>
                             <?php foreach ($usuarios as $user): ?>
-                                <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['nome']) ?></option>
+                                <?php
+                                    $user_login = trim((string)($user['login'] ?? ''));
+                                    $user_login_key = strtolower($user_login);
+                                    $can_receive_visit = in_array($user_login_key, $visita_responsaveis_logins, true);
+                                ?>
+                                <option
+                                    value="<?= $user['id'] ?>"
+                                    data-visit-responsible="<?= $can_receive_visit ? '1' : '0' ?>"
+                                >
+                                    <?= htmlspecialchars($user_login !== '' ? $user_login : $user['nome']) ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -898,6 +910,27 @@ includeSidebar('Agenda');
                     }
                 });
         }
+
+        function applyResponsavelOptionsMode(onlyVisitResponsibles = false) {
+            const select = document.getElementById('responsavel');
+            if (!select) {
+                return;
+            }
+
+            Array.from(select.options).forEach(option => {
+                const allowed = option.dataset.visitResponsible === '1';
+                option.hidden = onlyVisitResponsibles && !allowed;
+                option.disabled = onlyVisitResponsibles && !allowed;
+            });
+
+            const selectedOption = select.options[select.selectedIndex];
+            if (onlyVisitResponsibles && (!selectedOption || selectedOption.disabled)) {
+                const firstAllowed = Array.from(select.options).find(option => option.dataset.visitResponsible === '1');
+                if (firstAllowed) {
+                    select.value = firstAllowed.value;
+                }
+            }
+        }
         
         // Abrir modal de evento
         function openEventModal(tipo, event = null, date = null) {
@@ -920,6 +953,7 @@ includeSidebar('Agenda');
             
             if (event) {
                 // Editar evento existente
+                applyResponsavelOptionsMode(false);
                 const eventTipo = event.extendedProps.tipo;
                 const isGoogleEvent = eventTipo === 'google';
                 
@@ -1079,6 +1113,7 @@ includeSidebar('Agenda');
                 // Novo evento
                 title.textContent = tipo === 'visita' ? 'Nova Visita' : 'Novo Bloqueio';
                 tipoInput.value = tipo;
+                applyResponsavelOptionsMode(tipo === 'visita');
                 
                 if (date) {
                     const startDate = new Date(date);
@@ -1129,6 +1164,7 @@ includeSidebar('Agenda');
             
             // Mostrar botões novamente
             document.querySelector('button[type="submit"]').style.display = '';
+            applyResponsavelOptionsMode(false);
         }
         
         // Formatar data para input datetime-local

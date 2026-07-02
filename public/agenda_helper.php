@@ -69,6 +69,19 @@ class AgendaHelper {
         return (bool)$value;
     }
 
+    private function canBeVisitResponsible($usuario_id): bool {
+        $stmt = $this->pdo->prepare("
+            SELECT LOWER(TRIM(COALESCE(login, ''))) AS login
+            FROM usuarios
+            WHERE id = ? AND ativo = TRUE
+            LIMIT 1
+        ");
+        $stmt->execute([(int)$usuario_id]);
+        $login = (string)$stmt->fetchColumn();
+
+        return in_array($login, ['tay', 'marilia', 'tiago zucarelli', 'ays'], true);
+    }
+
     private function getActiveGoogleCalendarConfig(): ?array {
         try {
             $stmt = $this->pdo->query("
@@ -310,7 +323,7 @@ class AgendaHelper {
      */
     public function obterUsuariosComCores() {
         $stmt = $this->pdo->query("
-            SELECT id, nome, cor_agenda, agenda_lembrete_padrao_min 
+            SELECT id, nome, login, cor_agenda, agenda_lembrete_padrao_min 
             FROM usuarios 
             WHERE ativo = TRUE 
             ORDER BY nome
@@ -346,6 +359,12 @@ class AgendaHelper {
                 return [
                     'success' => false,
                     'error' => 'Selecione um espaço para agendar uma visita.'
+                ];
+            }
+            if (($dados['tipo'] ?? '') === 'visita' && !$this->canBeVisitResponsible($dados['responsavel_usuario_id'] ?? 0)) {
+                return [
+                    'success' => false,
+                    'error' => 'Selecione um responsável válido para nova visita.'
                 ];
             }
 
