@@ -303,7 +303,8 @@ if ($current_page === 'dashboard') {
             $stmtPermNotifEventos = $pdo->prepare("
                 SELECT
                     COALESCE(perm_superadmin, FALSE) AS perm_superadmin,
-                    COALESCE(perm_notificacoes_eventos, FALSE) AS perm_notificacoes_eventos
+                    COALESCE(perm_notificacoes_eventos, FALSE) AS perm_notificacoes_eventos,
+                    COALESCE(perm_comercial, FALSE) AS perm_comercial
                 FROM usuarios
                 WHERE id = :id
                 LIMIT 1
@@ -312,7 +313,8 @@ if ($current_page === 'dashboard') {
             $permNotifEventosRow = $stmtPermNotifEventos->fetch(PDO::FETCH_ASSOC) ?: [];
             $dashboard_can_view_event_notifications = $dashboard_can_view_event_notifications
                 || !empty($permNotifEventosRow['perm_superadmin'])
-                || !empty($permNotifEventosRow['perm_notificacoes_eventos']);
+                || !empty($permNotifEventosRow['perm_notificacoes_eventos'])
+                || !empty($permNotifEventosRow['perm_comercial']);
         } catch (Throwable $e) {
             error_log("[SIDEBAR] Erro ao verificar permissão da central de eventos: " . $e->getMessage());
         }

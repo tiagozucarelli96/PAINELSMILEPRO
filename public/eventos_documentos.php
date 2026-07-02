@@ -254,7 +254,14 @@ includeSidebar('Contratos e Documentos');
                             <?php
                             $origem = (string)($documento['origem'] ?? 'geral');
                             $isFormatura = $origem === 'formatura';
-                            $status = ucfirst((string)($documento['status'] ?? 'criado'));
+                            $statusRaw = strtolower(trim((string)($documento['status'] ?? 'criado')));
+                            $statusMap = [
+                                'criado' => 'Criado',
+                                'minuta_aprovada' => 'Minuta aprovada',
+                                'em_curso' => 'Em curso',
+                                'assinado' => 'Assinado',
+                            ];
+                            $status = $statusMap[$statusRaw] ?? ucfirst(str_replace('_', ' ', $statusRaw));
                             $assinaturasTotal = (int)($documento['assinaturas_total'] ?? 0);
                             $assinaturas = $assinaturasTotal > 0
                                 ? (int)($documento['assinaturas_realizadas'] ?? 0) . '/' . $assinaturasTotal

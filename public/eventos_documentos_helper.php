@@ -47,6 +47,8 @@ function eventos_documentos_ensure_schema(PDO $pdo): void
     ");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_documentos_evento ON eventos_documentos(evento_id, deleted_at)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_documentos_token ON eventos_documentos(minuta_token)");
+    $pdo->exec("ALTER TABLE eventos_documentos ADD COLUMN IF NOT EXISTS minuta_aprovada_em TIMESTAMP NULL");
+    $pdo->exec("ALTER TABLE eventos_documentos ADD COLUMN IF NOT EXISTS minuta_aprovada_ip VARCHAR(80) NULL");
     $done = true;
 }
 
