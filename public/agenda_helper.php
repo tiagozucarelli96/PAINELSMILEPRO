@@ -21,6 +21,7 @@ class AgendaHelper {
         $this->notificationDispatcher->ensureInternalSchema();
         $this->ensureGoogleSyncSchema();
         $this->ensureVisitDetailsSchema();
+        $this->ensureAgendaSettingsSchema();
     }
 
     /**
@@ -62,6 +63,25 @@ class AgendaHelper {
         }
     }
 
+    private function ensureAgendaSettingsSchema(): void {
+        if (!$this->pdo instanceof PDO) {
+            return;
+        }
+
+        try {
+            $this->pdo->exec("
+                CREATE TABLE IF NOT EXISTS agenda_configuracoes (
+                    chave VARCHAR(100) PRIMARY KEY,
+                    valor JSONB NOT NULL,
+                    descricao TEXT,
+                    atualizado_em TIMESTAMP DEFAULT NOW()
+                )
+            ");
+        } catch (Throwable $e) {
+            error_log('[AGENDA_CONFIG_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
+        }
+    }
+
     /**
      * Normaliza valores vindos do banco para boolean.
      */
@@ -95,7 +115,103 @@ class AgendaHelper {
         $stmt->execute([(int)$usuario_id]);
         $login = (string)$stmt->fetchColumn();
 
-        return in_array($login, ['tay', 'marilia', 'tiago zucarelli', 'ays'], true);
+        return in_array($login, $this->getVisitResponsibleLogins(), true);
+    }
+
+    public function getAgendaGlobalSettings(): array {
+        $defaults = [
+            'visit_responsible_logins' => ['tay', 'marilia', 'tiago zucarelli', 'ays'],
+            'visit_type_durations' => [
+                'Conhecer espaço' => 30,
+                'Reunião final' => 120,
+                'Pagamento' => 30,
+            ],
+            'transit_min_minutes' => 30,
+            'space_transit_groups' => [
+                'garden' => 'garden_cristal',
+                'cristal' => 'garden_cristal',
+                'lisbon' => 'lisbon',
+                'diverkids' => 'diverkids',
+            ],
+        ];
+
+        try {
+            $stmt = $this->pdo->query("SELECT chave, valor FROM agenda_configuracoes");
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $key = (string)($row['chave'] ?? '');
+                if (!array_key_exists($key, $defaults)) {
+                    continue;
+                }
+
+                $value = json_decode((string)$row['valor'], true);
+                if (json_last_error() === JSON_ERROR_NONE && $value !== null) {
+                    $defaults[$key] = $value;
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('[AGENDA_CONFIG] Falha ao carregar configurações: ' . $e->getMessage());
+        }
+
+        $defaults['visit_responsible_logins'] = array_values(array_unique(array_filter(array_map(
+            static fn($login) => strtolower(trim((string)$login)),
+            (array)$defaults['visit_responsible_logins']
+        ))));
+
+        foreach ($defaults['visit_type_durations'] as $type => $duration) {
+            $defaults['visit_type_durations'][$type] = max(1, (int)$duration);
+        }
+
+        $defaults['transit_min_minutes'] = max(0, (int)$defaults['transit_min_minutes']);
+
+        $normalizedGroups = [];
+        foreach ((array)$defaults['space_transit_groups'] as $slug => $group) {
+            $slug = strtolower(trim((string)$slug));
+            $group = strtolower(trim((string)$group));
+            if ($slug !== '' && $group !== '') {
+                $normalizedGroups[$slug] = $group;
+            }
+        }
+        $defaults['space_transit_groups'] = $normalizedGroups;
+
+        return $defaults;
+    }
+
+    public function saveAgendaGlobalSettings(array $settings): void {
+        $allowedKeys = [
+            'visit_responsible_logins' => 'Logins permitidos como responsáveis de nova visita.',
+            'visit_type_durations' => 'Duração em minutos por tipo de visita.',
+            'transit_min_minutes' => 'Intervalo mínimo em minutos entre unidades diferentes.',
+            'space_transit_groups' => 'Grupos de deslocamento por unidade/espaço.',
+        ];
+
+        $stmt = $this->pdo->prepare("
+            INSERT INTO agenda_configuracoes (chave, valor, descricao, atualizado_em)
+            VALUES (:chave, CAST(:valor AS jsonb), :descricao, NOW())
+            ON CONFLICT (chave) DO UPDATE SET
+                valor = EXCLUDED.valor,
+                descricao = EXCLUDED.descricao,
+                atualizado_em = NOW()
+        ");
+
+        foreach ($allowedKeys as $key => $description) {
+            if (!array_key_exists($key, $settings)) {
+                continue;
+            }
+
+            $stmt->execute([
+                ':chave' => $key,
+                ':valor' => json_encode($settings[$key], JSON_UNESCAPED_UNICODE),
+                ':descricao' => $description,
+            ]);
+        }
+    }
+
+    public function getVisitResponsibleLogins(): array {
+        return (array)$this->getAgendaGlobalSettings()['visit_responsible_logins'];
+    }
+
+    public function getVisitTypeDurations(): array {
+        return (array)$this->getAgendaGlobalSettings()['visit_type_durations'];
     }
 
     private function getActiveGoogleCalendarConfig(): ?array {
@@ -454,11 +570,8 @@ class AgendaHelper {
         }
 
         $slug = strtolower((string)$espaco['slug']);
-        if (in_array($slug, ['garden', 'cristal'], true)) {
-            return 'garden_cristal';
-        }
-
-        return $slug;
+        $groups = (array)$this->getAgendaGlobalSettings()['space_transit_groups'];
+        return $groups[$slug] ?? $slug;
     }
 
     private function preencherDadosConflito(array $resultado, array $evento): array {
@@ -498,12 +611,12 @@ class AgendaHelper {
               AND ae.status != 'cancelado'
               AND ae.espaco_id IS NOT NULL
               AND (:evento_id = 0 OR ae.id != :evento_id)
-              AND (
-                  (ae.fim <= :inicio AND ae.fim > (:inicio::timestamp - INTERVAL '30 minutes'))
-                  OR
-                  (ae.inicio >= :fim AND ae.inicio < (:fim::timestamp + INTERVAL '30 minutes'))
-              )
-            ORDER BY ABS(EXTRACT(EPOCH FROM (ae.inicio - :inicio::timestamp))) ASC
+                  AND (
+                      (ae.fim <= CAST(:inicio AS timestamp) AND ae.fim > (CAST(:inicio AS timestamp) - (CAST(:transit_minutes AS int) * INTERVAL '1 minute')))
+                      OR
+                      (ae.inicio >= CAST(:fim AS timestamp) AND ae.inicio < (CAST(:fim AS timestamp) + (CAST(:transit_minutes AS int) * INTERVAL '1 minute')))
+                  )
+            ORDER BY ABS(EXTRACT(EPOCH FROM (ae.inicio - CAST(:inicio AS timestamp)))) ASC
             LIMIT 5
         ");
         $stmt->execute([
@@ -511,6 +624,7 @@ class AgendaHelper {
             ':evento_id' => $evento_id ?: 0,
             ':inicio' => $inicio,
             ':fim' => $fim,
+            ':transit_minutes' => (int)$this->getAgendaGlobalSettings()['transit_min_minutes'],
         ]);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $evento) {
@@ -537,11 +651,13 @@ class AgendaHelper {
             $evento['conflito_transito'] = true;
             $evento['tipo_conflito'] = 'transito';
             $evento['minutos_intervalo'] = $intervalo;
+            $minutosTransito = (int)$this->getAgendaGlobalSettings()['transit_min_minutes'];
             $evento['mensagem_conflito'] = sprintf(
-                'Este responsável tem apenas %d minuto(s) entre %s e %s. Entre unidades diferentes é necessário intervalo mínimo de 30 minutos.',
+                'Este responsável tem apenas %d minuto(s) entre %s e %s. Entre unidades diferentes é necessário intervalo mínimo de %d minutos.',
                 $intervalo,
                 (string)($evento['espaco_nome'] ?? 'outra unidade'),
-                (string)($espacoSolicitado['nome'] ?? 'esta unidade')
+                (string)($espacoSolicitado['nome'] ?? 'esta unidade'),
+                $minutosTransito
             );
 
             return $evento;
@@ -581,17 +697,13 @@ class AgendaHelper {
                 $cliente_telefone = trim((string)($dados['cliente_telefone'] ?? ''));
                 $visita_duracao = (int)($dados['visita_duracao_minutos'] ?? 0);
 
-                if (!in_array($visita_tipo, ['Conhecer espaço', 'Reunião final', 'Pagamento'], true)) {
+                $duracao_por_tipo = $this->getVisitTypeDurations();
+                if (!array_key_exists($visita_tipo, $duracao_por_tipo)) {
                     return [
                         'success' => false,
                         'error' => 'Selecione um tipo de visita válido.'
                     ];
                 }
-                $duracao_por_tipo = [
-                    'Conhecer espaço' => 30,
-                    'Reunião final' => 120,
-                    'Pagamento' => 30,
-                ];
                 if ($cliente_nome === '' || $cliente_telefone === '') {
                     return [
                         'success' => false,

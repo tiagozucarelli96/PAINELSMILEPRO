@@ -19,6 +19,8 @@ if (!$is_superadmin) {
 
 $agenda = new AgendaHelper();
 $usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
+$espacos = $agenda->obterEspacos();
+$usuarios = $agenda->obterUsuariosComCores();
 
 // Definir a página atual para o sidebar_unified.php
 $_GET['page'] = 'agenda_config';
@@ -42,12 +44,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             WHERE id = ?
         ");
         $stmt->execute([$cor_agenda, $lembrete_padrao, $usuario_id]);
+
+        $visit_responsible_logins = [];
+        foreach (($_POST['visit_responsible_logins'] ?? []) as $login) {
+            $login = strtolower(trim((string)$login));
+            if ($login !== '') {
+                $visit_responsible_logins[] = $login;
+            }
+        }
+        $visit_responsible_logins = array_values(array_unique($visit_responsible_logins));
+
+        $visit_type_durations = [];
+        foreach (($_POST['visit_type_durations'] ?? []) as $type => $duration) {
+            $type = trim((string)$type);
+            if ($type !== '') {
+                $visit_type_durations[$type] = max(1, (int)$duration);
+            }
+        }
+
+        $space_transit_groups = [];
+        foreach (($_POST['space_transit_groups'] ?? []) as $slug => $group) {
+            $slug = strtolower(trim((string)$slug));
+            $group = strtolower(trim((string)$group));
+            if ($slug !== '' && $group !== '') {
+                $space_transit_groups[$slug] = $group;
+            }
+        }
+
+        $agenda->saveAgendaGlobalSettings([
+            'visit_responsible_logins' => $visit_responsible_logins,
+            'visit_type_durations' => $visit_type_durations,
+            'transit_min_minutes' => max(0, (int)($_POST['transit_min_minutes'] ?? 30)),
+            'space_transit_groups' => $space_transit_groups,
+        ]);
         
         $success = "Configurações atualizadas com sucesso!";
     } catch (Exception $e) {
         $error = "Erro ao atualizar configurações: " . $e->getMessage();
     }
 }
+
+$agenda_settings = $agenda->getAgendaGlobalSettings();
 
 // Obter configurações atuais
 $stmt = $GLOBALS['pdo']->prepare("
@@ -208,6 +245,40 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
             color: #1e3a8a;
         }
 
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+        }
+
+        .check-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+        }
+
+        .check-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #fff;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-weight: 600;
+        }
+
+        .check-item input {
+            width: auto;
+        }
+
+        .config-note {
+            color: #64748b;
+            display: block;
+            font-size: .9rem;
+            margin-top: 6px;
+        }
+
         .form-actions {
             display: flex;
             gap: 10px;
@@ -298,6 +369,97 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
                             Use este link para sincronizar sua agenda com Google Calendar, Outlook ou iPhone
                         </small>
                     </div>
+                </div>
+
+                <div class="section">
+                    <h3>🗓️ Nova Visita</h3>
+                    <div class="form-group">
+                        <label>Responsáveis disponíveis em Nova Visita</label>
+                        <div class="check-list">
+                            <?php foreach ($usuarios as $user): ?>
+                                <?php
+                                    $login = trim((string)($user['login'] ?? ''));
+                                    if ($login === '') { continue; }
+                                    $login_key = strtolower($login);
+                                    $checked = in_array($login_key, $agenda_settings['visit_responsible_logins'] ?? [], true);
+                                ?>
+                                <label class="check-item">
+                                    <input
+                                        type="checkbox"
+                                        name="visit_responsible_logins[]"
+                                        value="<?= htmlspecialchars($login_key) ?>"
+                                        <?= $checked ? 'checked' : '' ?>
+                                    >
+                                    <?= htmlspecialchars($login) ?>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                        <span class="config-note">Controla quem aparece no campo Responsável ao criar uma nova visita.</span>
+                    </div>
+
+                    <div class="settings-grid">
+                        <?php foreach (($agenda_settings['visit_type_durations'] ?? []) as $visit_type => $duration): ?>
+                            <div class="form-group">
+                                <label><?= htmlspecialchars((string)$visit_type) ?></label>
+                                <select name="visit_type_durations[<?= htmlspecialchars((string)$visit_type) ?>]">
+                                    <?php foreach ([15, 30, 45, 60, 90, 120, 150, 180] as $duration_option): ?>
+                                        <option value="<?= $duration_option ?>" <?= (int)$duration === $duration_option ? 'selected' : '' ?>>
+                                            <?= $duration_option ?> minutos
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <span class="config-note">Ao alterar o tipo de visita, a duração é atualizada automaticamente na Agenda.</span>
+                </div>
+
+                <div class="section">
+                    <h3>⚠️ Conflitos e Deslocamento</h3>
+                    <div class="form-group">
+                        <label for="transit_min_minutes">Tempo mínimo entre unidades diferentes</label>
+                        <select id="transit_min_minutes" name="transit_min_minutes">
+                            <?php foreach ([0, 15, 30, 45, 60, 90] as $minutes): ?>
+                                <option value="<?= $minutes ?>" <?= (int)($agenda_settings['transit_min_minutes'] ?? 30) === $minutes ? 'selected' : '' ?>>
+                                    <?= $minutes === 0 ? 'Sem exigência' : $minutes . ' minutos' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <span class="config-note">Eventos internos do Google Calendar não entram nessa conta.</span>
+                    </div>
+
+                    <div class="settings-grid">
+                        <?php
+                            $group_options = [];
+                            foreach ($espacos as $group_space) {
+                                $group_slug = strtolower((string)($group_space['slug'] ?? ''));
+                                if ($group_slug === '') {
+                                    continue;
+                                }
+                                $group_value = in_array($group_slug, ['garden', 'cristal'], true)
+                                    ? 'garden_cristal'
+                                    : $group_slug;
+                                $group_options[$group_value][] = (string)($group_space['nome'] ?? $group_slug);
+                            }
+                        ?>
+                        <?php foreach ($espacos as $espaco): ?>
+                            <?php
+                                $slug = strtolower((string)($espaco['slug'] ?? ''));
+                                $current_group = (string)(($agenda_settings['space_transit_groups'] ?? [])[$slug] ?? $slug);
+                            ?>
+                            <div class="form-group">
+                                <label><?= htmlspecialchars((string)$espaco['nome']) ?></label>
+                                <select name="space_transit_groups[<?= htmlspecialchars($slug) ?>]">
+                                    <?php foreach ($group_options as $group_value => $group_names): ?>
+                                        <option value="<?= htmlspecialchars((string)$group_value) ?>" <?= $current_group === (string)$group_value ? 'selected' : '' ?>>
+                                            Mesmo grupo de <?= htmlspecialchars(implode(' / ', $group_names)) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <span class="config-note">Unidades no mesmo grupo não exigem tempo de trânsito. Por padrão, Garden e Cristal ficam juntos.</span>
                 </div>
                 
                 <div class="form-actions">

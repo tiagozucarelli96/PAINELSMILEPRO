@@ -137,7 +137,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
 // Obter dados para a página
 $espacos = $agenda->obterEspacos();
 $usuarios = $agenda->obterUsuariosComCores();
-$visita_responsaveis_logins = ['tay', 'marilia', 'tiago zucarelli', 'ays'];
+$agenda_global_settings = $agenda->getAgendaGlobalSettings();
+$visita_responsaveis_logins = $agenda_global_settings['visit_responsible_logins'];
 $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 
 // Renderizar página completa usando sidebar_integration
@@ -649,9 +650,9 @@ includeSidebar('Agenda');
                             <label for="visitTipo">Tipo de visita *</label>
                             <select id="visitTipo">
                                 <option value="">Selecione...</option>
-                                <option value="Conhecer espaço">Conhecer espaço</option>
-                                <option value="Reunião final">Reunião final</option>
-                                <option value="Pagamento">Pagamento</option>
+                                <?php foreach (($agenda_global_settings['visit_type_durations'] ?? []) as $visit_type => $duration): ?>
+                                    <option value="<?= htmlspecialchars((string)$visit_type) ?>"><?= htmlspecialchars((string)$visit_type) ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">
@@ -679,10 +680,15 @@ includeSidebar('Agenda');
                     <div class="form-group" id="visitDurationGroup" style="display: none;">
                         <label for="visitDuracao">Duração *</label>
                         <select id="visitDuracao">
-                            <option value="30">30 minutos</option>
-                            <option value="60" selected>60 minutos</option>
-                            <option value="90">90 minutos</option>
-                            <option value="120">120 minutos</option>
+                            <?php
+                                $duration_options = array_values(array_unique(array_merge([30, 60, 90, 120], array_map('intval', array_values($agenda_global_settings['visit_type_durations'] ?? [])))));
+                                sort($duration_options);
+                            ?>
+                            <?php foreach ($duration_options as $duration_option): ?>
+                                <option value="<?= (int)$duration_option ?>" <?= (int)$duration_option === 60 ? 'selected' : '' ?>>
+                                    <?= (int)$duration_option ?> minutos
+                                </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="form-group" id="fimGroup">
@@ -871,6 +877,7 @@ includeSidebar('Agenda');
         
         let calendar;
         let currentFilters = {};
+        const visitDurationByType = <?= json_encode($agenda_global_settings['visit_type_durations'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
         
         // Inicializar calendário
         document.addEventListener('DOMContentLoaded', function() {
@@ -1050,14 +1057,8 @@ includeSidebar('Agenda');
                 return;
             }
 
-            const durationByType = {
-                'Conhecer espaço': '30',
-                'Reunião final': '120',
-                'Pagamento': '30'
-            };
-
-            if (durationByType[tipoVisita]) {
-                visitDuracao.value = durationByType[tipoVisita];
+            if (visitDurationByType[tipoVisita]) {
+                visitDuracao.value = String(visitDurationByType[tipoVisita]);
                 updateVisitEndFromDuration();
             }
         }
