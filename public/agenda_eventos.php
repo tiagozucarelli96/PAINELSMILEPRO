@@ -1353,7 +1353,7 @@ a.event-function-card:hover {
             ['icon' => '🧮', 'title' => 'Financeiro do Evento', 'pill' => 'Pagamentos em Dia', 'href' => 'index.php?page=eventos_financeiro&evento_id=' . (int)$eventoSelecionado['id']],
             ['icon' => '🖥️', 'title' => 'Organização do evento', 'pill' => 'Portal do cliente', 'href' => $organizacaoHref],
             ['icon' => '🏷️', 'title' => 'Fornecedores', 'pill' => '0'],
-            ['icon' => '📄', 'title' => 'Contratos e Documentos', 'pill' => ''],
+            ['icon' => '📄', 'title' => 'Contratos e Documentos', 'pill' => '', 'href' => 'index.php?page=eventos_documentos&evento_id=' . (int)$eventoSelecionado['id']],
             ['icon' => '❕', 'title' => 'Histórico', 'pill' => '', 'href' => $historicoHref],
         ];
         if ((string)($eventoSelecionado['tipo_evento_real'] ?? '') === 'formatura') {

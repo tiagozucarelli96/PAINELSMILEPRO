@@ -14,6 +14,7 @@ require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/eventos_financeiro_helper.php';
 require_once __DIR__ . '/contratos_modelos_helper.php';
+require_once __DIR__ . '/eventos_documentos_helper.php';
 
 if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -370,7 +371,7 @@ function eventos_formatura_public_url(string $path): string
     return $scheme . '://' . $host . '/' . ltrim($path, '/');
 }
 
-function eventos_formatura_mapa_tags(array $evento, array $formando, array $financeiroFormando): array
+function eventos_formatura_mapa_tags(array $evento, array $formando, array $financeiroFormando, array $itensContratados = []): array
 {
     $totalLancado = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] !== 'cancelado')));
     $totalPago = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] === 'pago')));
@@ -412,6 +413,7 @@ function eventos_formatura_mapa_tags(array $evento, array $formando, array $fina
         '#LOCAL_EVENTO#' => (string)($evento['local_evento'] ?? ''),
         '#UNIDADE#' => (string)($evento['space_visivel'] ?? ''),
         '#CONVIDADOS#' => (string)($evento['convidados'] ?? ''),
+        '#ITENS_CONTRATADOS#' => eventos_documentos_itens_contratados_html($itensContratados),
         '#VALOR_TOTAL#' => 'R$ ' . number_format($totalLancado, 2, ',', '.'),
         '#VALOR_RECEBIDO#' => 'R$ ' . number_format($totalPago, 2, ',', '.'),
         '#VALOR_A_RECEBER#' => 'R$ ' . number_format($saldo, 2, ',', '.'),
@@ -824,9 +826,11 @@ if ($requestMethod === 'POST') {
             $stmtFin->execute([':evento_id' => $eventoId, ':formando_id' => $formandoId]);
             $financeiroDocumento = $stmtFin->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+            $itensContratadosDocumento = eventos_financeiro_listar_pedidos($pdo, $eventoId);
+
             $conteudo = eventos_formatura_renderizar_modelo(
                 (string)$modeloDocumento['conteudo_html'],
-                eventos_formatura_mapa_tags($evento, $formandoDocumento, $financeiroDocumento)
+                eventos_formatura_mapa_tags($evento, $formandoDocumento, $financeiroDocumento, $itensContratadosDocumento)
             );
             $titulo = trim((string)$modeloDocumento['nome']) . ' - ' . trim((string)$formandoDocumento['cliente_nome']);
             $stmtInsert = $pdo->prepare("
@@ -960,8 +964,6 @@ if (!empty($_SESSION['eventos_formatura_message'])) {
 $clientes = eventos_formatura_clientes($pdo);
 $formandos = eventos_formatura_formandos($pdo, $eventoId);
 $financeiro = eventos_formatura_financeiro($pdo, $eventoId);
-$modelosContrato = eventos_formatura_modelos_contrato($pdo);
-$documentos = eventos_formatura_documentos($pdo, $eventoId);
 $formandoFinanceiroId = (int)($_GET['formando_id'] ?? 0);
 $mostrarNovaCobranca = (string)($_GET['nova_cobranca'] ?? '') === '1';
 $formandoFinanceiro = null;
@@ -1685,14 +1687,6 @@ includeSidebar('Formatura');
                                 </td>
                                 <td>
                                     <div class="formatura-actions">
-                                        <button
-                                            type="button"
-                                            class="formatura-icon-btn formatura-icon-btn--accent btnGerarDocumento"
-                                            title="Gerar documento"
-                                            data-formando-id="<?= (int)$formando['id'] ?>"
-                                            data-formando-nome="<?= eventos_formatura_e((string)$formando['nome_formando']) ?>"
-                                            data-responsavel="<?= eventos_formatura_e((string)$formando['cliente_nome']) ?>"
-                                        >📄</button>
                                         <a class="formatura-icon-btn" title="Financeiro" href="index.php?page=eventos_formatura&evento_id=<?= (int)$eventoId ?>&formando_id=<?= (int)$formando['id'] ?>">$</a>
                                         <button
                                             type="button"
@@ -1720,173 +1714,7 @@ includeSidebar('Formatura');
         <?php endif; ?>
     </section>
 
-    <section class="formatura-panel">
-        <div class="formatura-panel-head">
-            <h2>Contratos e Documentos</h2>
-        </div>
-        <div class="formatura-toolbar">
-            <button type="button" class="formatura-btn formatura-btn--primary" id="btnNovoDocumento" <?= empty($formandos) ? 'disabled' : '' ?>>📄 Novo Documento</button>
-            <span class="formatura-muted">Gere uma minuta para um formando por vez usando os modelos cadastrados.</span>
-        </div>
-
-        <?php if (empty($documentos)): ?>
-            <div class="formatura-empty">Nenhum documento gerado ainda.</div>
-        <?php else: ?>
-            <div class="formatura-table-wrap">
-                <table class="formatura-table">
-                    <thead>
-                        <tr>
-                            <th>Arquivos</th>
-                            <th>Status</th>
-                            <th>Assinaturas</th>
-                            <th>Opções</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($documentos as $documento): ?>
-                            <?php
-                            $minutaUrl = eventos_formatura_public_url('formatura_minuta.php?token=' . rawurlencode((string)$documento['minuta_token']));
-                            $statusDocumento = (string)$documento['status'];
-                            $statusLabel = $statusDocumento === 'minuta_aprovada' ? 'Minuta aprovada' : ucfirst(str_replace('_', ' ', $statusDocumento));
-                            $statusClass = $statusDocumento === 'minuta_aprovada' ? 'formatura-chip--success' : 'formatura-chip--warning';
-                            $infoTooltip = 'Gerado em ' . eventos_formatura_data_hora_br((string)$documento['created_at']) . ' por ' . (string)$documento['criado_por_nome'];
-                            ?>
-                            <tr>
-                                <td>
-                                    <strong>📄 <?= eventos_formatura_e((string)$documento['titulo']) ?></strong>
-                                    <div class="formatura-muted">
-                                        <?= eventos_formatura_e((string)$documento['nome_formando']) ?> ·
-                                        <?= eventos_formatura_e((string)$documento['responsavel_nome']) ?>
-                                    </div>
-                                </td>
-                                <td><span class="formatura-chip <?= eventos_formatura_e($statusClass) ?>"><?= eventos_formatura_e($statusLabel) ?></span></td>
-                                <td><?= (int)$documento['assinaturas_realizadas'] ?>/<?= (int)$documento['assinaturas_total'] ?></td>
-                                <td>
-                                    <div class="formatura-actions">
-                                        <button type="button" class="formatura-icon-btn" title="<?= eventos_formatura_e($infoTooltip) ?>">ℹ</button>
-                                        <button
-                                            type="button"
-                                            class="formatura-icon-btn btnEditarDocumento"
-                                            title="Editar documento"
-                                            data-id="<?= (int)$documento['id'] ?>"
-                                            data-titulo="<?= eventos_formatura_e((string)$documento['titulo']) ?>"
-                                            data-conteudo="<?= eventos_formatura_e((string)$documento['conteudo_html']) ?>"
-                                        >✎</button>
-                                        <form method="post" onsubmit="return confirm('Excluir este documento?');">
-                                            <input type="hidden" name="action" value="delete_documento">
-                                            <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
-                                            <input type="hidden" name="documento_id" value="<?= (int)$documento['id'] ?>">
-                                            <button type="submit" class="formatura-icon-btn formatura-icon-btn--danger" title="Excluir">🗑</button>
-                                        </form>
-                                        <button
-                                            type="button"
-                                            class="formatura-btn formatura-btn--info btnMinutaDocumento"
-                                            data-url="<?= eventos_formatura_e($minutaUrl) ?>"
-                                        >Minuta</button>
-                                        <button type="button" class="formatura-btn formatura-btn--warning" disabled>Assinatura</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
-    </section>
     <?php endif; ?>
-</div>
-
-<div class="formatura-modal" id="modalDocumentoModelo" aria-hidden="true">
-    <div class="formatura-modal-dialog">
-        <div class="formatura-modal-head">
-            <h3>Gerar documento</h3>
-            <button type="button" class="formatura-close" data-close-modal>×</button>
-        </div>
-        <form method="post">
-            <div class="formatura-modal-body">
-                <input type="hidden" name="action" value="generate_documento">
-                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
-                <input type="hidden" name="formando_id" id="documentoFormandoId" value="">
-                <div class="formatura-grid">
-                    <div class="formatura-field">
-                        <label for="documentoFormandoSelect">Formando</label>
-                        <select id="documentoFormandoSelect" required>
-                            <option value="">Selecione...</option>
-                            <?php foreach ($formandos as $formando): ?>
-                                <option value="<?= (int)$formando['id'] ?>">
-                                    <?= eventos_formatura_e((string)$formando['nome_formando']) ?> - <?= eventos_formatura_e((string)$formando['cliente_nome']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="formatura-field">
-                        <label for="documentoModeloId">Modelo</label>
-                        <select id="documentoModeloId" name="modelo_id" required>
-                            <option value="">Selecione...</option>
-                            <?php foreach ($modelosContrato as $modelo): ?>
-                                <option value="<?= (int)$modelo['id'] ?>"><?= eventos_formatura_e((string)$modelo['nome']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <?php if (empty($modelosContrato)): ?>
-                    <div class="alert alert-error" style="margin-top:1rem;">Nenhum modelo ativo em Cadastros > Contratos.</div>
-                <?php endif; ?>
-            </div>
-            <div class="formatura-modal-actions">
-                <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
-                <button type="submit" class="formatura-btn formatura-btn--primary" <?= empty($modelosContrato) ? 'disabled' : '' ?>>Gerar documento</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="formatura-modal" id="modalEditarDocumento" aria-hidden="true">
-    <div class="formatura-modal-dialog">
-        <div class="formatura-modal-head">
-            <h3>Editar documento</h3>
-            <button type="button" class="formatura-close" data-close-modal>×</button>
-        </div>
-        <form method="post">
-            <div class="formatura-modal-body">
-                <input type="hidden" name="action" value="save_documento">
-                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
-                <input type="hidden" name="documento_id" id="editarDocumentoId" value="">
-                <div class="formatura-field">
-                    <label for="editarDocumentoTitulo">Título</label>
-                    <input id="editarDocumentoTitulo" name="titulo" type="text" required>
-                </div>
-                <div class="formatura-field" style="margin-top:0.9rem;">
-                    <label for="editarDocumentoConteudo">Conteúdo HTML</label>
-                    <textarea id="editarDocumentoConteudo" name="conteudo_html" class="formatura-doc-preview" required></textarea>
-                </div>
-            </div>
-            <div class="formatura-modal-actions">
-                <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
-                <button type="submit" class="formatura-btn formatura-btn--primary">Salvar documento</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="formatura-modal" id="modalMinuta" aria-hidden="true">
-    <div class="formatura-modal-dialog">
-        <div class="formatura-modal-head">
-            <h3>Link da minuta</h3>
-            <button type="button" class="formatura-close" data-close-modal>×</button>
-        </div>
-        <div class="formatura-modal-body">
-            <p class="formatura-muted">Envie este link para o responsável visualizar e aprovar a prévia.</p>
-            <div class="formatura-link-box">
-                <input id="minutaUrlInput" type="text" readonly>
-                <button type="button" class="formatura-btn formatura-btn--primary" id="btnCopiarMinuta">Copiar</button>
-            </div>
-        </div>
-        <div class="formatura-modal-actions">
-            <a class="formatura-btn formatura-btn--info" id="btnAbrirMinuta" href="#" target="_blank" rel="noopener">Abrir minuta</a>
-            <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Fechar</button>
-        </div>
-    </div>
 </div>
 
 <div class="formatura-modal" id="modalFormando" aria-hidden="true">
@@ -2009,62 +1837,6 @@ document.querySelectorAll('.btnEditarFormando').forEach((btn) => {
         setCliente(clienteById(btn.dataset.clienteId || 0));
         openModal(modalFormando);
     });
-});
-
-const modalDocumentoModelo = document.getElementById('modalDocumentoModelo');
-const documentoFormandoId = document.getElementById('documentoFormandoId');
-const documentoFormandoSelect = document.getElementById('documentoFormandoSelect');
-
-function setDocumentoFormando(id) {
-    if (documentoFormandoId) documentoFormandoId.value = id || '';
-    if (documentoFormandoSelect) documentoFormandoSelect.value = id || '';
-}
-
-documentoFormandoSelect?.addEventListener('change', (event) => {
-    setDocumentoFormando(event.target.value);
-});
-
-document.getElementById('btnNovoDocumento')?.addEventListener('click', () => {
-    setDocumentoFormando('');
-    openModal(modalDocumentoModelo);
-});
-
-document.querySelectorAll('.btnGerarDocumento').forEach((btn) => {
-    btn.addEventListener('click', () => {
-        setDocumentoFormando(btn.dataset.formandoId || '');
-        openModal(modalDocumentoModelo);
-    });
-});
-
-const modalEditarDocumento = document.getElementById('modalEditarDocumento');
-document.querySelectorAll('.btnEditarDocumento').forEach((btn) => {
-    btn.addEventListener('click', () => {
-        document.getElementById('editarDocumentoId').value = btn.dataset.id || '';
-        document.getElementById('editarDocumentoTitulo').value = btn.dataset.titulo || '';
-        document.getElementById('editarDocumentoConteudo').value = btn.dataset.conteudo || '';
-        openModal(modalEditarDocumento);
-    });
-});
-
-const modalMinuta = document.getElementById('modalMinuta');
-document.querySelectorAll('.btnMinutaDocumento').forEach((btn) => {
-    btn.addEventListener('click', () => {
-        const url = btn.dataset.url || '';
-        document.getElementById('minutaUrlInput').value = url;
-        document.getElementById('btnAbrirMinuta').href = url || '#';
-        openModal(modalMinuta);
-    });
-});
-
-document.getElementById('btnCopiarMinuta')?.addEventListener('click', async () => {
-    const input = document.getElementById('minutaUrlInput');
-    if (!input) return;
-    input.select();
-    try {
-        await navigator.clipboard.writeText(input.value);
-    } catch (error) {
-        document.execCommand('copy');
-    }
 });
 
 function formaturaMoneyToNumber(value) {
