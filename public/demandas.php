@@ -272,6 +272,20 @@ includeSidebar('Demandas');
     justify-content: space-between;
     align-items: center;
 }
+.composer-attach {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+.composer-file-name {
+    color: #64748b;
+    font-size: 0.78rem;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .composer-actions {
     display: flex;
     gap: 0.45rem;
@@ -861,10 +875,11 @@ function renderDetail(d, mensagens, anexos) {
         <form class="composer" onsubmit="sendMessage(event, ${Number(d.id)})">
             <textarea name="mensagem" placeholder="Escreva uma mensagem. Use @nome ou @setor para citar."></textarea>
             <div class="composer-row">
-                <label class="btn">
-                    Anexar arquivo
-                    <input class="hidden" type="file" name="arquivo">
-                </label>
+                <div class="composer-attach">
+                    <input class="hidden" id="demand-file-${Number(d.id)}" type="file" name="arquivo" onchange="updateAttachmentName(this)">
+                    <button class="btn" type="button" onclick="document.getElementById('demand-file-${Number(d.id)}').click()">Anexar arquivo</button>
+                    <span class="composer-file-name" data-file-name></span>
+                </div>
                 <div class="composer-actions">
                     ${d.status !== 'encerrada' && d.status !== 'cancelada' ? `<button class="btn btn-danger" type="button" onclick="closeDemand(${Number(d.id)})">Encerrar demanda</button>` : ''}
                     <button class="btn" type="button" onclick="openGallery(${Number(d.id)})">Galeria Smile</button>
@@ -887,6 +902,15 @@ async function saveAdmin(event, id) {
     await fetchJson(API, { method: 'POST', body: data });
     await loadDemandas();
     await openDetail(id);
+}
+
+function updateAttachmentName(input) {
+    const form = input.closest('form');
+    const target = form ? form.querySelector('[data-file-name]') : null;
+    if (!target) return;
+    const file = input.files && input.files[0] ? input.files[0] : null;
+    target.textContent = file ? file.name : '';
+    target.title = file ? file.name : '';
 }
 
 async function sendMessage(event, id) {
