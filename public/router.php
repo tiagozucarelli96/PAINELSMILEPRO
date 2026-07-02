@@ -143,7 +143,7 @@ if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
     }
 
     // Arquivos de cron, webhook, endpoints e páginas públicas devem ser servidos diretamente SEM redirecionamento
-    $public_files = ['comercial_degust_public.php', 'asaas_webhook.php', 'webhook_me_eventos.php', 'cron.php', 'upload_foto_usuario_endpoint.php',
+    $public_files = ['comercial_degust_public.php', 'formatura_minuta.php', 'asaas_webhook.php', 'webhook_me_eventos.php', 'cron.php', 'upload_foto_usuario_endpoint.php',
                      'contabilidade_login.php', 'contabilidade_painel.php', 'contabilidade_guias.php', 'contabilidade_holerites.php',
                      'contabilidade_honorarios.php', 'contabilidade_conversas.php', 'contabilidade_colaboradores.php',
                      'push_get_public_key.php', 'push_check_consent.php', 'push_register_subscription.php', 'push_unregister_subscription.php',

@@ -38,6 +38,12 @@ if (!function_exists('contratos_modelos_default_tag_options')) {
             'financeiro.total' => ['tag' => '#VALOR_TOTAL#', 'nome' => 'Valor total contratado', 'origem_tipo' => 'financeiro', 'origem_campo' => 'valor_total'],
             'financeiro.recebido' => ['tag' => '#VALOR_RECEBIDO#', 'nome' => 'Valor recebido', 'origem_tipo' => 'financeiro', 'origem_campo' => 'valor_recebido'],
             'financeiro.a_receber' => ['tag' => '#VALOR_A_RECEBER#', 'nome' => 'Valor a receber', 'origem_tipo' => 'financeiro', 'origem_campo' => 'valor_a_receber'],
+            'formatura.nome_formando' => ['tag' => '#NOME_FORMANDO#', 'nome' => 'Nome do formando', 'origem_tipo' => 'formatura', 'origem_campo' => 'nome_formando'],
+            'formatura.convidados' => ['tag' => '#CONVIDADOS_FORMANDO#', 'nome' => 'Convidados do formando', 'origem_tipo' => 'formatura', 'origem_campo' => 'convidados'],
+            'formatura.mesas' => ['tag' => '#MESAS_FORMANDO#', 'nome' => 'Mesas do formando', 'origem_tipo' => 'formatura', 'origem_campo' => 'mesas'],
+            'formatura.responsavel' => ['tag' => '#RESPONSAVEL_FORMANDO#', 'nome' => 'Responsável do formando', 'origem_tipo' => 'formatura', 'origem_campo' => 'cliente_nome'],
+            'formatura.valor' => ['tag' => '#VALOR_FORMANDO#', 'nome' => 'Valor lançado do formando', 'origem_tipo' => 'formatura', 'origem_campo' => 'valor_formando'],
+            'formatura.parcelas' => ['tag' => '#PARCELAS_FORMANDO#', 'nome' => 'Parcelas do formando', 'origem_tipo' => 'formatura', 'origem_campo' => 'parcelas_formando'],
             'sistema.data_hoje' => ['tag' => '#DATA_HOJE#', 'nome' => 'Data de hoje', 'origem_tipo' => 'sistema', 'origem_campo' => 'data_hoje'],
         ];
     }

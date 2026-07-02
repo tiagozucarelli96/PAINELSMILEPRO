@@ -144,6 +144,7 @@ class NotificationDispatcher {
         if ($whatsappMensagem === '') {
             $whatsappMensagem = $this->buildDefaultWhatsappBody($titulo, $mensagem, $urlDestino);
         }
+        $whatsappProvider = $this->getWhatsappProvider($payload);
         $whatsappSessionKey = trim((string)($payload['whatsapp_session_key'] ?? ''));
 
         if ($sendEmail) {
@@ -151,7 +152,7 @@ class NotificationDispatcher {
         }
         if ($sendWhatsapp) {
             $this->hydrateRecipientPhones($normalizedRecipients);
-            if ($whatsappSessionKey === '') {
+            if ($whatsappProvider === 'smilechat' && $whatsappSessionKey === '') {
                 $whatsappSessionKey = $this->getWhatsappSessionKey();
             }
         }
@@ -206,10 +207,11 @@ class NotificationDispatcher {
                 if ($phoneE164 === '') {
                     $result['whatsapps_sem_numero']++;
                     $result['falhas_whatsapp']++;
-                } elseif ($whatsappSessionKey === '') {
+                } elseif ($whatsappProvider === 'smilechat' && $whatsappSessionKey === '') {
                     $result['falhas_whatsapp']++;
                 } else {
-                    $okWhatsapp = $this->sendWhatsappMessage(
+                    $okWhatsapp = $this->sendWhatsappProviderMessage(
+                        $whatsappProvider,
                         $whatsappSessionKey,
                         $phoneE164,
                         $whatsappMensagem,
@@ -366,6 +368,33 @@ class NotificationDispatcher {
         return '+' . $digits;
     }
 
+    private function normalizePhoneDigits(string $phone): string {
+        return preg_replace('/\D+/', '', $this->normalizePhoneE164($phone)) ?? '';
+    }
+
+    private function getWhatsappProvider(array $payload): string {
+        $provider = strtolower(trim((string)($payload['whatsapp_provider'] ?? '')));
+        if ($provider === '') {
+            $provider = strtolower(trim((string)(
+                painel_env('NOTIFICATION_WHATSAPP_PROVIDER', '') ?: painel_env('WHATSAPP_PROVIDER', 'smclick')
+            )));
+        }
+
+        if (in_array($provider, ['smilechat', 'smile_chat', 'gateway'], true)) {
+            return 'smilechat';
+        }
+
+        return 'smclick';
+    }
+
+    private function sendWhatsappProviderMessage(string $provider, string $sessionKey, string $phoneE164, string $body, string $contactName): bool {
+        if ($provider === 'smilechat') {
+            return $this->sendWhatsappMessage($sessionKey, $phoneE164, $body, $contactName);
+        }
+
+        return $this->sendSmclickWhatsappMessage($phoneE164, $body);
+    }
+
     private function getWhatsappSessionKey(): string {
         $configured = trim((string)(painel_env('DEMANDAS_WHATSAPP_SESSION_KEY', '') ?: painel_env('NOTIFICATION_WHATSAPP_SESSION_KEY', '')));
         if ($configured !== '') {
@@ -471,6 +500,87 @@ class NotificationDispatcher {
 
         if (!$ok) {
             error_log("[NOTIFICATION_DISPATCHER] Falha WhatsApp {$phoneE164} via {$sessionKey}: HTTP {$statusCode} " . (is_string($response) ? $response : ''));
+        }
+
+        return $ok;
+    }
+
+    private function sendSmclickWhatsappMessage(string $phoneE164, string $body): bool {
+        $apiKey = trim((string)(painel_env('SMCLICK_API_KEY', '') ?? ''));
+        $instanceId = trim((string)(painel_env('SMCLICK_INSTANCE_ID', '') ?? ''));
+        $baseUrl = rtrim((string)(painel_env('SMCLICK_API_BASE_URL', 'https://api.smclick.com.br') ?? 'https://api.smclick.com.br'), '/');
+        $telephone = $this->normalizePhoneDigits($phoneE164);
+
+        if ($apiKey === '' || $instanceId === '' || $baseUrl === '' || $telephone === '' || trim($body) === '') {
+            error_log('[NOTIFICATION_DISPATCHER] SMClick WhatsApp nao configurado: verifique SMCLICK_API_KEY, SMCLICK_INSTANCE_ID e telefone do usuario.');
+            return false;
+        }
+
+        $payload = json_encode([
+            'instance' => $instanceId,
+            'type' => 'text',
+            'content' => [
+                'telephone' => $telephone,
+                'message' => $body,
+            ],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if (!is_string($payload)) {
+            return false;
+        }
+
+        $url = $baseUrl . '/instances/messages';
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            if ($ch === false) {
+                return false;
+            }
+
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => [
+                    'Accept: application/json',
+                    'Content-Type: application/json',
+                    'X-API-KEY: ' . $apiKey,
+                ],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT => 12,
+            ]);
+            $response = curl_exec($ch);
+            $statusCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            $ok = $statusCode >= 200 && $statusCode < 300;
+            if (!$ok) {
+                error_log("[NOTIFICATION_DISPATCHER] Falha SMClick WhatsApp {$telephone}: HTTP {$statusCode} " . ($curlError !== '' ? $curlError : (is_string($response) ? $response : '')));
+            }
+
+            return $ok;
+        }
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => "Accept: application/json\r\nContent-Type: application/json\r\nX-API-KEY: {$apiKey}\r\n",
+                'content' => $payload,
+                'timeout' => 8,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $response = @file_get_contents($url, false, $context);
+        $headers = $http_response_header ?? [];
+        $statusLine = $headers[0] ?? '';
+        preg_match('/\s(\d{3})\s/', $statusLine, $matches);
+        $statusCode = isset($matches[1]) ? (int)$matches[1] : 0;
+        $ok = $statusCode >= 200 && $statusCode < 300;
+
+        if (!$ok) {
+            error_log("[NOTIFICATION_DISPATCHER] Falha SMClick WhatsApp {$telephone}: HTTP {$statusCode} " . (is_string($response) ? $response : ''));
         }
 
         return $ok;

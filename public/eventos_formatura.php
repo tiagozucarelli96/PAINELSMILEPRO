@@ -13,6 +13,7 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/eventos_financeiro_helper.php';
+require_once __DIR__ . '/contratos_modelos_helper.php';
 
 if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -95,6 +96,50 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_grupo ON eventos_formatura_financeiro(parcelamento_grupo)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_asaas ON eventos_formatura_financeiro(asaas_payment_id)");
 
+    contratos_modelos_ensure_schema($pdo);
+    $stmtTag = $pdo->prepare("
+        INSERT INTO contrato_tags (tag_codigo, nome, origem_tipo, origem_campo, descricao, ativo, created_at, updated_at)
+        VALUES (:tag_codigo, :nome, :origem_tipo, :origem_campo, :descricao, TRUE, NOW(), NOW())
+        ON CONFLICT (tag_codigo) DO NOTHING
+    ");
+    foreach (contratos_modelos_default_tag_options() as $tagOption) {
+        if (($tagOption['origem_tipo'] ?? '') !== 'formatura') {
+            continue;
+        }
+        $stmtTag->execute([
+            ':tag_codigo' => $tagOption['tag'],
+            ':nome' => $tagOption['nome'],
+            ':origem_tipo' => $tagOption['origem_tipo'],
+            ':origem_campo' => $tagOption['origem_campo'],
+            ':descricao' => 'Tag padrão de formatura para modelos de contrato.',
+        ]);
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS eventos_formatura_documentos (
+            id BIGSERIAL PRIMARY KEY,
+            evento_id BIGINT NOT NULL REFERENCES logistica_eventos_espelho(id) ON DELETE CASCADE,
+            formando_id BIGINT NOT NULL REFERENCES eventos_formatura_formandos(id) ON DELETE CASCADE,
+            modelo_id BIGINT NULL REFERENCES contrato_modelos(id) ON DELETE SET NULL,
+            titulo VARCHAR(220) NOT NULL,
+            conteudo_html TEXT NOT NULL DEFAULT '',
+            status VARCHAR(40) NOT NULL DEFAULT 'criado',
+            assinaturas_realizadas INTEGER NOT NULL DEFAULT 0,
+            assinaturas_total INTEGER NOT NULL DEFAULT 0,
+            minuta_token VARCHAR(80) NOT NULL UNIQUE,
+            minuta_aprovada_em TIMESTAMP NULL,
+            minuta_aprovada_ip VARCHAR(80) NULL,
+            clicksign_document_key VARCHAR(160) NULL,
+            created_by INTEGER NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            deleted_at TIMESTAMP NULL
+        )
+    ");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_documentos_evento ON eventos_formatura_documentos(evento_id, deleted_at)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_documentos_formando ON eventos_formatura_documentos(formando_id, deleted_at)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_documentos_token ON eventos_formatura_documentos(minuta_token)");
+
     $done = true;
 }
 
@@ -103,6 +148,7 @@ function eventos_formatura_evento(PDO $pdo, int $eventoId): ?array
     $stmt = $pdo->prepare("
         SELECT
             e.id,
+            er.id AS meeting_id,
             e.me_event_id,
             e.data_evento::text AS data_evento,
             COALESCE(TO_CHAR(e.hora_inicio, 'HH24:MI'), '') AS hora_inicio,
@@ -126,7 +172,7 @@ function eventos_formatura_evento(PDO $pdo, int $eventoId): ?array
             LIMIT 1
         ) cep ON TRUE
         LEFT JOIN LATERAL (
-            SELECT tipo_evento_real, me_event_snapshot
+            SELECT id, tipo_evento_real, me_event_snapshot
             FROM eventos_reunioes
             WHERE me_event_id = e.me_event_id
             ORDER BY updated_at DESC NULLS LAST, id DESC
@@ -212,8 +258,16 @@ function eventos_formatura_formandos(PDO $pdo, int $eventoId): array
             f.*,
             c.nome_completo AS cliente_nome,
             c.documento_numero AS cliente_documento,
+            c.rg AS cliente_rg,
             c.email AS cliente_email,
             c.telefone_whatsapp AS cliente_telefone,
+            c.cep AS cliente_cep,
+            c.endereco_logradouro AS cliente_endereco,
+            c.endereco_numero AS cliente_numero,
+            c.endereco_complemento AS cliente_complemento,
+            c.endereco_bairro AS cliente_bairro,
+            c.endereco_cidade AS cliente_cidade,
+            c.endereco_estado AS cliente_estado,
             COALESCE(fin.total_lancado, 0) AS total_lancado,
             COALESCE(fin.total_pago, 0) AS total_pago
         FROM eventos_formatura_formandos f
@@ -246,6 +300,134 @@ function eventos_formatura_financeiro(PDO $pdo, int $eventoId): array
     ");
     $stmt->execute([':evento_id' => $eventoId]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function eventos_formatura_modelos_contrato(PDO $pdo): array
+{
+    $stmt = $pdo->query("
+        SELECT id, nome, conteudo_html
+        FROM contrato_modelos
+        WHERE COALESCE(ativo, TRUE) = TRUE
+        ORDER BY nome ASC, id ASC
+    ");
+    return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+}
+
+function eventos_formatura_documentos(PDO $pdo, int $eventoId): array
+{
+    $stmt = $pdo->prepare("
+        SELECT
+            d.*,
+            f.nome_formando,
+            c.nome_completo AS responsavel_nome,
+            m.nome AS modelo_nome,
+            COALESCE(NULLIF(TRIM(u.nome), ''), NULLIF(TRIM(u.email), ''), 'Sistema') AS criado_por_nome
+        FROM eventos_formatura_documentos d
+        JOIN eventos_formatura_formandos f ON f.id = d.formando_id
+        JOIN comercial_cadastro_clientes c ON c.id = f.cliente_cadastro_id
+        LEFT JOIN contrato_modelos m ON m.id = d.modelo_id
+        LEFT JOIN usuarios u ON u.id = d.created_by
+        WHERE d.evento_id = :evento_id
+          AND d.deleted_at IS NULL
+        ORDER BY d.created_at DESC, d.id DESC
+    ");
+    $stmt->execute([':evento_id' => $eventoId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function eventos_formatura_documento_token(): string
+{
+    return bin2hex(random_bytes(24));
+}
+
+function eventos_formatura_data_br(?string $date): string
+{
+    $date = trim((string)$date);
+    if ($date === '') {
+        return '';
+    }
+    $time = strtotime($date);
+    return $time ? date('d/m/Y', $time) : $date;
+}
+
+function eventos_formatura_data_hora_br(?string $date): string
+{
+    $date = trim((string)$date);
+    if ($date === '') {
+        return '';
+    }
+    $time = strtotime($date);
+    return $time ? date('d/m/Y H:i', $time) : $date;
+}
+
+function eventos_formatura_public_url(string $path): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+    if ($host === '') {
+        return $path;
+    }
+    return $scheme . '://' . $host . '/' . ltrim($path, '/');
+}
+
+function eventos_formatura_mapa_tags(array $evento, array $formando, array $financeiroFormando): array
+{
+    $totalLancado = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] !== 'cancelado')));
+    $totalPago = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] === 'pago')));
+    $saldo = max(0, $totalLancado - $totalPago);
+
+    $parcelas = [];
+    foreach ($financeiroFormando as $item) {
+        if ((string)$item['status'] === 'cancelado') {
+            continue;
+        }
+        $vencimento = !empty($item['vencimento']) ? eventos_formatura_data_br((string)$item['vencimento']) : 'Sem vencimento';
+        $status = eventos_formatura_label_status((string)$item['status']);
+        $descricao = trim((string)$item['descricao']);
+        $parcelas[] = eventos_formatura_e($vencimento . ' - R$ ' . number_format((float)$item['valor'], 2, ',', '.') . ' - ' . $status . ($descricao !== '' ? ' - ' . $descricao : ''));
+    }
+    $parcelasHtml = $parcelas ? implode('<br>', $parcelas) : 'Nenhuma parcela lançada.';
+
+    $horario = trim((string)($evento['hora_inicio'] ?? ''));
+    if (!empty($evento['hora_fim'])) {
+        $horario .= ($horario !== '' ? ' às ' : '') . trim((string)$evento['hora_fim']);
+    }
+
+    return [
+        '#NOME#' => (string)($formando['cliente_nome'] ?? ''),
+        '#CPF#' => (string)($formando['cliente_documento'] ?? ''),
+        '#RG#' => (string)($formando['cliente_rg'] ?? ''),
+        '#EMAIL#' => (string)($formando['cliente_email'] ?? ''),
+        '#TELEFONE#' => (string)($formando['cliente_telefone'] ?? ''),
+        '#CEP#' => (string)($formando['cliente_cep'] ?? ''),
+        '#ENDERECO#' => (string)($formando['cliente_endereco'] ?? ''),
+        '#NUMERO#' => (string)($formando['cliente_numero'] ?? ''),
+        '#COMPLEMENTO#' => (string)($formando['cliente_complemento'] ?? ''),
+        '#BAIRRO#' => (string)($formando['cliente_bairro'] ?? ''),
+        '#CIDADE#' => (string)($formando['cliente_cidade'] ?? ''),
+        '#ESTADO#' => (string)($formando['cliente_estado'] ?? ''),
+        '#NOME_EVENTO#' => (string)($evento['nome_evento'] ?? ''),
+        '#DATA_EVENTO#' => eventos_formatura_data_br((string)($evento['data_evento'] ?? '')),
+        '#HORARIO_EVENTO#' => $horario,
+        '#LOCAL_EVENTO#' => (string)($evento['local_evento'] ?? ''),
+        '#UNIDADE#' => (string)($evento['space_visivel'] ?? ''),
+        '#CONVIDADOS#' => (string)($evento['convidados'] ?? ''),
+        '#VALOR_TOTAL#' => 'R$ ' . number_format($totalLancado, 2, ',', '.'),
+        '#VALOR_RECEBIDO#' => 'R$ ' . number_format($totalPago, 2, ',', '.'),
+        '#VALOR_A_RECEBER#' => 'R$ ' . number_format($saldo, 2, ',', '.'),
+        '#NOME_FORMANDO#' => (string)($formando['nome_formando'] ?? ''),
+        '#CONVIDADOS_FORMANDO#' => (string)($formando['convidados'] ?? '0'),
+        '#MESAS_FORMANDO#' => (string)($formando['mesas'] ?? '0'),
+        '#RESPONSAVEL_FORMANDO#' => (string)($formando['cliente_nome'] ?? ''),
+        '#VALOR_FORMANDO#' => 'R$ ' . number_format($totalLancado, 2, ',', '.'),
+        '#PARCELAS_FORMANDO#' => $parcelasHtml,
+        '#DATA_HOJE#' => date('d/m/Y'),
+    ];
+}
+
+function eventos_formatura_renderizar_modelo(string $html, array $tags): string
+{
+    return strtr($html, $tags);
 }
 
 function eventos_formatura_redirect(int $eventoId): void
@@ -576,6 +758,145 @@ if ($requestMethod === 'POST') {
         }
     }
 
+    if ($action === 'generate_documento') {
+        $formandoId = (int)($_POST['formando_id'] ?? 0);
+        $modeloId = (int)($_POST['modelo_id'] ?? 0);
+
+        if ($formandoId <= 0) {
+            $errors[] = 'Selecione o formando para gerar o documento.';
+        }
+        if ($modeloId <= 0) {
+            $errors[] = 'Selecione o modelo de contrato/documento.';
+        }
+
+        if (empty($errors)) {
+            $stmt = $pdo->prepare("
+                SELECT
+                    f.*,
+                    c.nome_completo AS cliente_nome,
+                    c.documento_numero AS cliente_documento,
+                    c.rg AS cliente_rg,
+                    c.email AS cliente_email,
+                    c.telefone_whatsapp AS cliente_telefone,
+                    c.cep AS cliente_cep,
+                    c.endereco_logradouro AS cliente_endereco,
+                    c.endereco_numero AS cliente_numero,
+                    c.endereco_complemento AS cliente_complemento,
+                    c.endereco_bairro AS cliente_bairro,
+                    c.endereco_cidade AS cliente_cidade,
+                    c.endereco_estado AS cliente_estado
+                FROM eventos_formatura_formandos f
+                JOIN comercial_cadastro_clientes c ON c.id = f.cliente_cadastro_id
+                WHERE f.id = :id
+                  AND f.evento_id = :evento_id
+                  AND f.deleted_at IS NULL
+                LIMIT 1
+            ");
+            $stmt->execute([':id' => $formandoId, ':evento_id' => $eventoId]);
+            $formandoDocumento = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+            $stmtModelo = $pdo->prepare("
+                SELECT id, nome, conteudo_html
+                FROM contrato_modelos
+                WHERE id = :id
+                  AND COALESCE(ativo, TRUE) = TRUE
+                LIMIT 1
+            ");
+            $stmtModelo->execute([':id' => $modeloId]);
+            $modeloDocumento = $stmtModelo->fetch(PDO::FETCH_ASSOC) ?: null;
+
+            if (!$formandoDocumento) {
+                $errors[] = 'Formando não encontrado.';
+            }
+            if (!$modeloDocumento) {
+                $errors[] = 'Modelo não encontrado ou inativo.';
+            }
+        }
+
+        if (empty($errors) && is_array($formandoDocumento ?? null) && is_array($modeloDocumento ?? null)) {
+            $stmtFin = $pdo->prepare("
+                SELECT *
+                FROM eventos_formatura_financeiro
+                WHERE evento_id = :evento_id
+                  AND formando_id = :formando_id
+                ORDER BY COALESCE(vencimento, created_at::date), id
+            ");
+            $stmtFin->execute([':evento_id' => $eventoId, ':formando_id' => $formandoId]);
+            $financeiroDocumento = $stmtFin->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $conteudo = eventos_formatura_renderizar_modelo(
+                (string)$modeloDocumento['conteudo_html'],
+                eventos_formatura_mapa_tags($evento, $formandoDocumento, $financeiroDocumento)
+            );
+            $titulo = trim((string)$modeloDocumento['nome']) . ' - ' . trim((string)$formandoDocumento['cliente_nome']);
+            $stmtInsert = $pdo->prepare("
+                INSERT INTO eventos_formatura_documentos
+                    (evento_id, formando_id, modelo_id, titulo, conteudo_html, status, minuta_token, created_by, updated_at)
+                VALUES
+                    (:evento_id, :formando_id, :modelo_id, :titulo, :conteudo_html, 'criado', :minuta_token, :created_by, NOW())
+            ");
+            $stmtInsert->execute([
+                ':evento_id' => $eventoId,
+                ':formando_id' => $formandoId,
+                ':modelo_id' => $modeloId,
+                ':titulo' => $titulo,
+                ':conteudo_html' => $conteudo,
+                ':minuta_token' => eventos_formatura_documento_token(),
+                ':created_by' => $userId > 0 ? $userId : null,
+            ]);
+            $_SESSION['eventos_formatura_message'] = 'Documento gerado para o responsável do formando.';
+            eventos_formatura_redirect($eventoId);
+        }
+    }
+
+    if ($action === 'save_documento') {
+        $documentoId = (int)($_POST['documento_id'] ?? 0);
+        $titulo = trim((string)($_POST['titulo'] ?? ''));
+        $conteudo = trim((string)($_POST['conteudo_html'] ?? ''));
+
+        if ($documentoId <= 0) {
+            $errors[] = 'Documento não encontrado.';
+        }
+        if ($titulo === '') {
+            $errors[] = 'Informe o título do documento.';
+        }
+
+        if (empty($errors)) {
+            $stmt = $pdo->prepare("
+                UPDATE eventos_formatura_documentos
+                SET titulo = :titulo,
+                    conteudo_html = :conteudo_html,
+                    updated_at = NOW()
+                WHERE id = :id
+                  AND evento_id = :evento_id
+                  AND deleted_at IS NULL
+            ");
+            $stmt->execute([
+                ':titulo' => $titulo,
+                ':conteudo_html' => $conteudo,
+                ':id' => $documentoId,
+                ':evento_id' => $eventoId,
+            ]);
+            $_SESSION['eventos_formatura_message'] = 'Documento atualizado.';
+            eventos_formatura_redirect($eventoId);
+        }
+    }
+
+    if ($action === 'delete_documento') {
+        $documentoId = (int)($_POST['documento_id'] ?? 0);
+        if ($documentoId > 0) {
+            $stmt = $pdo->prepare("
+                UPDATE eventos_formatura_documentos
+                SET deleted_at = NOW(), updated_at = NOW()
+                WHERE id = :id
+                  AND evento_id = :evento_id
+            ");
+            $stmt->execute([':id' => $documentoId, ':evento_id' => $eventoId]);
+            $_SESSION['eventos_formatura_message'] = 'Documento excluído.';
+            eventos_formatura_redirect($eventoId);
+        }
+    }
+
     if ($action === 'save_financeiro') {
         $formandoId = (int)($_POST['formando_id'] ?? 0);
         $descricao = trim((string)($_POST['descricao'] ?? ''));
@@ -639,6 +960,8 @@ if (!empty($_SESSION['eventos_formatura_message'])) {
 $clientes = eventos_formatura_clientes($pdo);
 $formandos = eventos_formatura_formandos($pdo, $eventoId);
 $financeiro = eventos_formatura_financeiro($pdo, $eventoId);
+$modelosContrato = eventos_formatura_modelos_contrato($pdo);
+$documentos = eventos_formatura_documentos($pdo, $eventoId);
 $formandoFinanceiroId = (int)($_GET['formando_id'] ?? 0);
 $mostrarNovaCobranca = (string)($_GET['nova_cobranca'] ?? '') === '1';
 $formandoFinanceiro = null;
@@ -942,6 +1265,46 @@ includeSidebar('Formatura');
 .formatura-icon-btn:hover {
     background: #f8fafc;
     border-color: #94a3b8;
+}
+.formatura-icon-btn--danger {
+    color: #dc2626;
+    border-color: #fecaca;
+}
+.formatura-icon-btn--danger:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+.formatura-icon-btn--accent {
+    color: #0f766e;
+    border-color: #99f6e4;
+}
+.formatura-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.8rem;
+    font-weight: 900;
+}
+.formatura-chip--warning { background: #fef3c7; color: #92400e; }
+.formatura-chip--success { background: #dcfce7; color: #166534; }
+.formatura-doc-preview {
+    min-height: 280px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    line-height: 1.45;
+}
+.formatura-link-box {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+}
+.formatura-link-box input {
+    flex: 1;
+}
+.formatura-panel + .formatura-panel {
+    margin-top: 1rem;
 }
 .formatura-empty {
     padding: 2rem 1.4rem;
@@ -1322,7 +1685,14 @@ includeSidebar('Formatura');
                                 </td>
                                 <td>
                                     <div class="formatura-actions">
-                                        <button type="button" class="formatura-icon-btn" title="Gerar documento" disabled>📄</button>
+                                        <button
+                                            type="button"
+                                            class="formatura-icon-btn formatura-icon-btn--accent btnGerarDocumento"
+                                            title="Gerar documento"
+                                            data-formando-id="<?= (int)$formando['id'] ?>"
+                                            data-formando-nome="<?= eventos_formatura_e((string)$formando['nome_formando']) ?>"
+                                            data-responsavel="<?= eventos_formatura_e((string)$formando['cliente_nome']) ?>"
+                                        >📄</button>
                                         <a class="formatura-icon-btn" title="Financeiro" href="index.php?page=eventos_formatura&evento_id=<?= (int)$eventoId ?>&formando_id=<?= (int)$formando['id'] ?>">$</a>
                                         <button
                                             type="button"
@@ -1349,7 +1719,174 @@ includeSidebar('Formatura');
             </div>
         <?php endif; ?>
     </section>
+
+    <section class="formatura-panel">
+        <div class="formatura-panel-head">
+            <h2>Contratos e Documentos</h2>
+        </div>
+        <div class="formatura-toolbar">
+            <button type="button" class="formatura-btn formatura-btn--primary" id="btnNovoDocumento" <?= empty($formandos) ? 'disabled' : '' ?>>📄 Novo Documento</button>
+            <span class="formatura-muted">Gere uma minuta para um formando por vez usando os modelos cadastrados.</span>
+        </div>
+
+        <?php if (empty($documentos)): ?>
+            <div class="formatura-empty">Nenhum documento gerado ainda.</div>
+        <?php else: ?>
+            <div class="formatura-table-wrap">
+                <table class="formatura-table">
+                    <thead>
+                        <tr>
+                            <th>Arquivos</th>
+                            <th>Status</th>
+                            <th>Assinaturas</th>
+                            <th>Opções</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($documentos as $documento): ?>
+                            <?php
+                            $minutaUrl = eventos_formatura_public_url('formatura_minuta.php?token=' . rawurlencode((string)$documento['minuta_token']));
+                            $statusDocumento = (string)$documento['status'];
+                            $statusLabel = $statusDocumento === 'minuta_aprovada' ? 'Minuta aprovada' : ucfirst(str_replace('_', ' ', $statusDocumento));
+                            $statusClass = $statusDocumento === 'minuta_aprovada' ? 'formatura-chip--success' : 'formatura-chip--warning';
+                            $infoTooltip = 'Gerado em ' . eventos_formatura_data_hora_br((string)$documento['created_at']) . ' por ' . (string)$documento['criado_por_nome'];
+                            ?>
+                            <tr>
+                                <td>
+                                    <strong>📄 <?= eventos_formatura_e((string)$documento['titulo']) ?></strong>
+                                    <div class="formatura-muted">
+                                        <?= eventos_formatura_e((string)$documento['nome_formando']) ?> ·
+                                        <?= eventos_formatura_e((string)$documento['responsavel_nome']) ?>
+                                    </div>
+                                </td>
+                                <td><span class="formatura-chip <?= eventos_formatura_e($statusClass) ?>"><?= eventos_formatura_e($statusLabel) ?></span></td>
+                                <td><?= (int)$documento['assinaturas_realizadas'] ?>/<?= (int)$documento['assinaturas_total'] ?></td>
+                                <td>
+                                    <div class="formatura-actions">
+                                        <button type="button" class="formatura-icon-btn" title="<?= eventos_formatura_e($infoTooltip) ?>">ℹ</button>
+                                        <button
+                                            type="button"
+                                            class="formatura-icon-btn btnEditarDocumento"
+                                            title="Editar documento"
+                                            data-id="<?= (int)$documento['id'] ?>"
+                                            data-titulo="<?= eventos_formatura_e((string)$documento['titulo']) ?>"
+                                            data-conteudo="<?= eventos_formatura_e((string)$documento['conteudo_html']) ?>"
+                                        >✎</button>
+                                        <form method="post" onsubmit="return confirm('Excluir este documento?');">
+                                            <input type="hidden" name="action" value="delete_documento">
+                                            <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                                            <input type="hidden" name="documento_id" value="<?= (int)$documento['id'] ?>">
+                                            <button type="submit" class="formatura-icon-btn formatura-icon-btn--danger" title="Excluir">🗑</button>
+                                        </form>
+                                        <button
+                                            type="button"
+                                            class="formatura-btn formatura-btn--info btnMinutaDocumento"
+                                            data-url="<?= eventos_formatura_e($minutaUrl) ?>"
+                                        >Minuta</button>
+                                        <button type="button" class="formatura-btn formatura-btn--warning" disabled>Assinatura</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </section>
     <?php endif; ?>
+</div>
+
+<div class="formatura-modal" id="modalDocumentoModelo" aria-hidden="true">
+    <div class="formatura-modal-dialog">
+        <div class="formatura-modal-head">
+            <h3>Gerar documento</h3>
+            <button type="button" class="formatura-close" data-close-modal>×</button>
+        </div>
+        <form method="post">
+            <div class="formatura-modal-body">
+                <input type="hidden" name="action" value="generate_documento">
+                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                <input type="hidden" name="formando_id" id="documentoFormandoId" value="">
+                <div class="formatura-grid">
+                    <div class="formatura-field">
+                        <label for="documentoFormandoSelect">Formando</label>
+                        <select id="documentoFormandoSelect" required>
+                            <option value="">Selecione...</option>
+                            <?php foreach ($formandos as $formando): ?>
+                                <option value="<?= (int)$formando['id'] ?>">
+                                    <?= eventos_formatura_e((string)$formando['nome_formando']) ?> - <?= eventos_formatura_e((string)$formando['cliente_nome']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="formatura-field">
+                        <label for="documentoModeloId">Modelo</label>
+                        <select id="documentoModeloId" name="modelo_id" required>
+                            <option value="">Selecione...</option>
+                            <?php foreach ($modelosContrato as $modelo): ?>
+                                <option value="<?= (int)$modelo['id'] ?>"><?= eventos_formatura_e((string)$modelo['nome']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <?php if (empty($modelosContrato)): ?>
+                    <div class="alert alert-error" style="margin-top:1rem;">Nenhum modelo ativo em Cadastros > Contratos.</div>
+                <?php endif; ?>
+            </div>
+            <div class="formatura-modal-actions">
+                <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
+                <button type="submit" class="formatura-btn formatura-btn--primary" <?= empty($modelosContrato) ? 'disabled' : '' ?>>Gerar documento</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="formatura-modal" id="modalEditarDocumento" aria-hidden="true">
+    <div class="formatura-modal-dialog">
+        <div class="formatura-modal-head">
+            <h3>Editar documento</h3>
+            <button type="button" class="formatura-close" data-close-modal>×</button>
+        </div>
+        <form method="post">
+            <div class="formatura-modal-body">
+                <input type="hidden" name="action" value="save_documento">
+                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                <input type="hidden" name="documento_id" id="editarDocumentoId" value="">
+                <div class="formatura-field">
+                    <label for="editarDocumentoTitulo">Título</label>
+                    <input id="editarDocumentoTitulo" name="titulo" type="text" required>
+                </div>
+                <div class="formatura-field" style="margin-top:0.9rem;">
+                    <label for="editarDocumentoConteudo">Conteúdo HTML</label>
+                    <textarea id="editarDocumentoConteudo" name="conteudo_html" class="formatura-doc-preview" required></textarea>
+                </div>
+            </div>
+            <div class="formatura-modal-actions">
+                <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
+                <button type="submit" class="formatura-btn formatura-btn--primary">Salvar documento</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="formatura-modal" id="modalMinuta" aria-hidden="true">
+    <div class="formatura-modal-dialog">
+        <div class="formatura-modal-head">
+            <h3>Link da minuta</h3>
+            <button type="button" class="formatura-close" data-close-modal>×</button>
+        </div>
+        <div class="formatura-modal-body">
+            <p class="formatura-muted">Envie este link para o responsável visualizar e aprovar a prévia.</p>
+            <div class="formatura-link-box">
+                <input id="minutaUrlInput" type="text" readonly>
+                <button type="button" class="formatura-btn formatura-btn--primary" id="btnCopiarMinuta">Copiar</button>
+            </div>
+        </div>
+        <div class="formatura-modal-actions">
+            <a class="formatura-btn formatura-btn--info" id="btnAbrirMinuta" href="#" target="_blank" rel="noopener">Abrir minuta</a>
+            <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Fechar</button>
+        </div>
+    </div>
 </div>
 
 <div class="formatura-modal" id="modalFormando" aria-hidden="true">
@@ -1472,6 +2009,62 @@ document.querySelectorAll('.btnEditarFormando').forEach((btn) => {
         setCliente(clienteById(btn.dataset.clienteId || 0));
         openModal(modalFormando);
     });
+});
+
+const modalDocumentoModelo = document.getElementById('modalDocumentoModelo');
+const documentoFormandoId = document.getElementById('documentoFormandoId');
+const documentoFormandoSelect = document.getElementById('documentoFormandoSelect');
+
+function setDocumentoFormando(id) {
+    if (documentoFormandoId) documentoFormandoId.value = id || '';
+    if (documentoFormandoSelect) documentoFormandoSelect.value = id || '';
+}
+
+documentoFormandoSelect?.addEventListener('change', (event) => {
+    setDocumentoFormando(event.target.value);
+});
+
+document.getElementById('btnNovoDocumento')?.addEventListener('click', () => {
+    setDocumentoFormando('');
+    openModal(modalDocumentoModelo);
+});
+
+document.querySelectorAll('.btnGerarDocumento').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        setDocumentoFormando(btn.dataset.formandoId || '');
+        openModal(modalDocumentoModelo);
+    });
+});
+
+const modalEditarDocumento = document.getElementById('modalEditarDocumento');
+document.querySelectorAll('.btnEditarDocumento').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        document.getElementById('editarDocumentoId').value = btn.dataset.id || '';
+        document.getElementById('editarDocumentoTitulo').value = btn.dataset.titulo || '';
+        document.getElementById('editarDocumentoConteudo').value = btn.dataset.conteudo || '';
+        openModal(modalEditarDocumento);
+    });
+});
+
+const modalMinuta = document.getElementById('modalMinuta');
+document.querySelectorAll('.btnMinutaDocumento').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const url = btn.dataset.url || '';
+        document.getElementById('minutaUrlInput').value = url;
+        document.getElementById('btnAbrirMinuta').href = url || '#';
+        openModal(modalMinuta);
+    });
+});
+
+document.getElementById('btnCopiarMinuta')?.addEventListener('click', async () => {
+    const input = document.getElementById('minutaUrlInput');
+    if (!input) return;
+    input.select();
+    try {
+        await navigator.clipboard.writeText(input.value);
+    } catch (error) {
+        document.execCommand('copy');
+    }
 });
 
 function formaturaMoneyToNumber(value) {
