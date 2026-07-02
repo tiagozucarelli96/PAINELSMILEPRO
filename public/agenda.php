@@ -48,6 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
                 'criado_por_usuario_id' => $usuario_id,
                 'espaco_id' => $_POST['espaco_id'] ?: null,
                 'lembrete_minutos' => $_POST['lembrete_minutos'],
+                'visita_tipo' => $_POST['visita_tipo'] ?? null,
+                'cliente_nome' => $_POST['cliente_nome'] ?? null,
+                'cliente_telefone' => $_POST['cliente_telefone'] ?? null,
+                'visita_duracao_minutos' => $_POST['visita_duracao_minutos'] ?? null,
                 'participantes' => json_decode($_POST['participantes'] ?? '[]', true),
                 'forcar_conflito' => !empty($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
             ];
@@ -1033,6 +1037,25 @@ includeSidebar('Agenda');
             }
         }
 
+        function applyVisitDurationRule() {
+            const tipoVisita = document.getElementById('visitTipo').value;
+            const visitDuracao = document.getElementById('visitDuracao');
+            if (!visitDuracao) {
+                return;
+            }
+
+            const durationByType = {
+                'Conhecer espaço': '30',
+                'Reunião final': '120',
+                'Pagamento': '30'
+            };
+
+            if (durationByType[tipoVisita]) {
+                visitDuracao.value = durationByType[tipoVisita];
+                updateVisitEndFromDuration();
+            }
+        }
+
         function buildVisitTitle() {
             const espacoSelect = document.getElementById('espaco');
             const local = espacoSelect && espacoSelect.value
@@ -1326,6 +1349,10 @@ includeSidebar('Agenda');
 
         document.getElementById('visitDuracao').addEventListener('change', function() {
             updateVisitEndFromDuration();
+        });
+
+        document.getElementById('visitTipo').addEventListener('change', function() {
+            applyVisitDurationRule();
         });
         
         // Verificar permissões
@@ -1635,6 +1662,7 @@ includeSidebar('Agenda');
             const eventoIdInput = document.getElementById('eventId');
             const eventTipoInput = document.getElementById('eventTipo');
             const isNovaVisita = !eventoIdInput.value && eventTipoInput.value === 'visita';
+            let structuredVisitData = null;
 
             if (isNovaVisita) {
                 const tipoVisita = document.getElementById('visitTipo').value.trim();
@@ -1648,13 +1676,26 @@ includeSidebar('Agenda');
                     return;
                 }
 
+                applyVisitDurationRule();
                 updateVisitEndFromDuration();
                 document.getElementById('titulo').value = buildVisitTitle();
+                structuredVisitData = {
+                    visita_tipo: tipoVisita,
+                    cliente_nome: cliente,
+                    cliente_telefone: telefone,
+                    visita_duracao_minutos: document.getElementById('visitDuracao').value || '60'
+                };
             }
 
             const formData = new FormData(this);
             const eventoId = formData.get('evento_id');
             const acao = eventoId ? 'atualizar_evento' : 'criar_evento';
+
+            if (structuredVisitData) {
+                Object.entries(structuredVisitData).forEach(([key, value]) => {
+                    formData.append(key, value);
+                });
+            }
             
             // Adicionar ação
             formData.append('acao', acao);

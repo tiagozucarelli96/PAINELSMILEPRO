@@ -20,6 +20,7 @@ class AgendaHelper {
         $this->notificationDispatcher = new NotificationDispatcher($this->pdo);
         $this->notificationDispatcher->ensureInternalSchema();
         $this->ensureGoogleSyncSchema();
+        $this->ensureVisitDetailsSchema();
     }
 
     /**
@@ -43,6 +44,21 @@ class AgendaHelper {
             ");
         } catch (Throwable $e) {
             error_log('[AGENDA_GOOGLE_SYNC] Falha ao validar schema: ' . $e->getMessage());
+        }
+    }
+
+    private function ensureVisitDetailsSchema(): void {
+        if (!$this->pdo instanceof PDO) {
+            return;
+        }
+
+        try {
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS visita_tipo VARCHAR(50)");
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS cliente_nome VARCHAR(255)");
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS cliente_telefone VARCHAR(50)");
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS visita_duracao_minutos INT");
+        } catch (Throwable $e) {
+            error_log('[AGENDA_VISITA_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
         }
     }
 
@@ -367,6 +383,36 @@ class AgendaHelper {
                     'error' => 'Selecione um responsável válido para nova visita.'
                 ];
             }
+            if (($dados['tipo'] ?? '') === 'visita') {
+                $visita_tipo = trim((string)($dados['visita_tipo'] ?? ''));
+                $cliente_nome = trim((string)($dados['cliente_nome'] ?? ''));
+                $cliente_telefone = trim((string)($dados['cliente_telefone'] ?? ''));
+                $visita_duracao = (int)($dados['visita_duracao_minutos'] ?? 0);
+
+                if (!in_array($visita_tipo, ['Conhecer espaço', 'Reunião final', 'Pagamento'], true)) {
+                    return [
+                        'success' => false,
+                        'error' => 'Selecione um tipo de visita válido.'
+                    ];
+                }
+                $duracao_por_tipo = [
+                    'Conhecer espaço' => 30,
+                    'Reunião final' => 120,
+                    'Pagamento' => 30,
+                ];
+                if ($cliente_nome === '' || $cliente_telefone === '') {
+                    return [
+                        'success' => false,
+                        'error' => 'Informe nome e telefone do cliente.'
+                    ];
+                }
+                if ($visita_duracao !== $duracao_por_tipo[$visita_tipo]) {
+                    return [
+                        'success' => false,
+                        'error' => 'A duração não confere com o tipo de visita selecionado.'
+                    ];
+                }
+            }
 
             // Verificar conflitos se não forçar
             if (!$dados['forcar_conflito']) {
@@ -396,8 +442,9 @@ class AgendaHelper {
                 INSERT INTO agenda_eventos (
                     tipo, titulo, descricao, inicio, fim, responsavel_usuario_id, 
                     criado_por_usuario_id, espaco_id, lembrete_minutos, 
-                    compareceu, fechou_contrato, participantes, cor_evento
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '1', '0', ?, ?)
+                    compareceu, fechou_contrato, participantes, cor_evento,
+                    visita_tipo, cliente_nome, cliente_telefone, visita_duracao_minutos
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '1', '0', ?, ?, ?, ?, ?, ?)
             ");
             
             $stmt->execute([
@@ -411,7 +458,11 @@ class AgendaHelper {
                 $dados['espaco_id'],
                 $dados['lembrete_minutos'],
                 json_encode($dados['participantes'] ?? []),
-                $cor_responsavel
+                $cor_responsavel,
+                ($dados['tipo'] ?? '') === 'visita' ? trim((string)($dados['visita_tipo'] ?? '')) : null,
+                ($dados['tipo'] ?? '') === 'visita' ? trim((string)($dados['cliente_nome'] ?? '')) : null,
+                ($dados['tipo'] ?? '') === 'visita' ? trim((string)($dados['cliente_telefone'] ?? '')) : null,
+                ($dados['tipo'] ?? '') === 'visita' ? (int)($dados['visita_duracao_minutos'] ?? 0) : null
             ]);
             
             $evento_id = $this->pdo->lastInsertId();
