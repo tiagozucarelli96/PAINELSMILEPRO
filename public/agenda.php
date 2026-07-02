@@ -427,6 +427,18 @@ includeSidebar('Agenda');
             flex: 1;
         }
 
+        #visitDetailsGroup {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 18px;
+        }
+
+        #visitDetailsGroup .form-group:last-child {
+            margin-bottom: 0;
+        }
+
         .form-actions {
             display: flex;
             justify-content: flex-end;
@@ -621,17 +633,49 @@ includeSidebar('Agenda');
                     </div>
                 </div>
                 
+                <div id="visitDetailsGroup" style="display: none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="visitTipo">Tipo de visita *</label>
+                            <select id="visitTipo">
+                                <option value="">Selecione...</option>
+                                <option value="Conhecer espaço">Conhecer espaço</option>
+                                <option value="Reunião final">Reunião final</option>
+                                <option value="Pagamento">Pagamento</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="visitCliente">Nome do cliente *</label>
+                            <input type="text" id="visitCliente" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="visitTelefone">Telefone do cliente *</label>
+                        <input type="tel" id="visitTelefone" autocomplete="off">
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="titulo">Título *</label>
                     <input type="text" id="titulo" name="titulo" required>
                 </div>
                 
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form-group" id="inicioGroup">
                         <label for="inicio">Data/Hora Início *</label>
                         <input type="datetime-local" id="inicio" name="inicio" required>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" id="visitDurationGroup" style="display: none;">
+                        <label for="visitDuracao">Duração *</label>
+                        <select id="visitDuracao">
+                            <option value="30">30 minutos</option>
+                            <option value="60" selected>60 minutos</option>
+                            <option value="90">90 minutos</option>
+                            <option value="120">120 minutos</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="fimGroup">
                         <label for="fim">Data/Hora Fim *</label>
                         <input type="datetime-local" id="fim" name="fim" required>
                     </div>
@@ -931,6 +975,87 @@ includeSidebar('Agenda');
                 }
             }
         }
+
+        function setVisitDetailsMode(enabled = false) {
+            const group = document.getElementById('visitDetailsGroup');
+            const tituloInput = document.getElementById('titulo');
+            const tituloGroup = tituloInput ? tituloInput.closest('.form-group') : null;
+            const fimGroup = document.getElementById('fimGroup');
+            const visitDurationGroup = document.getElementById('visitDurationGroup');
+            const inicioLabel = document.querySelector('#inicioGroup label');
+            const visitTipo = document.getElementById('visitTipo');
+            const visitCliente = document.getElementById('visitCliente');
+            const visitTelefone = document.getElementById('visitTelefone');
+            const visitDuracao = document.getElementById('visitDuracao');
+
+            if (group) {
+                group.style.display = enabled ? 'block' : 'none';
+            }
+            if (tituloGroup) {
+                tituloGroup.style.display = enabled ? 'none' : '';
+            }
+            if (tituloInput) {
+                tituloInput.required = !enabled;
+            }
+            if (fimGroup) {
+                fimGroup.style.display = enabled ? 'none' : '';
+            }
+            if (visitDurationGroup) {
+                visitDurationGroup.style.display = enabled ? 'block' : 'none';
+            }
+            if (inicioLabel) {
+                inicioLabel.textContent = enabled ? 'Data e horário *' : 'Data/Hora Início *';
+            }
+            if (visitDuracao) {
+                visitDuracao.required = enabled;
+                if (enabled) {
+                    visitDuracao.value = visitDuracao.value || '60';
+                }
+            }
+
+            [visitTipo, visitCliente, visitTelefone].forEach(field => {
+                if (field) {
+                    field.required = enabled;
+                }
+            });
+        }
+
+        function resetVisitDetailsFields() {
+            ['visitTipo', 'visitCliente', 'visitTelefone'].forEach(id => {
+                const field = document.getElementById(id);
+                if (field) {
+                    field.value = '';
+                }
+            });
+            const visitDuracao = document.getElementById('visitDuracao');
+            if (visitDuracao) {
+                visitDuracao.value = '60';
+            }
+        }
+
+        function buildVisitTitle() {
+            const espacoSelect = document.getElementById('espaco');
+            const local = espacoSelect && espacoSelect.value
+                ? espacoSelect.options[espacoSelect.selectedIndex].text.trim()
+                : '';
+            const tipoVisita = document.getElementById('visitTipo').value.trim();
+            const cliente = document.getElementById('visitCliente').value.trim();
+            const telefone = document.getElementById('visitTelefone').value.trim();
+
+            return `VISITA ${local} - ${tipoVisita} ${cliente} ${telefone}`.replace(/\s+/g, ' ').trim();
+        }
+
+        function updateVisitEndFromDuration() {
+            const inicio = document.getElementById('inicio').value;
+            const duracao = parseInt(document.getElementById('visitDuracao').value || '60', 10);
+            if (!inicio || !Number.isFinite(duracao) || duracao <= 0) {
+                return;
+            }
+
+            const inicioDate = new Date(inicio);
+            const fimDate = new Date(inicioDate.getTime() + duracao * 60 * 1000);
+            document.getElementById('fim').value = formatDateTimeLocal(fimDate);
+        }
         
         // Abrir modal de evento
         function openEventModal(tipo, event = null, date = null) {
@@ -954,6 +1079,8 @@ includeSidebar('Agenda');
             if (event) {
                 // Editar evento existente
                 applyResponsavelOptionsMode(false);
+                setVisitDetailsMode(false);
+                resetVisitDetailsFields();
                 const eventTipo = event.extendedProps.tipo;
                 const isGoogleEvent = eventTipo === 'google';
                 
@@ -1114,12 +1241,17 @@ includeSidebar('Agenda');
                 title.textContent = tipo === 'visita' ? 'Nova Visita' : 'Novo Bloqueio';
                 tipoInput.value = tipo;
                 applyResponsavelOptionsMode(tipo === 'visita');
+                setVisitDetailsMode(tipo === 'visita');
+                resetVisitDetailsFields();
                 
                 if (date) {
                     const startDate = new Date(date);
                     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 hora
                     document.getElementById('inicio').value = formatDateTimeLocal(startDate);
                     document.getElementById('fim').value = formatDateTimeLocal(endDate);
+                }
+                if (tipo === 'visita') {
+                    updateVisitEndFromDuration();
                 }
                 
                 espacoGroup.style.display = tipo === 'visita' ? 'block' : 'none';
@@ -1165,6 +1297,8 @@ includeSidebar('Agenda');
             // Mostrar botões novamente
             document.querySelector('button[type="submit"]').style.display = '';
             applyResponsavelOptionsMode(false);
+            setVisitDetailsMode(false);
+            resetVisitDetailsFields();
         }
         
         // Formatar data para input datetime-local
@@ -1177,11 +1311,21 @@ includeSidebar('Agenda');
         // Auto-preencer data fim ao preencher data início
         document.getElementById('inicio').addEventListener('change', function() {
             const inicio = this.value;
+            const isNovaVisita = !document.getElementById('eventId').value && document.getElementById('eventTipo').value === 'visita';
+            if (isNovaVisita) {
+                updateVisitEndFromDuration();
+                return;
+            }
+
             if (inicio && !document.getElementById('fim').value) {
                 const inicioDate = new Date(inicio);
                 const fimDate = new Date(inicioDate.getTime() + 60 * 60 * 1000); // +1 hora
                 document.getElementById('fim').value = formatDateTimeLocal(fimDate);
             }
+        });
+
+        document.getElementById('visitDuracao').addEventListener('change', function() {
+            updateVisitEndFromDuration();
         });
         
         // Verificar permissões
@@ -1487,7 +1631,27 @@ includeSidebar('Agenda');
         // Submeter formulário
         document.getElementById('eventForm').addEventListener('submit', function(e) {
             e.preventDefault();
-            
+
+            const eventoIdInput = document.getElementById('eventId');
+            const eventTipoInput = document.getElementById('eventTipo');
+            const isNovaVisita = !eventoIdInput.value && eventTipoInput.value === 'visita';
+
+            if (isNovaVisita) {
+                const tipoVisita = document.getElementById('visitTipo').value.trim();
+                const cliente = document.getElementById('visitCliente').value.trim();
+                const telefone = document.getElementById('visitTelefone').value.trim();
+                const espaco = document.getElementById('espaco').value;
+                const inicio = document.getElementById('inicio').value;
+
+                if (!tipoVisita || !cliente || !telefone || !espaco || !inicio) {
+                    showToast('❌ Preencha tipo de visita, local, cliente, telefone e horário.', 'error');
+                    return;
+                }
+
+                updateVisitEndFromDuration();
+                document.getElementById('titulo').value = buildVisitTitle();
+            }
+
             const formData = new FormData(this);
             const eventoId = formData.get('evento_id');
             const acao = eventoId ? 'atualizar_evento' : 'criar_evento';
