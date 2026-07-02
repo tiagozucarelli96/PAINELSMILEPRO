@@ -613,10 +613,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
 
                     if ($conflito['tem_conflito'] && !$override_conflito) {
-                        // Retornar erro com detalhes do conflito
-                        $erros[] = 'Conflito de agenda detectado! Existem eventos na mesma unidade e data que não respeitam a distância mínima.';
+                        // Reabrir o modal de aprovação com o erro visível dentro dele.
+                        $mensagem_conflito = 'Conflito de agenda detectado! Existem eventos na mesma unidade e data que não respeitam a distância mínima.';
+                        $_SESSION['vendas_aprovacao_result'] = [
+                            'ok' => false,
+                            'message' => 'Aprovação bloqueada.',
+                            'error' => $mensagem_conflito,
+                            'me_last' => $_SESSION['vendas_me_last'] ?? null,
+                            'me_client_id' => $me_client_id ? (int)$me_client_id : null,
+                            'me_event_id' => null,
+                        ];
                         $_SESSION['vendas_conflito_detalhes'] = $conflito;
                         $_SESSION['vendas_pre_contrato_id'] = $pre_contrato_id;
+                        header('Location: ' . $redirect_url_error);
+                        exit;
                     } elseif ($conflito['tem_conflito'] && $override_conflito) {
                         // Log do override
                         error_log('[VENDAS] Override de conflito aplicado. Motivo: ' . $override_motivo);
@@ -1685,6 +1695,17 @@ ob_start();
                     <h2>Visualizar Pré-contrato #<?php echo $pre_contrato_editar['id']; ?></h2>
                     <p>Revise os dados preenchidos pelo cliente, ajuste o comercial e siga para a aprovação na ME.</p>
                 </div>
+
+                <?php if (!empty($mensagens) || !empty($erros)): ?>
+                    <div style="padding: 0 1.5rem;">
+                        <?php foreach ($mensagens as $msg): ?>
+                            <div class="alert alert-success"><?php echo htmlspecialchars((string)$msg); ?></div>
+                        <?php endforeach; ?>
+                        <?php foreach ($erros as $erro): ?>
+                            <div class="alert alert-error"><?php echo htmlspecialchars((string)$erro); ?></div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
                 
                 <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" id="action_comercial" name="action" value="salvar_comercial">
