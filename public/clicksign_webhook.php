@@ -5,9 +5,11 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/setup_administrativo_juridico.php';
 require_once __DIR__ . '/setup_gestao_documentos.php';
 require_once __DIR__ . '/core/clicksign_helper.php';
+require_once __DIR__ . '/eventos_documentos_helper.php';
 
 setupAdministrativoJuridico($pdo);
 setupGestaoDocumentos($pdo);
+eventos_documentos_ensure_schema($pdo);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -167,6 +169,76 @@ function clicksignWebhookUpdateGestaoDocumentos(PDO $pdo, array $summary, string
     return $count;
 }
 
+function clicksignWebhookAssinaturasResumo(array $summary): array
+{
+    $signers = is_array($summary['signers'] ?? null) ? $summary['signers'] : [];
+    $total = count($signers);
+    $signed = 0;
+    foreach ($signers as $signer) {
+        if (!is_array($signer)) {
+            continue;
+        }
+        if ((string)($signer['status'] ?? '') === 'assinado') {
+            $signed++;
+        }
+    }
+    return ['total' => $total, 'signed' => $signed];
+}
+
+function clicksignWebhookUpdateEventoDocumentos(PDO $pdo, array $summary, string $envelopeId, string $table): int
+{
+    if (!in_array($table, ['eventos_documentos', 'eventos_formatura_documentos'], true)) {
+        return 0;
+    }
+    if (!eventos_documentos_table_exists($pdo, $table)) {
+        return 0;
+    }
+    eventos_documentos_ensure_clicksign_columns($pdo, $table);
+
+    $stmt = $pdo->prepare("
+        SELECT id
+        FROM {$table}
+        WHERE clicksign_envelope_id = :envelope_id
+    ");
+    $stmt->execute([':envelope_id' => $envelopeId]);
+    $ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    if (empty($ids)) {
+        return 0;
+    }
+
+    $assinaturas = clicksignWebhookAssinaturasResumo($summary);
+    $statusLocal = (string)($summary['status_local'] ?? 'enviado');
+    $documentStatus = $statusLocal === 'assinado' ? 'assinado' : 'em_curso';
+    $update = $pdo->prepare("
+        UPDATE {$table}
+        SET status = :document_status,
+            status_assinatura = :status_assinatura,
+            clicksign_sign_url = :sign_url,
+            clicksign_payload = :payload::jsonb,
+            clicksign_ultimo_erro = NULL,
+            assinaturas_realizadas = :assinaturas_realizadas,
+            assinaturas_total = :assinaturas_total,
+            updated_at = NOW()
+        WHERE id = :id
+    ");
+
+    $count = 0;
+    foreach ($ids as $id) {
+        $update->execute([
+            ':document_status' => $documentStatus,
+            ':status_assinatura' => $statusLocal,
+            ':sign_url' => $summary['signers'][0]['signature_url'] ?? null,
+            ':payload' => json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ':assinaturas_realizadas' => $assinaturas['signed'],
+            ':assinaturas_total' => max(1, $assinaturas['total']),
+            ':id' => (int)$id,
+        ]);
+        $count++;
+    }
+
+    return $count;
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     clicksignWebhookJsonResponse(405, ['success' => false, 'error' => 'method_not_allowed']);
 }
@@ -233,6 +305,8 @@ $pdo->beginTransaction();
 try {
     $juridicoUpdated = clicksignWebhookUpdateJuridico($pdo, $summary, $envelopeId);
     $gestaoUpdated = clicksignWebhookUpdateGestaoDocumentos($pdo, $summary, $envelopeId);
+    $eventosUpdated = clicksignWebhookUpdateEventoDocumentos($pdo, $summary, $envelopeId, 'eventos_documentos');
+    $formaturaUpdated = clicksignWebhookUpdateEventoDocumentos($pdo, $summary, $envelopeId, 'eventos_formatura_documentos');
     $pdo->commit();
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) {
@@ -256,6 +330,8 @@ clicksignWebhookLog([
     'status_local' => $summary['status_local'] ?? null,
     'juridico_updated' => $juridicoUpdated,
     'gestao_updated' => $gestaoUpdated,
+    'eventos_updated' => $eventosUpdated,
+    'formatura_updated' => $formaturaUpdated,
 ]);
 
 clicksignWebhookJsonResponse(200, [
@@ -265,4 +341,6 @@ clicksignWebhookJsonResponse(200, [
     'status_local' => $summary['status_local'] ?? null,
     'juridico_updated' => $juridicoUpdated,
     'gestao_updated' => $gestaoUpdated,
+    'eventos_updated' => $eventosUpdated,
+    'formatura_updated' => $formaturaUpdated,
 ]);

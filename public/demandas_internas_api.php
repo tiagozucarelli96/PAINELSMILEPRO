@@ -208,6 +208,11 @@ function demandasInternasNotificarCriacao(
             $descricaoResumo = strlen($descricao) > 500 ? substr($descricao, 0, 500) . '...' : $descricao;
             $mensagem .= "\n\n" . $descricaoResumo;
         }
+        $whatsappMensagem = demandasInternasWhatsappMensagemCriacao(
+            $pdo,
+            $demandaId,
+            $url
+        );
 
         $dispatcher = new NotificationDispatcher($pdo);
         $dispatcher->dispatch($destinatarios, [
@@ -219,6 +224,7 @@ function demandasInternasNotificarCriacao(
             'email_assunto' => 'Nova demanda interna: ' . $titulo,
             'push_titulo' => 'Nova demanda interna',
             'push_mensagem' => $titulo,
+            'whatsapp_mensagem' => $whatsappMensagem,
         ], [
             'internal' => true,
             'push' => true,
@@ -227,6 +233,187 @@ function demandasInternasNotificarCriacao(
         ]);
     } catch (Throwable $e) {
         error_log('[DEMANDAS INTERNAS] Falha ao notificar criação da demanda #' . $demandaId . ': ' . $e->getMessage());
+    }
+}
+
+function demandasInternasWhatsappMensagemCriacao(
+    PDO $pdo,
+    int $demandaId,
+    string $url
+): string {
+    $stmt = $pdo->prepare("
+        SELECT d.*, u.nome AS criador_nome, u.login AS criador_login
+        FROM demandas_internas d
+        LEFT JOIN usuarios u ON u.id = d.criador_id
+        WHERE d.id = :id
+        LIMIT 1
+    ");
+    $stmt->execute([':id' => $demandaId]);
+    $demanda = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    $titulo = trim((string)($demanda['titulo'] ?? 'Demanda interna'));
+    $descricao = trim((string)($demanda['descricao'] ?? ''));
+    $responsavelTipo = (string)($demanda['responsavel_tipo'] ?? 'usuario');
+    $responsavelSetor = trim((string)($demanda['responsavel_setor'] ?? ''));
+    $prazo = trim((string)($demanda['prazo'] ?? ''));
+    $prioridade = trim((string)($demanda['prioridade'] ?? 'normal'));
+    $criador = trim((string)($demanda['criador_nome'] ?? $demanda['criador_login'] ?? ''));
+    $prazoFormatado = 'Sem prazo informado';
+    if ($prazo !== '') {
+        $prazoFormatado = $prazo;
+        try {
+            $prazoFormatado = (new DateTimeImmutable($prazo))->format('d/m/Y');
+        } catch (Throwable $e) {
+            $prazoFormatado = $prazo;
+        }
+    }
+
+    $destino = $responsavelTipo === 'setor' && $responsavelSetor !== ''
+        ? 'Setor ' . $responsavelSetor
+        : 'Você';
+
+    if ($descricao !== '') {
+        $descricao = strlen($descricao) > 600 ? substr($descricao, 0, 600) . '...' : $descricao;
+    }
+
+    $eventoLinhas = '';
+    if (!empty($demanda['evento_id']) || !empty($demanda['evento_nome']) || !empty($demanda['evento_local']) || !empty($demanda['evento_data'])) {
+        $eventoData = trim((string)($demanda['evento_data'] ?? ''));
+        if ($eventoData !== '') {
+            try {
+                $eventoData = (new DateTimeImmutable($eventoData))->format('d/m/Y');
+            } catch (Throwable $e) {
+                // Mantém valor original.
+            }
+        }
+        $eventoLinhas = "\n🎉 *Evento vinculado:*";
+        if (!empty($demanda['evento_nome'])) {
+            $eventoLinhas .= "\n• " . trim((string)$demanda['evento_nome']);
+        }
+        if ($eventoData !== '') {
+            $eventoLinhas .= "\n• Data: {$eventoData}";
+        }
+        if (!empty($demanda['evento_local'])) {
+            $eventoLinhas .= "\n• Local: " . trim((string)$demanda['evento_local']);
+        }
+        if (!empty($demanda['evento_whatsapp'])) {
+            $eventoLinhas .= "\n• WhatsApp: " . trim((string)$demanda['evento_whatsapp']);
+        }
+        $eventoLinhas .= "\n";
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT nome_original, url
+        FROM demandas_internas_anexos
+        WHERE demanda_id = :id
+        ORDER BY criado_em ASC, id ASC
+        LIMIT 5
+    ");
+    $stmt->execute([':id' => $demandaId]);
+    $anexos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $anexosTexto = '';
+    if ($anexos) {
+        $anexosTexto = "\n📎 *Anexos:*";
+        foreach ($anexos as $anexo) {
+            $nome = trim((string)($anexo['nome_original'] ?? 'Arquivo'));
+            $anexosTexto .= "\n• {$nome}";
+        }
+        $anexosTexto .= "\n";
+    }
+
+    return trim(
+        "📌 *Nova demanda interna criada!*\n\n" .
+        "📝 *Demanda:* {$titulo}\n" .
+        "👤 *Responsável:* {$destino}\n" .
+        ($criador !== '' ? "🙋 *Criada por:* {$criador}\n" : '') .
+        "⚡ *Prioridade:* {$prioridade}\n" .
+        "📅 *Prazo:* {$prazoFormatado}\n" .
+        "🔎 *Código:* #{$demandaId}\n" .
+        ($descricao !== '' ? "\n💬 *Conteúdo da demanda:*\n{$descricao}\n" : '') .
+        $eventoLinhas .
+        $anexosTexto .
+        "\n➡️ Acesse a demanda pelo painel:\n{$url}"
+    );
+}
+
+function demandasInternasNotificarAtualizacaoWhatsapp(PDO $pdo, int $demandaId, int $autorId, string $tipo, string $conteudo, ?array $anexo = null): void
+{
+    try {
+        $stmt = $pdo->prepare("
+            SELECT titulo, responsavel_tipo, responsavel_id, responsavel_setor, criador_id
+            FROM demandas_internas
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $demandaId]);
+        $demanda = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$demanda) {
+            return;
+        }
+
+        $destinatarios = demandasInternasUsuariosDestino(
+            $pdo,
+            (string)($demanda['responsavel_tipo'] ?? 'usuario'),
+            (int)($demanda['responsavel_id'] ?? 0),
+            (string)($demanda['responsavel_setor'] ?? '')
+        );
+        $criadorId = (int)($demanda['criador_id'] ?? 0);
+        if ($criadorId > 0) {
+            $destinatarios[] = ['id' => $criadorId];
+        }
+
+        $destinatariosPorId = [];
+        foreach ($destinatarios as $destinatario) {
+            $id = (int)($destinatario['id'] ?? 0);
+            if ($id > 0 && $id !== $autorId) {
+                $destinatariosPorId[$id] = ['id' => $id];
+            }
+        }
+        if (!$destinatariosPorId) {
+            return;
+        }
+
+        $url = demandasInternasBuildUrl($demandaId);
+        $tituloDemanda = trim((string)($demanda['titulo'] ?? 'Demanda interna'));
+        $conteudo = trim($conteudo);
+        if ($conteudo !== '') {
+            $conteudo = strlen($conteudo) > 700 ? substr($conteudo, 0, 700) . '...' : $conteudo;
+        }
+
+        if ($tipo === 'anexo') {
+            $nomeAnexo = trim((string)($anexo['nome_original'] ?? 'Arquivo anexado'));
+            $linkAnexo = trim((string)($anexo['url'] ?? ''));
+            $whatsappMensagem = trim(
+                "📎 *Novo anexo em demanda interna!*\n\n" .
+                "📝 *Demanda:* {$tituloDemanda}\n" .
+                "🔎 *Código:* #{$demandaId}\n\n" .
+                "Arquivo: {$nomeAnexo}\n" .
+                ($linkAnexo !== '' ? "Link: {$linkAnexo}\n\n" : "\n") .
+                "➡️ Acesse a demanda pelo painel:\n{$url}"
+            );
+        } else {
+            $whatsappMensagem = trim(
+                "💬 *Nova mensagem em demanda interna!*\n\n" .
+                "📝 *Demanda:* {$tituloDemanda}\n" .
+                "🔎 *Código:* #{$demandaId}\n\n" .
+                ($conteudo !== '' ? "*Mensagem:*\n{$conteudo}\n\n" : '') .
+                "➡️ Acesse a demanda pelo painel:\n{$url}"
+            );
+        }
+
+        $dispatcher = new NotificationDispatcher($pdo);
+        $dispatcher->dispatch(array_values($destinatariosPorId), [
+            'tipo' => 'demanda_interna_atualizada',
+            'referencia_id' => $demandaId,
+            'titulo' => $tipo === 'anexo' ? 'Novo anexo em demanda' : 'Nova mensagem em demanda',
+            'mensagem' => $tipo === 'anexo' ? 'Novo anexo na demanda: ' . $tituloDemanda : 'Nova mensagem na demanda: ' . $tituloDemanda,
+            'url_destino' => $url,
+            'whatsapp_mensagem' => $whatsappMensagem,
+        ], [
+            'whatsapp' => true,
+        ]);
+    } catch (Throwable $e) {
+        error_log('[DEMANDAS INTERNAS] Falha ao notificar atualização WhatsApp da demanda #' . $demandaId . ': ' . $e->getMessage());
     }
 }
 
@@ -585,6 +772,7 @@ function demandasInternasMessage(PDO $pdo, int $userId, bool $isAdmin): void
     $stmt->execute([':demanda_id' => $id, ':autor_id' => $userId, ':mensagem' => $mensagem]);
     $mensagemId = (int)$stmt->fetchColumn();
     demandasInternasParseMentions($pdo, $id, $mensagemId, $userId, $mensagem);
+    demandasInternasNotificarAtualizacaoWhatsapp($pdo, $id, $userId, 'mensagem', $mensagem);
     demandasInternasJson(['success' => true]);
 }
 
@@ -719,6 +907,7 @@ function demandasInternasAttach(PDO $pdo, int $userId, bool $isAdmin): void
         ':url' => $upload['url'],
     ]);
     demandasInternasLog($pdo, $id, $userId, 'arquivo_anexado', 'Arquivo anexado: ' . $upload['nome_original']);
+    demandasInternasNotificarAtualizacaoWhatsapp($pdo, $id, $userId, 'anexo', '', $upload);
     demandasInternasJson(['success' => true]);
 }
 
@@ -801,6 +990,10 @@ function demandasInternasAttachGallery(PDO $pdo, int $userId, bool $isAdmin): vo
         ':url' => $url,
     ]);
     demandasInternasLog($pdo, $id, $userId, 'arquivo_anexado', 'Imagem anexada pela Galeria Smile: ' . $nome);
+    demandasInternasNotificarAtualizacaoWhatsapp($pdo, $id, $userId, 'anexo', '', [
+        'nome_original' => $nome,
+        'url' => $url,
+    ]);
     demandasInternasJson(['success' => true]);
 }
 

@@ -784,7 +784,7 @@ includeSidebar('Agenda');
 
                     <div class="form-group">
                         <label for="visitTelefone">Telefone do cliente *</label>
-                        <input type="tel" id="visitTelefone" autocomplete="off">
+                        <input type="tel" id="visitTelefone" autocomplete="off" inputmode="numeric" placeholder="12999999999" maxlength="11">
                     </div>
                 </div>
 
@@ -1290,6 +1290,19 @@ includeSidebar('Agenda');
             }
         }
 
+        function normalizeVisitPhoneForSmclick(value) {
+            let digits = String(value || '').replace(/\D+/g, '').replace(/^0+/, '');
+            if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+                digits = digits.slice(2);
+            }
+            return digits.slice(0, 11);
+        }
+
+        function isValidVisitPhoneForSmclick(value) {
+            const digits = normalizeVisitPhoneForSmclick(value);
+            return digits.length === 10 || digits.length === 11;
+        }
+
         function applyVisitDurationRule() {
             const tipoVisita = document.getElementById('visitTipo').value;
             const visitDuracao = document.getElementById('visitDuracao');
@@ -1310,7 +1323,7 @@ includeSidebar('Agenda');
                 : '';
             const tipoVisita = document.getElementById('visitTipo').value.trim();
             const cliente = document.getElementById('visitCliente').value.trim();
-            const telefone = document.getElementById('visitTelefone').value.trim();
+            const telefone = normalizeVisitPhoneForSmclick(document.getElementById('visitTelefone').value);
 
             return `VISITA ${local} - ${tipoVisita} ${cliente} ${telefone}`.replace(/\s+/g, ' ').trim();
         }
@@ -1609,6 +1622,9 @@ includeSidebar('Agenda');
 
         document.getElementById('visitTipo').addEventListener('change', function() {
             applyVisitDurationRule();
+        });
+        document.getElementById('visitTelefone').addEventListener('input', function() {
+            this.value = normalizeVisitPhoneForSmclick(this.value);
         });
         
         // Verificar permissões
@@ -1954,7 +1970,8 @@ includeSidebar('Agenda');
             if (isNovaVisita) {
                 const tipoVisita = document.getElementById('visitTipo').value.trim();
                 const cliente = document.getElementById('visitCliente').value.trim();
-                const telefone = document.getElementById('visitTelefone').value.trim();
+                const telefoneInput = document.getElementById('visitTelefone');
+                const telefone = normalizeVisitPhoneForSmclick(telefoneInput.value);
                 const espaco = document.getElementById('espaco').value;
                 const inicio = document.getElementById('inicio').value;
 
@@ -1962,6 +1979,11 @@ includeSidebar('Agenda');
                     showToast('❌ Preencha tipo de visita, local, cliente, telefone e horário.', 'error');
                     return;
                 }
+                if (!isValidVisitPhoneForSmclick(telefone)) {
+                    showToast('❌ Informe o telefone com DDD. Ex.: 12999999999.', 'error');
+                    return;
+                }
+                telefoneInput.value = telefone;
 
                 applyVisitDurationRule();
                 updateVisitEndFromDuration();

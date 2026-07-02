@@ -365,6 +365,26 @@ if ($tipo === 'demandas_fixas') {
         echo json_encode($resultado);
     }
 
+} elseif ($tipo === 'agenda_visitas_whatsapp') {
+    // Cron para confirmação de visitas por WhatsApp às 8h do dia da visita.
+    try {
+        require_once __DIR__ . '/agenda_helper.php';
+        $agenda = new AgendaHelper();
+        $resultado = $agenda->processarWhatsappConfirmacoesVisitas(
+            isset($_GET['limit']) ? (int)$_GET['limit'] : 100,
+            !empty($_GET['dry_run'])
+        );
+
+        cron_logger_finish($pdo, $execucao_id, !empty($resultado['success']), $resultado, $inicio_ms);
+        echo json_encode($resultado);
+
+    } catch (Exception $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
+        http_response_code(500);
+        echo json_encode($resultado);
+    }
+
 } elseif ($tipo === 'portao_auto_close') {
     // Cron para processar auto-fechamento do portao
     try {
@@ -434,6 +454,28 @@ if ($tipo === 'demandas_fixas') {
         echo json_encode($resultado);
     }
 
+} elseif ($tipo === 'eventos_feedback_fim_semana') {
+    // Cron de segunda-feira para pedir feedback dos eventos do fim de semana anterior.
+    try {
+        require_once __DIR__ . '/eventos_feedback_whatsapp_helper.php';
+
+        $resultado = eventos_feedback_whatsapp_processar($pdo, [
+            'dry_run' => !empty($_GET['dry_run']),
+            'force' => !empty($_GET['force']),
+            'ref_date' => $_GET['ref_date'] ?? null,
+            'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 200,
+        ]);
+
+        cron_logger_finish($pdo, $execucao_id, !empty($resultado['success']), $resultado, $inicio_ms);
+        echo json_encode($resultado);
+
+    } catch (Exception $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
+        http_response_code(500);
+        echo json_encode($resultado);
+    }
+
 } else {
     http_response_code(400);
     echo json_encode([
@@ -442,12 +484,14 @@ if ($tipo === 'demandas_fixas') {
         'tipos_disponiveis' => [
             'demandas_fixas',
             'notificacoes',
+            'agenda_visitas_whatsapp',
             'portao_auto_close',
             'google_calendar_daily',
             'google_calendar_sync',
             'google_calendar_renewal',
             'eventos_limpeza_anexos',
-            'eventos_formularios_pendentes'
+            'eventos_formularios_pendentes',
+            'eventos_feedback_fim_semana'
         ]
     ]);
 }

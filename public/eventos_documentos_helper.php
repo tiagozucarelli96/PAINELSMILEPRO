@@ -49,7 +49,28 @@ function eventos_documentos_ensure_schema(PDO $pdo): void
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_documentos_token ON eventos_documentos(minuta_token)");
     $pdo->exec("ALTER TABLE eventos_documentos ADD COLUMN IF NOT EXISTS minuta_aprovada_em TIMESTAMP NULL");
     $pdo->exec("ALTER TABLE eventos_documentos ADD COLUMN IF NOT EXISTS minuta_aprovada_ip VARCHAR(80) NULL");
+    eventos_documentos_ensure_clicksign_columns($pdo, 'eventos_documentos');
     $done = true;
+}
+
+function eventos_documentos_ensure_clicksign_columns(PDO $pdo, string $table): void
+{
+    if (!in_array($table, ['eventos_documentos', 'eventos_formatura_documentos'], true)) {
+        return;
+    }
+    if (!eventos_documentos_table_exists($pdo, $table)) {
+        return;
+    }
+
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN IF NOT EXISTS status_assinatura VARCHAR(40) NOT NULL DEFAULT 'nao_solicitada'");
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN IF NOT EXISTS clicksign_envelope_id VARCHAR(160) NULL");
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN IF NOT EXISTS clicksign_document_id VARCHAR(160) NULL");
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN IF NOT EXISTS clicksign_signer_id VARCHAR(160) NULL");
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN IF NOT EXISTS clicksign_sign_url TEXT NULL");
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN IF NOT EXISTS clicksign_payload JSONB NULL");
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN IF NOT EXISTS clicksign_ultimo_erro TEXT NULL");
+    $pdo->exec("ALTER TABLE {$table} ADD COLUMN IF NOT EXISTS enviado_assinatura_em TIMESTAMP NULL");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_{$table}_clicksign_envelope ON {$table}(clicksign_envelope_id)");
 }
 
 function eventos_documentos_table_exists(PDO $pdo, string $table): bool
@@ -282,6 +303,20 @@ function eventos_documentos_listar_formatura(PDO $pdo, int $eventoId): array
     if (!eventos_documentos_table_exists($pdo, 'eventos_formatura_documentos')) {
         return [];
     }
+    eventos_documentos_ensure_clicksign_columns($pdo, 'eventos_formatura_documentos');
+    $responsavelTelefoneExpr = "''";
+    if (eventos_documentos_table_exists($pdo, 'comercial_cadastro_clientes')) {
+        $telefoneParts = [];
+        if (eventos_documentos_column_exists($pdo, 'comercial_cadastro_clientes', 'telefone_whatsapp')) {
+            $telefoneParts[] = "NULLIF(TRIM(c.telefone_whatsapp), '')";
+        }
+        if (eventos_documentos_column_exists($pdo, 'comercial_cadastro_clientes', 'telefone')) {
+            $telefoneParts[] = "NULLIF(TRIM(c.telefone), '')";
+        }
+        if ($telefoneParts) {
+            $responsavelTelefoneExpr = 'COALESCE(' . implode(', ', $telefoneParts) . ", '')";
+        }
+    }
     $stmt = $pdo->prepare("
         SELECT d.id,
                d.evento_id,
@@ -292,6 +327,14 @@ function eventos_documentos_listar_formatura(PDO $pdo, int $eventoId): array
                d.minuta_token,
                d.assinaturas_realizadas,
                d.assinaturas_total,
+               d.status_assinatura,
+               d.clicksign_envelope_id,
+               d.clicksign_document_id,
+               d.clicksign_signer_id,
+               d.clicksign_sign_url,
+               d.clicksign_payload,
+               d.clicksign_ultimo_erro,
+               d.enviado_assinatura_em,
                d.created_by,
                d.created_at,
                d.updated_at,
@@ -300,6 +343,8 @@ function eventos_documentos_listar_formatura(PDO $pdo, int $eventoId): array
                COALESCE(NULLIF(TRIM(u.nome), ''), NULLIF(TRIM(u.email), ''), 'Sistema') AS criado_por_nome,
                f.nome_formando,
                COALESCE(NULLIF(TRIM(c.nome_completo), ''), '') AS responsavel_nome,
+               COALESCE(NULLIF(TRIM(c.email), ''), '') AS responsavel_email,
+               {$responsavelTelefoneExpr} AS responsavel_telefone,
                'formatura' AS origem
         FROM eventos_formatura_documentos d
         LEFT JOIN contrato_modelos m ON m.id = d.modelo_id

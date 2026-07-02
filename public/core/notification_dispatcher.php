@@ -229,6 +229,32 @@ class NotificationDispatcher {
         return $result;
     }
 
+    public function sendWhatsappDirect(string $phone, string $message, string $contactName = '', array $payload = []): bool {
+        $phoneE164 = $this->normalizePhoneE164($phone);
+        $message = trim($message);
+        if ($phoneE164 === '' || $message === '') {
+            return false;
+        }
+
+        $provider = $this->getWhatsappProvider($payload);
+        $sessionKey = trim((string)($payload['whatsapp_session_key'] ?? ''));
+        if ($provider === 'smilechat' && $sessionKey === '') {
+            $sessionKey = $this->getWhatsappSessionKey();
+        }
+
+        if ($provider === 'smilechat' && $sessionKey === '') {
+            return false;
+        }
+
+        return $this->sendWhatsappProviderMessage(
+            $provider,
+            $sessionKey,
+            $phoneE164,
+            $message,
+            $contactName !== '' ? $contactName : $phoneE164
+        );
+    }
+
     private function normalizeRecipients(array $recipients): array {
         $buffer = [];
         foreach ($recipients as $recipient) {

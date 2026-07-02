@@ -38,6 +38,7 @@ class AgendaHelper {
         $this->notificationDispatcher->ensureInternalSchema();
         $this->ensureGoogleSyncSchema();
         $this->ensureVisitDetailsSchema();
+        $this->ensureVisitWhatsappSchema();
         $this->ensureAgendaSettingsSchema();
         $this->ensureAvailabilitySchema();
     }
@@ -89,6 +90,249 @@ class AgendaHelper {
         } catch (Throwable $e) {
             error_log('[AGENDA_VISITA_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
         }
+    }
+
+    private function ensureVisitWhatsappSchema(): void {
+        if (!$this->pdo instanceof PDO) {
+            return;
+        }
+
+        try {
+            $this->pdo->exec("
+                CREATE TABLE IF NOT EXISTS agenda_visita_whatsapp_notificacoes (
+                    id BIGSERIAL PRIMARY KEY,
+                    evento_id INT NOT NULL REFERENCES agenda_eventos(id) ON DELETE CASCADE,
+                    tipo VARCHAR(40) NOT NULL,
+                    agendada_para TIMESTAMP NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+                    tentativas INT NOT NULL DEFAULT 0,
+                    enviado_em TIMESTAMP,
+                    ultimo_erro TEXT,
+                    criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+                    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+                    UNIQUE (evento_id, tipo)
+                )
+            ");
+            $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_agenda_visita_whatsapp_due ON agenda_visita_whatsapp_notificacoes(status, agendada_para)");
+        } catch (Throwable $e) {
+            error_log('[AGENDA_VISITA_WHATSAPP_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
+        }
+    }
+
+    private function normalizeVisitPhoneForWhatsapp(string $phone): string {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        $digits = ltrim($digits, '0');
+        if ($digits === '') {
+            return '';
+        }
+
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $digits = '55' . $digits;
+        }
+
+        return strlen($digits) >= 12 ? $digits : '';
+    }
+
+    private function buildVisitWhatsappMessage(array $evento): string {
+        $inicio = strtotime((string)($evento['inicio'] ?? ''));
+        $data = $inicio !== false ? date('d/m/Y', $inicio) : '';
+        $hora = $inicio !== false ? date('H:i', $inicio) : '';
+        $unidade = trim((string)($evento['espaco_nome'] ?? 'Smile Eventos'));
+        $endereco = $this->getVisitUnitAddress($evento);
+
+        return trim(
+            "✅ *Visita agendada com sucesso!*\n\n" .
+            "📍 *Buffet:* {$unidade}\n" .
+            ($endereco !== '' ? "🗺️ *Endereço:* {$endereco}\n" : '') .
+            "📅 *Data:* {$data}\n" .
+            "⏰ *Horário:* {$hora}\n\n" .
+            "No próprio dia, entraremos em contato para confirmar sua presença.\n\n" .
+            "⚠️ É importante responder a essa confirmação para que a visita permaneça ativa em nossa agenda.\n\n" .
+            "Obrigada! 💙"
+        );
+    }
+
+    private function getVisitUnitAddress(array $evento): string {
+        $slug = strtolower(trim((string)($evento['espaco_slug'] ?? '')));
+        $nome = strtolower(trim((string)($evento['espaco_nome'] ?? '')));
+
+        if ($slug === 'lisbon' || str_contains($nome, 'lisbon')) {
+            return 'Av. Egídio Antônio Coimbra, 458 - Res. Parque dos Sinos, Jacareí - SP, 12328-513';
+        }
+
+        if ($slug === 'diverkids' || str_contains($nome, 'diver')) {
+            return 'Av. Elmira Martins Moreira, 611 - Altos de Santana, Jacareí - SP, 12306-730';
+        }
+
+        if (in_array($slug, ['garden', 'cristal'], true) || str_contains($nome, 'garden') || str_contains($nome, 'cristal')) {
+            return 'R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690';
+        }
+
+        return '';
+    }
+
+    private function buildVisitConfirmationWhatsappMessage(): string {
+        return trim(
+            "Olá! Tudo bem? 😊\n\n" .
+            "📍 Estamos entrando em contato para *confirmar sua visita* ao nosso espaço.\n\n" .
+            "Você poderia, por gentileza, confirmar sua presença?\n\n" .
+            "⏰ Trabalhamos com tolerância de atraso de até *10 minutos*, garantindo a qualidade do atendimento e evitando conflitos de horário.\n\n" .
+            "⚠️ Sem a confirmação, a visita poderá ser cancelada.\n" .
+            "Pedimos que nos retorne o quanto antes.\n\n" .
+            "Agradecemos sua atenção. 💙"
+        );
+    }
+
+    private function agendarWhatsappConfirmacaoVisita(int $evento_id): void {
+        if ($evento_id <= 0) {
+            return;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare("
+                INSERT INTO agenda_visita_whatsapp_notificacoes (
+                    evento_id, tipo, agendada_para, status, tentativas, ultimo_erro, atualizado_em
+                )
+                SELECT id, 'confirmacao_8h', (DATE(inicio) + TIME '08:00'), 'pendente', 0, NULL, NOW()
+                FROM agenda_eventos
+                WHERE id = :evento_id AND tipo = 'visita'
+                ON CONFLICT (evento_id, tipo) DO UPDATE SET
+                    agendada_para = EXCLUDED.agendada_para,
+                    status = 'pendente',
+                    ultimo_erro = NULL,
+                    atualizado_em = NOW()
+                WHERE agenda_visita_whatsapp_notificacoes.status <> 'enviada'
+            ");
+            $stmt->execute([':evento_id' => $evento_id]);
+        } catch (Throwable $e) {
+            error_log('[AGENDA_VISITA_WHATSAPP] Falha ao agendar confirmação da visita ' . $evento_id . ': ' . $e->getMessage());
+        }
+    }
+
+    private function enviarWhatsappClienteVisita(int $evento_id): array {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT ae.id, ae.inicio, ae.cliente_nome, ae.cliente_telefone, esp.nome AS espaco_nome, esp.slug AS espaco_slug
+                FROM agenda_eventos ae
+                LEFT JOIN agenda_espacos esp ON esp.id = ae.espaco_id
+                WHERE ae.id = ? AND ae.tipo = 'visita'
+                LIMIT 1
+            ");
+            $stmt->execute([$evento_id]);
+            $evento = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$evento) {
+                return ['success' => false, 'error' => 'Visita não encontrada para notificação.'];
+            }
+
+            $telefone = $this->normalizeVisitPhoneForWhatsapp((string)($evento['cliente_telefone'] ?? ''));
+            if ($telefone === '') {
+                return ['success' => false, 'error' => 'Telefone da visita inválido para WhatsApp.'];
+            }
+
+            $mensagem = $this->buildVisitWhatsappMessage($evento);
+            $ok = $this->notificationDispatcher->sendWhatsappDirect(
+                $telefone,
+                $mensagem,
+                (string)($evento['cliente_nome'] ?? $telefone)
+            );
+
+            return ['success' => $ok, 'error' => $ok ? null : 'Falha ao enviar WhatsApp pela SMClick.'];
+        } catch (Throwable $e) {
+            error_log('[AGENDA_VISITA_WHATSAPP] Falha ao enviar WhatsApp da visita ' . $evento_id . ': ' . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    public function processarWhatsappConfirmacoesVisitas(int $limit = 100, bool $dryRun = false): array {
+        $this->ensureVisitWhatsappSchema();
+        $limit = max(1, min(500, $limit));
+        $resultado = [
+            'success' => true,
+            'processadas' => 0,
+            'enviadas' => 0,
+            'falhas' => 0,
+            'canceladas' => 0,
+            'dry_run' => $dryRun,
+        ];
+
+        $stmt = $this->pdo->prepare("
+            SELECT
+                n.id AS notificacao_id,
+                n.evento_id,
+                ae.tipo,
+                ae.status AS evento_status,
+                ae.cliente_nome,
+                ae.cliente_telefone
+            FROM agenda_visita_whatsapp_notificacoes n
+            JOIN agenda_eventos ae ON ae.id = n.evento_id
+            WHERE n.tipo = 'confirmacao_8h'
+              AND n.status IN ('pendente', 'erro')
+              AND n.agendada_para <= NOW()
+            ORDER BY n.agendada_para ASC, n.id ASC
+            LIMIT :limit
+        ");
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $pendentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($pendentes as $item) {
+            $resultado['processadas']++;
+            $notificacaoId = (int)$item['notificacao_id'];
+
+            if (($item['tipo'] ?? '') !== 'visita' || ($item['evento_status'] ?? '') !== 'agendado') {
+                if (!$dryRun) {
+                    $this->marcarWhatsappConfirmacao($notificacaoId, 'cancelada', null);
+                }
+                $resultado['canceladas']++;
+                continue;
+            }
+
+            $telefone = $this->normalizeVisitPhoneForWhatsapp((string)($item['cliente_telefone'] ?? ''));
+            if ($telefone === '') {
+                if (!$dryRun) {
+                    $this->marcarWhatsappConfirmacao($notificacaoId, 'erro', 'Telefone inválido para WhatsApp.');
+                }
+                $resultado['falhas']++;
+                continue;
+            }
+
+            if ($dryRun) {
+                continue;
+            }
+
+            $ok = $this->notificationDispatcher->sendWhatsappDirect(
+                $telefone,
+                $this->buildVisitConfirmationWhatsappMessage(),
+                (string)($item['cliente_nome'] ?? $telefone)
+            );
+
+            if ($ok) {
+                $this->marcarWhatsappConfirmacao($notificacaoId, 'enviada', null);
+                $resultado['enviadas']++;
+            } else {
+                $this->marcarWhatsappConfirmacao($notificacaoId, 'erro', 'Falha ao enviar WhatsApp pela SMClick.');
+                $resultado['falhas']++;
+            }
+        }
+
+        return $resultado;
+    }
+
+    private function marcarWhatsappConfirmacao(int $notificacaoId, string $status, ?string $erro): void {
+        $stmt = $this->pdo->prepare("
+            UPDATE agenda_visita_whatsapp_notificacoes
+            SET status = :status,
+                tentativas = CASE WHEN :status = 'erro' THEN tentativas + 1 ELSE tentativas END,
+                enviado_em = CASE WHEN :status = 'enviada' THEN NOW() ELSE enviado_em END,
+                ultimo_erro = :erro,
+                atualizado_em = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':status' => $status,
+            ':erro' => $erro,
+            ':id' => $notificacaoId,
+        ]);
     }
 
     private function ensureAgendaSettingsSchema(): void {
@@ -780,6 +1024,13 @@ class AgendaHelper {
                         'error' => 'Informe nome e telefone do cliente.'
                     ];
                 }
+                $cliente_telefone_normalizado = $this->normalizeVisitPhoneForWhatsapp($cliente_telefone);
+                if ($cliente_telefone_normalizado === '') {
+                    return [
+                        'success' => false,
+                        'error' => 'Informe o telefone do cliente com DDD. Exemplo: 12999999999.'
+                    ];
+                }
                 if ($visita_duracao !== $duracao_por_tipo[$visita_tipo]) {
                     return [
                         'success' => false,
@@ -839,7 +1090,7 @@ class AgendaHelper {
                 $cor_responsavel,
                 ($dados['tipo'] ?? '') === 'visita' ? trim((string)($dados['visita_tipo'] ?? '')) : null,
                 ($dados['tipo'] ?? '') === 'visita' ? trim((string)($dados['cliente_nome'] ?? '')) : null,
-                ($dados['tipo'] ?? '') === 'visita' ? trim((string)($dados['cliente_telefone'] ?? '')) : null,
+                ($dados['tipo'] ?? '') === 'visita' ? $this->normalizeVisitPhoneForWhatsapp((string)($dados['cliente_telefone'] ?? '')) : null,
                 ($dados['tipo'] ?? '') === 'visita' ? (int)($dados['visita_duracao_minutos'] ?? 0) : null
             ]);
             
@@ -848,10 +1099,18 @@ class AgendaHelper {
             // Enviar notificação de criação
             $this->enviarNotificacaoEvento($evento_id, 'criacao');
             $this->syncEventoToGoogle($evento_id);
+            $whatsappCliente = ($dados['tipo'] ?? '') === 'visita'
+                ? $this->enviarWhatsappClienteVisita((int)$evento_id)
+                : ['success' => false, 'error' => null];
+            if (($dados['tipo'] ?? '') === 'visita') {
+                $this->agendarWhatsappConfirmacaoVisita((int)$evento_id);
+            }
             
             return [
                 'success' => true,
-                'evento_id' => $evento_id
+                'evento_id' => $evento_id,
+                'whatsapp_cliente_enviado' => !empty($whatsappCliente['success']),
+                'whatsapp_cliente_erro' => $whatsappCliente['error'] ?? null
             ];
             
         } catch (Exception $e) {
@@ -982,6 +1241,9 @@ class AgendaHelper {
             // Enviar notificação de alteração
             $this->enviarNotificacaoEvento($evento_id, 'alteracao');
             $this->syncEventoToGoogle($evento_id);
+            if (($dados['tipo'] ?? '') === 'visita') {
+                $this->agendarWhatsappConfirmacaoVisita((int)$evento_id);
+            }
             
             return [
                 'success' => true
