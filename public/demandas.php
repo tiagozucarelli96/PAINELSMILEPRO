@@ -349,6 +349,24 @@ includeSidebar('Demandas');
     font: inherit;
     color: #172033;
 }
+.checkbox-field {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+}
+.checkbox-field label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    cursor: pointer;
+}
+.checkbox-field input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    flex: 0 0 auto;
+}
 .grid-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -505,7 +523,7 @@ includeSidebar('Demandas');
                         <select id="create-responsavel-setor" name="responsavel_setor"></select>
                     </div>
                 </div>
-                <div class="field hidden" id="create-jordao-wrap">
+                <div class="field checkbox-field hidden" id="create-jordao-wrap">
                     <label>
                         <input type="checkbox" id="create-enviar-jordao" name="enviar_jordao" value="1">
                         Enviar para o Jordão?
