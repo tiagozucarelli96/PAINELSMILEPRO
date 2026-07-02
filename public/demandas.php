@@ -265,6 +265,12 @@ includeSidebar('Demandas');
     min-height: 72px;
     resize: vertical;
 }
+.composer-hint {
+    color: #64748b;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    margin-top: 0.35rem;
+}
 .composer-row {
     margin-top: 0.55rem;
     display: flex;
