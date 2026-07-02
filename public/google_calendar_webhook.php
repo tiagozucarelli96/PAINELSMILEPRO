@@ -117,14 +117,18 @@ try {
         
         error_log("[GOOGLE_WEBHOOK] ✅ Flag 'precisa_sincronizar' marcado para: " . substr($channel_token, 0, 30));
 
-        // Processar sincronização imediatamente (evita depender de cron)
+        // Disparar processamento fora da resposta do webhook.
+        // No servidor PHP embutido não existe fastcgi_finish_request, então processar aqui
+        // prende um worker e deixa o painel lento.
         $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
         if (file_exists($processor_script)) {
-            require_once $processor_script;
-            if (function_exists('google_calendar_sync_processor_run')) {
-                $processor_result = google_calendar_sync_processor_run($pdo);
-                error_log("[GOOGLE_WEBHOOK] Resultado do processador: " . json_encode($processor_result));
-            }
+            $cmd = sprintf(
+                '%s %s > /proc/1/fd/2 2>&1 &',
+                escapeshellarg(PHP_BINARY),
+                escapeshellarg($processor_script)
+            );
+            @exec($cmd);
+            error_log("[GOOGLE_WEBHOOK] Processador disparado em background");
         } else {
             error_log("[GOOGLE_WEBHOOK] ⚠️ Processador não encontrado: $processor_script");
         }
