@@ -4,8 +4,10 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/email_helper.php';
 require_once __DIR__ . '/core/notification_dispatcher.php';
+require_once __DIR__ . '/core/google_calendar_helper.php';
 
 class AgendaHelper {
+    private const GOOGLE_TIMEZONE = 'America/Sao_Paulo';
     private $pdo;
     private $emailHelper;
     private $notificationDispatcher;
@@ -17,6 +19,31 @@ class AgendaHelper {
         $this->emailHelper = new EmailHelper();
         $this->notificationDispatcher = new NotificationDispatcher($this->pdo);
         $this->notificationDispatcher->ensureInternalSchema();
+        $this->ensureGoogleSyncSchema();
+    }
+
+    /**
+     * Garante os metadados necessários para vincular eventos internos ao Google Calendar.
+     */
+    private function ensureGoogleSyncSchema(): void {
+        if (!$this->pdo instanceof PDO) {
+            return;
+        }
+
+        try {
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS google_calendar_id VARCHAR(255)");
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(255)");
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS google_sync_status VARCHAR(20)");
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS google_sync_error TEXT");
+            $this->pdo->exec("ALTER TABLE agenda_eventos ADD COLUMN IF NOT EXISTS google_synced_at TIMESTAMP");
+            $this->pdo->exec("
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_agenda_eventos_google_event
+                ON agenda_eventos(google_calendar_id, google_event_id)
+                WHERE google_event_id IS NOT NULL
+            ");
+        } catch (Throwable $e) {
+            error_log('[AGENDA_GOOGLE_SYNC] Falha ao validar schema: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -40,6 +67,166 @@ class AgendaHelper {
         }
 
         return (bool)$value;
+    }
+
+    private function getActiveGoogleCalendarConfig(): ?array {
+        try {
+            $stmt = $this->pdo->query("
+                SELECT google_calendar_id, google_calendar_name, ativo
+                FROM google_calendar_config
+                WHERE ativo = TRUE
+                LIMIT 1
+            ");
+            $config = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $config ?: null;
+        } catch (Throwable $e) {
+            error_log('[AGENDA_GOOGLE_SYNC] Config Google indisponível: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    private function getAgendaEventoForGoogle($evento_id): ?array {
+        $stmt = $this->pdo->prepare("
+            SELECT ae.*, esp.nome AS espaco_nome, u.nome AS responsavel_nome
+            FROM agenda_eventos ae
+            LEFT JOIN agenda_espacos esp ON ae.espaco_id = esp.id
+            LEFT JOIN usuarios u ON u.id = ae.responsavel_usuario_id
+            WHERE ae.id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([(int)$evento_id]);
+        $evento = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $evento ?: null;
+    }
+
+    private function googleDateTime($value): string {
+        $dt = new DateTimeImmutable((string)$value, new DateTimeZone(self::GOOGLE_TIMEZONE));
+        return $dt->format('Y-m-d\TH:i:s');
+    }
+
+    private function buildGoogleEventPayload(array $evento): array {
+        $descricao = trim((string)($evento['descricao'] ?? ''));
+        $metadados = [
+            'Origem: Painel Smile PRO',
+            'ID interno: ' . (int)$evento['id'],
+        ];
+
+        if (!empty($evento['responsavel_nome'])) {
+            $metadados[] = 'Responsável: ' . (string)$evento['responsavel_nome'];
+        }
+
+        $descricaoGoogle = trim($descricao . "\n\n" . implode("\n", $metadados));
+
+        $payload = [
+            'summary' => (string)$evento['titulo'],
+            'description' => $descricaoGoogle,
+            'start' => [
+                'dateTime' => $this->googleDateTime($evento['inicio']),
+                'timeZone' => self::GOOGLE_TIMEZONE,
+            ],
+            'end' => [
+                'dateTime' => $this->googleDateTime($evento['fim']),
+                'timeZone' => self::GOOGLE_TIMEZONE,
+            ],
+            'extendedProperties' => [
+                'private' => [
+                    'painel_smile' => '1',
+                    'agenda_evento_id' => (string)(int)$evento['id'],
+                ],
+            ],
+        ];
+
+        if (!empty($evento['espaco_nome'])) {
+            $payload['location'] = (string)$evento['espaco_nome'];
+        }
+
+        return $payload;
+    }
+
+    private function markGoogleSyncSuccess($evento_id, string $calendar_id, string $google_event_id): void {
+        $stmt = $this->pdo->prepare("
+            UPDATE agenda_eventos
+            SET google_calendar_id = ?,
+                google_event_id = ?,
+                google_sync_status = 'sincronizado',
+                google_sync_error = NULL,
+                google_synced_at = NOW()
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            $calendar_id,
+            $google_event_id !== '' ? $google_event_id : null,
+            (int)$evento_id
+        ]);
+    }
+
+    private function markGoogleSyncError($evento_id, Throwable $e): void {
+        $stmt = $this->pdo->prepare("
+            UPDATE agenda_eventos
+            SET google_sync_status = 'erro',
+                google_sync_error = ?,
+                google_synced_at = NOW()
+            WHERE id = ?
+        ");
+        $stmt->execute([substr($e->getMessage(), 0, 1000), (int)$evento_id]);
+    }
+
+    private function syncEventoToGoogle($evento_id): void {
+        $config = $this->getActiveGoogleCalendarConfig();
+        if (!$config || empty($config['google_calendar_id'])) {
+            return;
+        }
+
+        $evento = $this->getAgendaEventoForGoogle($evento_id);
+        if (!$evento) {
+            return;
+        }
+
+        try {
+            $helper = new GoogleCalendarHelper();
+            $calendar_id = (string)$config['google_calendar_id'];
+            $google_event_id = trim((string)($evento['google_event_id'] ?? ''));
+
+            if (($evento['status'] ?? '') === 'cancelado') {
+                if ($google_event_id !== '') {
+                    $helper->deleteEvent($calendar_id, $google_event_id);
+                }
+                $this->markGoogleSyncSuccess($evento_id, $calendar_id, $google_event_id);
+                return;
+            }
+
+            $payload = $this->buildGoogleEventPayload($evento);
+            if ($google_event_id !== '') {
+                $response = $helper->updateEvent($calendar_id, $google_event_id, $payload);
+            } else {
+                $response = $helper->createEvent($calendar_id, $payload);
+                $google_event_id = (string)($response['id'] ?? '');
+            }
+
+            if ($google_event_id === '') {
+                throw new RuntimeException('Google não retornou o ID do evento sincronizado.');
+            }
+
+            $this->markGoogleSyncSuccess($evento_id, $calendar_id, $google_event_id);
+        } catch (Throwable $e) {
+            error_log('[AGENDA_GOOGLE_SYNC] Falha ao sincronizar evento ' . (int)$evento_id . ': ' . $e->getMessage());
+            $this->markGoogleSyncError($evento_id, $e);
+        }
+    }
+
+    private function deleteEventoFromGoogleIfLinked(array $evento): void {
+        $calendar_id = trim((string)($evento['google_calendar_id'] ?? ''));
+        $google_event_id = trim((string)($evento['google_event_id'] ?? ''));
+        if ($calendar_id === '' || $google_event_id === '') {
+            return;
+        }
+
+        try {
+            $helper = new GoogleCalendarHelper();
+            $helper->deleteEvent($calendar_id, $google_event_id);
+        } catch (Throwable $e) {
+            error_log('[AGENDA_GOOGLE_SYNC] Falha ao excluir evento Google ' . $google_event_id . ': ' . $e->getMessage());
+        }
     }
 
     /**
@@ -212,6 +399,7 @@ class AgendaHelper {
             
             // Enviar notificação de criação
             $this->enviarNotificacaoEvento($evento_id, 'criacao');
+            $this->syncEventoToGoogle($evento_id);
             
             return [
                 'success' => true,
@@ -341,6 +529,7 @@ class AgendaHelper {
             
             // Enviar notificação de alteração
             $this->enviarNotificacaoEvento($evento_id, 'alteracao');
+            $this->syncEventoToGoogle($evento_id);
             
             return [
                 'success' => true
@@ -359,6 +548,11 @@ class AgendaHelper {
      */
     public function excluirEvento($evento_id) {
         try {
+            $evento = $this->getAgendaEventoForGoogle($evento_id);
+            if ($evento) {
+                $this->deleteEventoFromGoogleIfLinked($evento);
+            }
+
             $stmt = $this->pdo->prepare("DELETE FROM agenda_eventos WHERE id = ?");
             $stmt->execute([$evento_id]);
             

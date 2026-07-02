@@ -353,6 +353,7 @@ class GoogleCalendarHelper {
      */
     private function makeApiRequest($url, $method = 'GET', $data = null) {
         $access_token = $this->getValidAccessToken();
+        $method = strtoupper((string)$method);
         
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -361,8 +362,13 @@ class GoogleCalendarHelper {
             'Content-Type: application/json'
         ]);
         
-        if ($method === 'POST' && $data) {
+        if ($method === 'POST') {
             curl_setopt($ch, CURLOPT_POST, true);
+        } elseif ($method !== 'GET') {
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        }
+
+        if ($data !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         }
         
@@ -375,7 +381,11 @@ class GoogleCalendarHelper {
             throw new Exception("Erro na requisição: $error");
         }
         
-        if ($http_code !== 200) {
+        if ($http_code === 204) {
+            return [];
+        }
+
+        if ($http_code < 200 || $http_code >= 300) {
             $error_data = json_decode($response, true);
             $error_message = isset($error_data['error']['message']) 
                 ? $error_data['error']['message'] 
@@ -387,6 +397,10 @@ class GoogleCalendarHelper {
             throw new Exception("Erro na API do Google (HTTP $http_code): $error_message");
         }
         
+        if (trim((string)$response) === '') {
+            return [];
+        }
+
         $decoded = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             error_log("[GOOGLE_CALENDAR] Erro ao decodificar JSON: " . json_last_error_msg());
@@ -397,6 +411,31 @@ class GoogleCalendarHelper {
         return $decoded;
     }
     
+    /**
+     * Criar evento no Google Calendar.
+     */
+    public function createEvent(string $calendar_id, array $event_data): array {
+        $url = "https://www.googleapis.com/calendar/v3/calendars/" . urlencode($calendar_id) . "/events";
+        return $this->makeApiRequest($url, 'POST', $event_data);
+    }
+
+    /**
+     * Atualizar parcialmente um evento no Google Calendar.
+     */
+    public function updateEvent(string $calendar_id, string $google_event_id, array $event_data): array {
+        $url = "https://www.googleapis.com/calendar/v3/calendars/" . urlencode($calendar_id) . "/events/" . urlencode($google_event_id);
+        return $this->makeApiRequest($url, 'PATCH', $event_data);
+    }
+
+    /**
+     * Excluir evento no Google Calendar.
+     */
+    public function deleteEvent(string $calendar_id, string $google_event_id): bool {
+        $url = "https://www.googleapis.com/calendar/v3/calendars/" . urlencode($calendar_id) . "/events/" . urlencode($google_event_id);
+        $this->makeApiRequest($url, 'DELETE');
+        return true;
+    }
+
     /**
      * Listar calendários do usuário
      */

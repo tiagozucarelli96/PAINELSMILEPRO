@@ -74,6 +74,13 @@ try {
                     FROM google_calendar_eventos
                     WHERE google_calendar_id = :calendar_id
                       AND status = 'confirmed'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM agenda_eventos ae
+                          WHERE ae.google_calendar_id = google_calendar_eventos.google_calendar_id
+                            AND ae.google_event_id = google_calendar_eventos.google_event_id
+                            AND ae.google_event_id IS NOT NULL
+                      )
                       AND (
                           DATE(inicio) BETWEEN DATE(:start) AND DATE(:end)
                           OR DATE(fim) BETWEEN DATE(:start) AND DATE(:end)
