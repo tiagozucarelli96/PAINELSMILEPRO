@@ -61,16 +61,32 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
             vencimento DATE NULL,
             status VARCHAR(30) NOT NULL DEFAULT 'pendente',
             forma_pagamento VARCHAR(30) NOT NULL DEFAULT 'manual',
+            carteira VARCHAR(20) NOT NULL DEFAULT 'manual',
+            modo_pagamento VARCHAR(30) NULL,
+            unidade VARCHAR(120) NULL,
+            parcelamento_grupo VARCHAR(80) NULL,
+            parcela_numero INTEGER NOT NULL DEFAULT 1,
+            parcelas_total INTEGER NOT NULL DEFAULT 1,
+            pago_em TIMESTAMP NULL,
             created_by INTEGER NULL,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
     ");
 
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS carteira VARCHAR(20) NOT NULL DEFAULT 'manual'");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS modo_pagamento VARCHAR(30) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS unidade VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS parcelamento_grupo VARCHAR(80) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS parcela_numero INTEGER NOT NULL DEFAULT 1");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS parcelas_total INTEGER NOT NULL DEFAULT 1");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pago_em TIMESTAMP NULL");
+
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_formandos_evento ON eventos_formatura_formandos(evento_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_formandos_cliente ON eventos_formatura_formandos(cliente_cadastro_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_formando ON eventos_formatura_financeiro(formando_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_evento ON eventos_formatura_financeiro(evento_id)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_grupo ON eventos_formatura_financeiro(parcelamento_grupo)");
 
     $done = true;
 }
@@ -135,6 +151,53 @@ function eventos_formatura_clientes(PDO $pdo): array
     return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
 }
 
+function eventos_formatura_unidades(PDO $pdo, string $eventoUnidade): array
+{
+    $unidades = [];
+    try {
+        $stmt = $pdo->query("
+            SELECT DISTINCT TRIM(space_visivel) AS unidade
+            FROM logistica_eventos_espelho
+            WHERE COALESCE(TRIM(space_visivel), '') <> ''
+            ORDER BY TRIM(space_visivel)
+            LIMIT 80
+        ");
+        $unidades = $stmt ? array_values(array_filter(array_map(static fn($row) => (string)$row['unidade'], $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []))) : [];
+    } catch (Throwable $e) {
+        $unidades = [];
+    }
+
+    if ($eventoUnidade !== '' && !in_array($eventoUnidade, $unidades, true)) {
+        array_unshift($unidades, $eventoUnidade);
+    }
+
+    return $unidades ?: ['Não informado'];
+}
+
+function eventos_formatura_label_modo(string $modo): string
+{
+    return [
+        'pix' => 'Pix',
+        'cartao_credito' => 'Cartão de crédito',
+        'dinheiro' => 'Dinheiro',
+        'cartao_debito' => 'Cartão de débito',
+        'nao_informado' => 'Não informado',
+        'cartao' => 'Cartão',
+        'transferencia' => 'Transferência',
+        'outro' => 'Outro',
+        'manual' => 'Manual',
+    ][$modo] ?? $modo;
+}
+
+function eventos_formatura_label_status(string $status): string
+{
+    return [
+        'pendente' => 'Pendente',
+        'pago' => 'Pago',
+        'cancelado' => 'Cancelado',
+    ][$status] ?? $status;
+}
+
 function eventos_formatura_formandos(PDO $pdo, int $eventoId): array
 {
     $stmt = $pdo->prepare("
@@ -190,6 +253,75 @@ function eventos_formatura_redirect_financeiro(int $eventoId, int $formandoId): 
     exit;
 }
 
+function eventos_formatura_salvar_receitas_manual_lote(PDO $pdo, int $eventoId, int $formandoId, array $dados, int $userId): array
+{
+    $descricaoBase = trim((string)($dados['descricao'] ?? 'Receita do formando')) ?: 'Receita do formando';
+    $unidade = trim((string)($dados['unidade'] ?? ''));
+    $modo = eventos_financeiro_normalizar_modo((string)($dados['modo_pagamento'] ?? ''), 'manual');
+    $status = (string)($dados['status_pagamento'] ?? 'pendente');
+    $status = in_array($status, ['pendente', 'pago'], true) ? $status : 'pendente';
+    $vencimentos = is_array($dados['parcela_vencimento'] ?? null) ? $dados['parcela_vencimento'] : [];
+    $valores = is_array($dados['parcela_valor'] ?? null) ? $dados['parcela_valor'] : [];
+    $totalParcelas = max(1, count($valores));
+    $grupo = 'formatura_manual_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+
+    if (empty($valores)) {
+        return ['ok' => false, 'error' => 'Informe pelo menos uma parcela.'];
+    }
+
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        foreach ($valores as $index => $valorRaw) {
+            $valor = eventos_formatura_money($valorRaw);
+            if ($valor <= 0) {
+                throw new RuntimeException('Todas as parcelas precisam ter valor maior que zero.');
+            }
+
+            $numero = $index + 1;
+            $descricao = $totalParcelas > 1 ? $descricaoBase . " ({$numero}/{$totalParcelas})" : $descricaoBase;
+            $vencimento = trim((string)($vencimentos[$index] ?? ''));
+            $stmt = $pdo->prepare("
+                INSERT INTO eventos_formatura_financeiro
+                    (formando_id, evento_id, descricao, valor, vencimento, status, forma_pagamento,
+                     carteira, modo_pagamento, unidade, parcelamento_grupo, parcela_numero, parcelas_total,
+                     pago_em, created_by, updated_at)
+                VALUES
+                    (:formando_id, :evento_id, :descricao, :valor, CAST(NULLIF(:vencimento, '') AS DATE), :status,
+                     :forma_pagamento, 'manual', :modo_pagamento, :unidade, :parcelamento_grupo, :parcela_numero,
+                     :parcelas_total, CASE WHEN :status_pago = 'pago' THEN NOW() ELSE NULL END, :created_by, NOW())
+            ");
+            $stmt->execute([
+                ':formando_id' => $formandoId,
+                ':evento_id' => $eventoId,
+                ':descricao' => $descricao,
+                ':valor' => $valor,
+                ':vencimento' => $vencimento,
+                ':status' => $status,
+                ':status_pago' => $status,
+                ':forma_pagamento' => $modo,
+                ':modo_pagamento' => $modo,
+                ':unidade' => $unidade !== '' ? $unidade : null,
+                ':parcelamento_grupo' => $grupo,
+                ':parcela_numero' => $numero,
+                ':parcelas_total' => $totalParcelas,
+                ':created_by' => $userId > 0 ? $userId : null,
+            ]);
+        }
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+        return ['ok' => true, 'created' => $totalParcelas];
+    } catch (Throwable $e) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
 $eventoId = (int)($_GET['evento_id'] ?? $_POST['evento_id'] ?? 0);
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $messages = [];
@@ -209,6 +341,8 @@ $tipoEvento = eventos_reuniao_normalizar_tipo_evento_real((string)($evento['tipo
 if ($tipoEvento !== 'formatura') {
     $errors[] = 'Este evento não está marcado como Formatura.';
 }
+$eventoUnidade = trim((string)($evento['space_visivel'] ?? ''));
+$unidades = eventos_formatura_unidades($pdo, $eventoUnidade);
 
 $requestMethod = (string)($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
@@ -298,12 +432,7 @@ if ($requestMethod === 'POST') {
     if ($action === 'save_financeiro') {
         $formandoId = (int)($_POST['formando_id'] ?? 0);
         $descricao = trim((string)($_POST['descricao'] ?? ''));
-        $valor = eventos_formatura_money($_POST['valor'] ?? 0);
-        $vencimento = trim((string)($_POST['vencimento'] ?? ''));
-        $status = (string)($_POST['status'] ?? 'pendente');
-        if (!in_array($status, ['pendente', 'pago', 'cancelado'], true)) {
-            $status = 'pendente';
-        }
+        $valoresParcelas = is_array($_POST['parcela_valor'] ?? null) ? $_POST['parcela_valor'] : [];
 
         if ($formandoId <= 0) {
             $errors[] = 'Selecione o formando para o lançamento.';
@@ -311,8 +440,8 @@ if ($requestMethod === 'POST') {
         if ($descricao === '') {
             $errors[] = 'Informe a descrição do lançamento.';
         }
-        if ($valor <= 0) {
-            $errors[] = 'Informe um valor maior que zero.';
+        if (empty($valoresParcelas)) {
+            $errors[] = 'Informe pelo menos uma parcela.';
         }
 
         if (empty($errors)) {
@@ -324,24 +453,13 @@ if ($requestMethod === 'POST') {
         }
 
         if (empty($errors)) {
-            $stmt = $pdo->prepare("
-                INSERT INTO eventos_formatura_financeiro
-                    (formando_id, evento_id, descricao, valor, vencimento, status, forma_pagamento, created_by, updated_at)
-                VALUES
-                    (:formando_id, :evento_id, :descricao, :valor, CAST(NULLIF(:vencimento, '') AS DATE), :status, 'manual', :created_by, NOW())
-            ");
-            $stmt->execute([
-                ':formando_id' => $formandoId,
-                ':evento_id' => $eventoId,
-                ':descricao' => $descricao,
-                ':valor' => $valor,
-                ':vencimento' => $vencimento,
-                ':status' => $status,
-                ':created_by' => $userId > 0 ? $userId : null,
-            ]);
-
-            $_SESSION['eventos_formatura_message'] = 'Lançamento financeiro criado.';
-            eventos_formatura_redirect_financeiro($eventoId, $formandoId);
+            $result = eventos_formatura_salvar_receitas_manual_lote($pdo, $eventoId, $formandoId, $_POST, $userId);
+            if (!empty($result['ok'])) {
+                $created = (int)($result['created'] ?? 1);
+                $_SESSION['eventos_formatura_message'] = $created > 1 ? 'Receitas criadas.' : 'Receita criada.';
+                eventos_formatura_redirect_financeiro($eventoId, $formandoId);
+            }
+            $errors[] = (string)($result['error'] ?? 'Não foi possível salvar a receita.');
         }
     }
 }
@@ -511,6 +629,61 @@ includeSidebar('Formatura');
     color: #475569;
     font-size: 1rem;
     font-weight: 900;
+}
+.formatura-choice-row {
+    display: flex;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+.formatura-choice {
+    border: 1px solid #dbe3ef;
+    background: #fff;
+    color: #1f2937;
+    border-radius: 999px;
+    padding: 0.62rem 0.9rem;
+    font-weight: 900;
+    cursor: pointer;
+}
+.formatura-choice.is-active {
+    background: #1e3a8a;
+    color: #fff;
+    border-color: #1e3a8a;
+}
+.formatura-parcelas-box {
+    margin-top: 1rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    padding: 1rem;
+    background: #fff;
+}
+.formatura-parcelas-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+.formatura-parcelas-head strong {
+    color: #1f2937;
+    font-weight: 900;
+}
+.formatura-parcelas-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.formatura-parcelas-table th {
+    text-align: left;
+    color: #64748b;
+    text-transform: uppercase;
+    font-size: 0.78rem;
+    padding: 0.42rem;
+}
+.formatura-parcelas-table td {
+    padding: 0.42rem;
+}
+.formatura-parcelas-table input {
+    padding: 0.58rem 0.65rem;
 }
 .formatura-inline-actions {
     margin-top: 1rem;
@@ -698,6 +871,9 @@ includeSidebar('Formatura');
 .formatura-field.full {
     grid-column: 1 / -1;
 }
+.formatura-hidden {
+    display: none !important;
+}
 .cliente-preview {
     margin-top: 0.55rem;
     background: #f8fafc;
@@ -776,36 +952,87 @@ includeSidebar('Formatura');
 
             <?php if ($mostrarNovaCobranca): ?>
                 <div class="formatura-receita-card">
-                    <h3>Criar receita</h3>
-                    <form method="post">
+                    <h3>Nova Receita</h3>
+                    <form method="post" id="formaturaReceitaForm">
                         <input type="hidden" name="action" value="save_financeiro">
                         <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
                         <input type="hidden" name="formando_id" value="<?= (int)$formandoFinanceiroId ?>">
+                        <input type="hidden" name="tipo_valor" id="formaturaTipoValor" value="avista">
                         <div class="formatura-grid">
                             <div class="formatura-field full">
+                                <label>Tipo de valor</label>
+                                <div class="formatura-choice-row">
+                                    <button class="formatura-choice is-active" type="button" data-formatura-tipo="avista">Valor à vista</button>
+                                    <button class="formatura-choice" type="button" data-formatura-tipo="parcelado">Valor parcelado</button>
+                                </div>
+                            </div>
+                            <div class="formatura-field">
                                 <label for="financeiroDescricao">Descrição</label>
-                                <textarea id="financeiroDescricao" name="descricao" placeholder="Ex.: Entrada do formando, parcela, adicional..." required></textarea>
+                                <input id="financeiroDescricao" name="descricao" value="Receita do formando" placeholder="Ex.: Entrada do formando, parcela, adicional..." required>
                             </div>
                             <div class="formatura-field">
-                                <label for="financeiroValor">Valor</label>
-                                <input id="financeiroValor" name="valor" type="text" inputmode="decimal" placeholder="0,00" required>
-                            </div>
-                            <div class="formatura-field">
-                                <label for="financeiroVencimento">Vencimento</label>
-                                <input id="financeiroVencimento" name="vencimento" type="date">
-                            </div>
-                            <div class="formatura-field">
-                                <label for="financeiroStatus">Status</label>
-                                <select id="financeiroStatus" name="status">
-                                    <option value="pendente">Pendente</option>
-                                    <option value="pago">Pago</option>
-                                    <option value="cancelado">Cancelado</option>
+                                <label for="financeiroUnidade">Unidade</label>
+                                <select id="financeiroUnidade" name="unidade">
+                                    <?php foreach ($unidades as $unidade): ?>
+                                        <option value="<?= eventos_formatura_e($unidade) ?>" <?= $unidade === $eventoUnidade ? 'selected' : '' ?>><?= eventos_formatura_e($unidade) ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
+                            <div class="formatura-field">
+                                <label for="financeiroCarteira">Carteira</label>
+                                <select id="financeiroCarteira" name="carteira">
+                                    <option value="manual">Manual</option>
+                                </select>
+                            </div>
+                            <div class="formatura-field">
+                                <label for="financeiroModo">Modo de pagamento</label>
+                                <select id="financeiroModo" name="modo_pagamento">
+                                    <option value="pix">Pix</option>
+                                    <option value="cartao_credito">Cartão de crédito</option>
+                                    <option value="dinheiro">Dinheiro</option>
+                                    <option value="cartao_debito">Cartão de débito</option>
+                                    <option value="nao_informado">Não informado</option>
+                                </select>
+                            </div>
+                            <div class="formatura-field">
+                                <label for="financeiroStatus">Status de pagamento</label>
+                                <select id="financeiroStatus" name="status_pagamento">
+                                    <option value="pendente">Pendente</option>
+                                    <option value="pago">Pago</option>
+                                </select>
+                            </div>
+                            <div class="formatura-field">
+                                <label for="financeiroValorTotal">Valor total</label>
+                                <input id="financeiroValorTotal" name="valor_total" type="text" inputmode="decimal" placeholder="R$ 0,00" required>
+                            </div>
+                            <div class="formatura-field" id="financeiroParcelasField">
+                                <label for="financeiroParcelas">Quantidade de parcelas</label>
+                                <input id="financeiroParcelas" name="parcelas" type="number" min="1" max="24" value="1">
+                            </div>
+                            <div class="formatura-field">
+                                <label for="financeiroPrimeiroVencimento">Primeiro vencimento</label>
+                                <input id="financeiroPrimeiroVencimento" name="primeiro_vencimento" type="date" value="<?= eventos_formatura_e(date('Y-m-d')) ?>">
+                            </div>
+                        </div>
+                        <div class="formatura-parcelas-box">
+                            <div class="formatura-parcelas-head">
+                                <strong>Parcelas</strong>
+                                <span class="formatura-muted">Datas e valores podem ser alterados antes de salvar.</span>
+                            </div>
+                            <table class="formatura-parcelas-table">
+                                <thead>
+                                    <tr>
+                                        <th>Parcela</th>
+                                        <th>Vencimento</th>
+                                        <th>Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="financeiroParcelasBody"></tbody>
+                            </table>
                         </div>
                         <div class="formatura-inline-actions">
                             <a class="formatura-btn formatura-btn--light" href="index.php?page=eventos_formatura&evento_id=<?= (int)$eventoId ?>&formando_id=<?= (int)$formandoFinanceiroId ?>">Cancelar</a>
-                            <button type="submit" class="formatura-btn formatura-btn--primary">Salvar cobrança</button>
+                            <button type="submit" class="formatura-btn formatura-btn--primary">Salvar receita</button>
                         </div>
                     </form>
                 </div>
@@ -821,6 +1048,7 @@ includeSidebar('Formatura');
                             <tr>
                                 <th>Descrição</th>
                                 <th>Vencimento</th>
+                                <th>Carteira</th>
                                 <th>Status</th>
                                 <th>Valor</th>
                             </tr>
@@ -828,9 +1056,18 @@ includeSidebar('Formatura');
                         <tbody>
                             <?php foreach ($financeiroFormando as $cobranca): ?>
                                 <tr>
-                                    <td><?= eventos_formatura_e((string)$cobranca['descricao']) ?></td>
+                                    <td>
+                                        <strong><?= eventos_formatura_e((string)$cobranca['descricao']) ?></strong>
+                                        <?php if ((int)($cobranca['parcelas_total'] ?? 1) > 1): ?>
+                                            <div class="formatura-muted">Parcela <?= (int)$cobranca['parcela_numero'] ?>/<?= (int)$cobranca['parcelas_total'] ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><?= !empty($cobranca['vencimento']) ? eventos_formatura_e(date('d/m/Y', strtotime((string)$cobranca['vencimento']))) : '-' ?></td>
-                                    <td><?= eventos_formatura_e(ucfirst((string)$cobranca['status'])) ?></td>
+                                    <td>
+                                        <strong><?= eventos_formatura_e(ucfirst((string)($cobranca['carteira'] ?? 'manual'))) ?></strong>
+                                        <div class="formatura-muted"><?= eventos_formatura_e(eventos_formatura_label_modo((string)($cobranca['modo_pagamento'] ?? $cobranca['forma_pagamento'] ?? ''))) ?></div>
+                                    </td>
+                                    <td><?= eventos_formatura_e(eventos_formatura_label_status((string)$cobranca['status'])) ?></td>
                                     <td><strong>R$ <?= number_format((float)$cobranca['valor'], 2, ',', '.') ?></strong></td>
                                 </tr>
                             <?php endforeach; ?>
@@ -1061,12 +1298,89 @@ document.querySelectorAll('.btnEditarFormando').forEach((btn) => {
     });
 });
 
-document.getElementById('financeiroValor')?.addEventListener('blur', (event) => {
-    const raw = String(event.target.value || '').replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value <= 0) return;
-    event.target.value = value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formaturaMoneyToNumber(value) {
+    let raw = String(value || '').replace(/R\$/g, '').replace(/\s/g, '').trim();
+    if (raw.includes(',')) raw = raw.replace(/\./g, '').replace(',', '.');
+    const number = Number(raw);
+    return Number.isFinite(number) ? number : 0;
+}
+
+function formaturaNumberToMoney(value) {
+    return Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formaturaAddDays(dateString, days) {
+    const fallback = new Date();
+    const date = dateString ? new Date(`${dateString}T00:00:00`) : fallback;
+    if (Number.isNaN(date.getTime())) return fallback.toISOString().slice(0, 10);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+}
+
+const receitaValorTotal = document.getElementById('financeiroValorTotal');
+const receitaParcelasInput = document.getElementById('financeiroParcelas');
+const receitaPrimeiroVencimento = document.getElementById('financeiroPrimeiroVencimento');
+const receitaParcelasBody = document.getElementById('financeiroParcelasBody');
+const receitaParcelasField = document.getElementById('financeiroParcelasField');
+const receitaTipoValor = document.getElementById('formaturaTipoValor');
+let formaturaReceitaTipo = receitaTipoValor?.value || 'avista';
+
+function renderFormaturaParcelas() {
+    if (!receitaParcelasBody || !receitaValorTotal || !receitaParcelasInput || !receitaPrimeiroVencimento) return;
+
+    const qtd = formaturaReceitaTipo === 'parcelado'
+        ? Math.max(1, Math.min(24, Number(receitaParcelasInput.value || 1)))
+        : 1;
+    receitaParcelasInput.value = String(qtd);
+    const total = formaturaMoneyToNumber(receitaValorTotal.value);
+    const cents = Math.round(total * 100);
+    const base = qtd > 0 ? Math.floor(cents / qtd) : cents;
+    const resto = cents - (base * qtd);
+
+    receitaParcelasBody.innerHTML = '';
+    for (let i = 1; i <= qtd; i++) {
+        const valorCents = base + (i <= resto ? 1 : 0);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${i}/${qtd}</strong></td>
+            <td><input type="date" name="parcela_vencimento[]" value="${formaturaAddDays(receitaPrimeiroVencimento.value, (i - 1) * 30)}"></td>
+            <td><input type="text" name="parcela_valor[]" inputmode="decimal" value="${formaturaNumberToMoney(valorCents / 100)}"></td>
+        `;
+        receitaParcelasBody.appendChild(tr);
+    }
+}
+
+function updateFormaturaReceitaMode() {
+    if (receitaTipoValor) receitaTipoValor.value = formaturaReceitaTipo;
+    document.querySelectorAll('[data-formatura-tipo]').forEach((button) => {
+        button.classList.toggle('is-active', button.dataset.formaturaTipo === formaturaReceitaTipo);
+    });
+    receitaParcelasField?.classList.toggle('formatura-hidden', formaturaReceitaTipo !== 'parcelado');
+    renderFormaturaParcelas();
+}
+
+document.querySelectorAll('[data-formatura-tipo]').forEach((button) => {
+    button.addEventListener('click', () => {
+        formaturaReceitaTipo = button.dataset.formaturaTipo || 'avista';
+        updateFormaturaReceitaMode();
+    });
 });
+
+[receitaValorTotal, receitaParcelasInput, receitaPrimeiroVencimento].forEach((input) => {
+    input?.addEventListener('input', renderFormaturaParcelas);
+});
+
+receitaValorTotal?.addEventListener('blur', () => {
+    const value = formaturaMoneyToNumber(receitaValorTotal.value);
+    receitaValorTotal.value = value > 0 ? `R$ ${formaturaNumberToMoney(value)}` : '';
+    renderFormaturaParcelas();
+});
+
+document.getElementById('formaturaReceitaForm')?.addEventListener('submit', () => {
+    if (!receitaParcelasBody?.children.length) renderFormaturaParcelas();
+});
+
+updateFormaturaReceitaMode();
 
 document.getElementById('formaturaBusca')?.addEventListener('input', (event) => {
     const term = String(event.target.value || '').trim().toLowerCase();
