@@ -564,6 +564,75 @@ function vendas_has_column(PDO $pdo, string $table, string $column): bool {
     }
 }
 
+function vendas_verify_password_input(string $senhaInput, string $stored): bool {
+    if ($senhaInput === '' || $stored === '') return false;
+
+    if (preg_match('/^\$2[ayb]\$|\$argon2/i', $stored) === 1 && password_verify($senhaInput, $stored)) {
+        return true;
+    }
+
+    if (preg_match('/^[a-f0-9]{32}$/i', $stored) === 1 && strtolower($stored) === md5($senhaInput)) {
+        return true;
+    }
+
+    return hash_equals($stored, $senhaInput);
+}
+
+function vendas_validar_senha_superadmin(PDO $pdo, string $senhaInput): ?array {
+    $senhaInput = trim($senhaInput);
+    if ($senhaInput === '') {
+        return null;
+    }
+
+    try {
+        $cols = $pdo->query("
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'usuarios'
+        ")->fetchAll(PDO::FETCH_COLUMN);
+        $has = function(string $c) use ($cols): bool {
+            return in_array($c, $cols, true);
+        };
+
+        if (!$has('perm_superadmin')) {
+            return null;
+        }
+
+        $senhaCol = null;
+        foreach (['senha', 'senha_hash', 'password', 'pass'] as $col) {
+            if ($has($col)) {
+                $senhaCol = $col;
+                break;
+            }
+        }
+        if ($senhaCol === null) {
+            return null;
+        }
+
+        $select = ['id', $senhaCol . ' AS senha_verificacao'];
+        $select[] = $has('nome') ? 'nome' : "'' AS nome";
+        $where = ['perm_superadmin = TRUE'];
+        if ($has('ativo')) {
+            $where[] = 'COALESCE(ativo, TRUE) = TRUE';
+        }
+
+        $stmt = $pdo->query('SELECT ' . implode(', ', $select) . ' FROM usuarios WHERE ' . implode(' AND ', $where));
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            if (vendas_verify_password_input($senhaInput, (string)($row['senha_verificacao'] ?? ''))) {
+                return [
+                    'id' => (int)($row['id'] ?? 0),
+                    'nome' => (string)($row['nome'] ?? ''),
+                ];
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[VENDAS] Erro ao validar senha superadmin: ' . $e->getMessage());
+    }
+
+    return null;
+}
+
 /**
  * Garante que o schema do módulo Vendas exista (executa SQL 041/042 se necessário).
  * Retorna false se não conseguir garantir.

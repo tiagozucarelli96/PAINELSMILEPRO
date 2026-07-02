@@ -405,6 +405,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $idvendedor = (int)($_POST['idvendedor'] ?? 0);
         $override_conflito = isset($_POST['override_conflito']) && $_POST['override_conflito'] === '1';
         $override_motivo = trim($_POST['override_motivo'] ?? '');
+        $override_superadmin_senha = (string)($_POST['override_superadmin_senha'] ?? '');
+        $override_superadmin = null;
         $atualizar_cliente_me = $_POST['atualizar_cliente_me'] ?? 'manter'; // manter, atualizar, apenas_painel
         $payload_comercial = vendas_collect_comercial_payload_from_post();
 
@@ -612,24 +614,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pre_contrato['horario_termino']
                     );
 
-                    if ($conflito['tem_conflito'] && !$override_conflito) {
-                        // Reabrir o modal de aprovação com o erro visível dentro dele.
-                        $mensagem_conflito = 'Conflito de agenda detectado! Existem eventos na mesma unidade e data que não respeitam a distância mínima.';
-                        $_SESSION['vendas_aprovacao_result'] = [
-                            'ok' => false,
-                            'message' => 'Aprovação bloqueada.',
-                            'error' => $mensagem_conflito,
-                            'me_last' => $_SESSION['vendas_me_last'] ?? null,
-                            'me_client_id' => $me_client_id ? (int)$me_client_id : null,
-                            'me_event_id' => null,
-                        ];
-                        $_SESSION['vendas_conflito_detalhes'] = $conflito;
-                        $_SESSION['vendas_pre_contrato_id'] = $pre_contrato_id;
-                        header('Location: ' . $redirect_url_error);
-                        exit;
-                    } elseif ($conflito['tem_conflito'] && $override_conflito) {
-                        // Log do override
-                        error_log('[VENDAS] Override de conflito aplicado. Motivo: ' . $override_motivo);
+                    if ($conflito['tem_conflito']) {
+                        if ($override_conflito) {
+                            $override_superadmin = vendas_validar_senha_superadmin($pdo, $override_superadmin_senha);
+                            if (!$override_superadmin) {
+                                $_SESSION['vendas_aprovacao_result'] = [
+                                    'ok' => false,
+                                    'message' => 'Aprovação bloqueada.',
+                                    'error' => 'Senha de superadmin inválida. O evento não foi criado na ME.',
+                                    'me_last' => $_SESSION['vendas_me_last'] ?? null,
+                                    'me_client_id' => $me_client_id ? (int)$me_client_id : null,
+                                    'me_event_id' => null,
+                                ];
+                                $_SESSION['vendas_conflito_detalhes'] = $conflito;
+                                $_SESSION['vendas_pre_contrato_id'] = $pre_contrato_id;
+                                header('Location: ' . $redirect_url_error);
+                                exit;
+                            }
+
+                            if ($override_motivo === '') {
+                                $override_motivo = 'Liberação por senha de superadmin para conflito de agenda.';
+                            }
+                            error_log('[VENDAS] Override de conflito autorizado por superadmin #' . (int)$override_superadmin['id']);
+                        } else {
+                            // Reabrir o modal de aprovação com o erro visível dentro dele.
+                            $mensagem_conflito = (string)($conflito['mensagem'] ?? 'Conflito de agenda detectado. Já existe evento nesta unidade e data.');
+                            $_SESSION['vendas_aprovacao_result'] = [
+                                'ok' => false,
+                                'message' => 'Aprovação bloqueada.',
+                                'error' => $mensagem_conflito,
+                                'me_last' => $_SESSION['vendas_me_last'] ?? null,
+                                'me_client_id' => $me_client_id ? (int)$me_client_id : null,
+                                'me_event_id' => null,
+                            ];
+                            $_SESSION['vendas_conflito_detalhes'] = $conflito;
+                            $_SESSION['vendas_pre_contrato_id'] = $pre_contrato_id;
+                            header('Location: ' . $redirect_url_error);
+                            exit;
+                        }
+                    } else {
+                        $override_conflito = false;
+                        $override_motivo = '';
+                        $override_superadmin = null;
                     }
 
                     if (empty($erros)) {
@@ -686,7 +712,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'idvendedor' => (int)$idvendedor,
                         'payload' => $evento_me['payload'] ?? null,
                         'response' => $evento_me['data'] ?? null
-                    ]
+                    ],
+                    'override_agenda' => $override_conflito ? [
+                        'autorizado_por_superadmin_id' => (int)($override_superadmin['id'] ?? 0),
+                        'autorizado_por_superadmin_nome' => (string)($override_superadmin['nome'] ?? ''),
+                        'motivo' => $override_motivo,
+                    ] : null,
                 ];
                 $stmt = $pdo->prepare("
                     UPDATE vendas_pre_contratos 
@@ -705,7 +736,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $usuario_id,
                     $override_conflito_db,
                     $override_motivo,
-                    $override_conflito ? $usuario_id : null,
+                    $override_conflito ? (int)($override_superadmin['id'] ?? $usuario_id) : null,
                     $override_conflito ? date('Y-m-d H:i:s') : null,
                     $pre_contrato_id
                 ]);
@@ -750,6 +781,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'me_client_id' => $me_client_id,
                     'me_event_id' => $me_event_id,
                     'override' => $override_conflito,
+                    'override_superadmin_id' => $override_conflito ? (int)($override_superadmin['id'] ?? 0) : null,
                     'kanban_card_id' => $kanban_card_id
                 ])]);
                 
@@ -1714,6 +1746,7 @@ ob_start();
                     <input type="hidden" name="idvendedor" id="approve_idvendedor" value="">
                     <input type="hidden" name="override_conflito" id="approve_override_conflito" value="0">
                     <input type="hidden" name="override_motivo" id="approve_override_motivo" value="">
+                    <input type="hidden" name="override_superadmin_senha" id="approve_override_superadmin_senha" value="">
                     <input type="hidden" name="atualizar_cliente_me" id="approve_atualizar_cliente_me" value="manter">
 
                     <div class="modal-grid">
@@ -1970,19 +2003,30 @@ ob_start();
                 
                 $conflito_detalhes = $_SESSION['vendas_conflito_detalhes'] ?? $conflito_verificar;
                 unset($_SESSION['vendas_conflito_detalhes']);
+                $conflito_bloqueia_aprovacao = !empty($conflito_detalhes) && !empty($conflito_detalhes['bloqueio_aprovacao']);
                 ?>
                 
                 <?php if (!empty($conflito_detalhes) && !empty($conflito_detalhes['tem_conflito'])): ?>
                     <div class="alert alert-warning">
                         <strong>Conflito de agenda detectado!</strong><br>
-                        Existem eventos na mesma unidade e data que não respeitam a distância mínima de 
-                        <?php echo htmlspecialchars((string)($conflito_detalhes['distancia_minima_horas'] ?? '')); ?> horas.
+                        <?php echo htmlspecialchars((string)($conflito_detalhes['mensagem'] ?? 'Já existe evento nesta unidade e data.')); ?>
                         <ul style="margin-top: 0.5rem;">
                             <?php foreach (($conflito_detalhes['conflitos'] ?? []) as $conflito): ?>
+                                <?php
+                                    $evento_conflito = is_array($conflito['evento'] ?? null) ? $conflito['evento'] : [];
+                                    $motivo_conflito = (string)($conflito['motivo'] ?? '');
+                                ?>
                                 <li>
-                                    Evento: <?php echo htmlspecialchars((string)($conflito['evento']['nomeevento'] ?? $conflito['evento']['nome_evento'] ?? 'N/A')); ?> - 
-                                    <?php echo htmlspecialchars((string)($conflito['evento']['horaevento'] ?? $conflito['evento']['hora_inicio'] ?? '')); ?> às 
-                                    <?php echo htmlspecialchars((string)($conflito['evento']['horaeventofim'] ?? $conflito['evento']['hora_termino'] ?? '')); ?>
+                                    <?php if (!empty($evento_conflito)): ?>
+                                        Evento: <?php echo htmlspecialchars((string)($evento_conflito['nomeevento'] ?? $evento_conflito['nome_evento'] ?? 'N/A')); ?> - 
+                                        <?php echo htmlspecialchars((string)($evento_conflito['horaevento'] ?? $evento_conflito['hora_inicio'] ?? '')); ?> às 
+                                        <?php echo htmlspecialchars((string)($evento_conflito['horaeventofim'] ?? $evento_conflito['hora_termino'] ?? '')); ?>
+                                        <?php if ($motivo_conflito !== ''): ?>
+                                            — <?php echo htmlspecialchars($motivo_conflito); ?>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <?php echo htmlspecialchars($motivo_conflito !== '' ? $motivo_conflito : 'Horário inválido para esta unidade.'); ?>
+                                    <?php endif; ?>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -1991,14 +2035,18 @@ ob_start();
                     <div class="form-group">
                         <label>
                             <input type="checkbox" name="override_conflito" value="1" id="override_conflito">
-                            Forçar criação (override) - Ignorar conflito de agenda
+                            Forçar criação com senha de superadmin
                         </label>
+                        <small style="color: #6b7280;">Use somente quando a venda tiver autorização para furar a regra de agenda.</small>
                     </div>
                     
                     <div class="form-group" id="div_motivo_override" style="display: none;">
-                        <label for="override_motivo">Motivo do override <span style="color: #ef4444;">*</span>:</label>
-                        <textarea id="override_motivo" name="override_motivo" rows="3" required></textarea>
-                        <small style="color: #6b7280;">É obrigatório informar o motivo para forçar a criação com conflito de agenda.</small>
+                        <label for="override_superadmin_senha">Senha do superadmin <span style="color: #ef4444;">*</span>:</label>
+                        <input type="password" id="override_superadmin_senha" autocomplete="current-password">
+                        <small style="color: #6b7280;">A senha será usada apenas para validar a autorização e não será salva.</small>
+
+                        <label for="override_motivo" style="margin-top:.75rem;">Motivo do override:</label>
+                        <textarea id="override_motivo" name="override_motivo" rows="3" placeholder="Opcional. Ex.: autorizado pela diretoria"></textarea>
                     </div>
                 <?php endif; ?>
 
@@ -2249,17 +2297,21 @@ function fecharModalEditar() {
 document.getElementById('override_conflito')?.addEventListener('change', function() {
     const divMotivo = document.getElementById('div_motivo_override');
     const inputMotivo = document.getElementById('override_motivo');
+    const inputSenha = document.getElementById('override_superadmin_senha');
     const inputOverride = document.getElementById('approve_override_conflito');
     
     if (this.checked) {
         divMotivo.style.display = 'block';
         inputOverride.value = '1';
-        inputMotivo.required = true;
+        if (inputSenha) inputSenha.required = true;
     } else {
         divMotivo.style.display = 'none';
         inputOverride.value = '0';
-        inputMotivo.required = false;
-        inputMotivo.value = '';
+        if (inputMotivo) inputMotivo.value = '';
+        if (inputSenha) {
+            inputSenha.required = false;
+            inputSenha.value = '';
+        }
     }
 });
 
@@ -2270,12 +2322,14 @@ document.getElementById('override_motivo')?.addEventListener('input', function()
 function submeterAprovacao() {
     const overrideCheckbox = document.getElementById('override_conflito');
     const motivoTextarea = document.getElementById('override_motivo');
+    const superadminSenha = document.getElementById('override_superadmin_senha');
     const vendedor = document.getElementById('idvendedor_select');
     const actionInput = document.getElementById('action_comercial');
     const formComercial = actionInput ? actionInput.form : null;
 
-    if (overrideCheckbox && overrideCheckbox.checked && (!motivoTextarea || !motivoTextarea.value.trim())) {
-        alert('Por favor, informe o motivo do override para continuar.');
+    if (overrideCheckbox && overrideCheckbox.checked && (!superadminSenha || !superadminSenha.value.trim())) {
+        alert('Informe a senha do superadmin para forçar a criação.');
+        superadminSenha?.focus();
         return;
     }
 
@@ -2293,6 +2347,7 @@ function submeterAprovacao() {
     document.getElementById('approve_idvendedor').value = vendedor ? String(vendedor.value || '') : '';
     document.getElementById('approve_override_conflito').value = overrideCheckbox?.checked ? '1' : '0';
     document.getElementById('approve_override_motivo').value = motivoTextarea ? String(motivoTextarea.value || '') : '';
+    document.getElementById('approve_override_superadmin_senha').value = superadminSenha ? String(superadminSenha.value || '') : '';
     document.getElementById('approve_atualizar_cliente_me').value = document.getElementById('atualizar_cliente_me')?.value || 'manter';
     formComercial.submit();
 }

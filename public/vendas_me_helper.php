@@ -7,6 +7,7 @@
 require_once __DIR__ . '/me_config.php';
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/vendas_helper.php';
+require_once __DIR__ . '/eventos_me_helper.php';
 
 /**
  * Request helper (alinhado com padrões do projeto e docs da ME)
@@ -511,6 +512,7 @@ function vendas_me_buscar_eventos(string $data, string $unidade): array {
     $eventos_filtrados = [];
     foreach ($items as $e) {
         if (!is_array($e)) continue;
+        if (function_exists('eventos_me_evento_cancelado') && eventos_me_evento_cancelado($e)) continue;
         $idLocal = (int)($e['idlocalevento'] ?? 0);
         if ($idLocal > 0 && $idLocal === (int)$me_local_id) {
             $eventos_filtrados[] = $e;
@@ -526,68 +528,86 @@ function vendas_me_buscar_eventos(string $data, string $unidade): array {
     return $eventos_filtrados;
 }
 
+function vendas_me_hora_slot(?string $hora): string {
+    $hora = trim((string)$hora);
+    if ($hora === '') return '';
+    $ts = strtotime($hora);
+    if (!$ts) return '';
+    return date('H:i', $ts);
+}
+
+function vendas_me_is_diverkids_unidade(string $unidade): bool {
+    $space = vendas_obter_space_visivel($unidade) ?? $unidade;
+    return strpos(vendas_me_norm_str((string)$space), 'diverkids') !== false
+        || strpos(vendas_me_norm_str($unidade), 'diverkids') !== false
+        || strpos(vendas_me_norm_str($unidade), 'diver') !== false;
+}
+
 /**
  * Verificar conflito de agenda
  * Retorna array com eventos conflitantes e se há conflito
  */
 function vendas_me_verificar_conflito_agenda(string $data, string $unidade, string $hora_inicio, string $hora_termino): array {
     $eventos = vendas_me_buscar_eventos($data, $unidade);
-    $distancia_minima = vendas_distancia_minima_conflito_segundos($unidade);
-    
+    $is_diverkids = vendas_me_is_diverkids_unidade($unidade);
+    $slot_inicio = vendas_me_hora_slot($hora_inicio);
+
     $conflitos = [];
-    $hora_inicio_ts = strtotime($hora_inicio);
-    $hora_termino_ts = strtotime($hora_termino);
-    
+    $eventos_no_dia = [];
+
     foreach ($eventos as $evento) {
         $evento_inicio = $evento['horaevento'] ?? $evento['hora_inicio'] ?? $evento['inicio'] ?? '';
-        $evento_termino = $evento['horaeventofim'] ?? $evento['hora_termino'] ?? $evento['fim'] ?? '';
-        
-        if (empty($evento_inicio) || empty($evento_termino)) {
+        $evento_slot = vendas_me_hora_slot((string)$evento_inicio);
+        $eventos_no_dia[] = $evento;
+
+        if (!$is_diverkids) {
+            $conflitos[] = [
+                'evento' => $evento,
+                'tipo' => 'unidade_ocupada_no_dia',
+                'motivo' => 'Já existe evento nesta unidade nesta data.',
+            ];
             continue;
         }
-        
-        $evento_inicio_ts = strtotime($evento_inicio);
-        $evento_termino_ts = strtotime($evento_termino);
-        
-        // Verificar se há conflito
-        // Conflito: novo evento começa antes do término do anterior + distância mínima
-        // OU novo evento termina depois do início do anterior - distância mínima
-        $tempo_entre_termino_e_inicio = $hora_inicio_ts - $evento_termino_ts;
-        $tempo_entre_inicio_e_termino = $evento_inicio_ts - $hora_termino_ts;
-        
-        if ($tempo_entre_termino_e_inicio < $distancia_minima && $tempo_entre_termino_e_inicio > 0) {
-            // Novo evento começa muito cedo após término do anterior
+
+        if ($evento_slot !== '' && $slot_inicio !== '' && $evento_slot === $slot_inicio) {
             $conflitos[] = [
                 'evento' => $evento,
-                'tipo' => 'inicio_proximo_demais',
-                'tempo_entre' => $tempo_entre_termino_e_inicio,
-                'distancia_minima' => $distancia_minima
-            ];
-        } elseif ($tempo_entre_inicio_e_termino < $distancia_minima && $tempo_entre_inicio_e_termino > 0) {
-            // Novo evento termina muito tarde antes do início do próximo
-            $conflitos[] = [
-                'evento' => $evento,
-                'tipo' => 'termino_proximo_demais',
-                'tempo_entre' => $tempo_entre_inicio_e_termino,
-                'distancia_minima' => $distancia_minima
-            ];
-        } elseif (($hora_inicio_ts >= $evento_inicio_ts && $hora_inicio_ts < $evento_termino_ts) ||
-                  ($hora_termino_ts > $evento_inicio_ts && $hora_termino_ts <= $evento_termino_ts) ||
-                  ($hora_inicio_ts <= $evento_inicio_ts && $hora_termino_ts >= $evento_termino_ts)) {
-            // Sobreposição direta
-            $conflitos[] = [
-                'evento' => $evento,
-                'tipo' => 'sobreposicao',
-                'tempo_entre' => 0,
-                'distancia_minima' => $distancia_minima
+                'tipo' => 'diverkids_horario_ocupado',
+                'motivo' => 'DiverKids já tem evento neste horário.',
             ];
         }
     }
-    
+
+    if ($is_diverkids && !in_array($slot_inicio, ['13:00', '19:00'], true)) {
+        $conflitos[] = [
+            'evento' => null,
+            'tipo' => 'diverkids_horario_invalido',
+            'motivo' => 'DiverKids só permite aprovar eventos nos horários de 13:00 ou 19:00.',
+        ];
+    }
+
+    if ($is_diverkids && count($eventos_no_dia) >= 2) {
+        foreach ($eventos_no_dia as $evento) {
+            $conflitos[] = [
+                'evento' => $evento,
+                'tipo' => 'diverkids_limite_diario',
+                'motivo' => 'DiverKids já atingiu o limite de 2 eventos nesta data.',
+            ];
+        }
+    }
+
+    $mensagem = $is_diverkids
+        ? 'DiverKids permite no máximo 2 eventos por dia, somente nos horários de 13:00 e 19:00, sem repetir horário.'
+        : 'Já existe evento nesta unidade nesta data. Para esta unidade, só é permitido 1 evento por dia.';
+
     return [
         'tem_conflito' => !empty($conflitos),
         'conflitos' => $conflitos,
-        'distancia_minima_horas' => $distancia_minima / 3600
+        'regra' => $is_diverkids ? 'diverkids_dois_horarios' : 'um_evento_por_dia',
+        'bloqueio_aprovacao' => !empty($conflitos),
+        'mensagem' => $mensagem,
+        'eventos_no_dia' => count($eventos_no_dia),
+        'horarios_permitidos' => $is_diverkids ? ['13:00', '19:00'] : [],
     ];
 }
 
