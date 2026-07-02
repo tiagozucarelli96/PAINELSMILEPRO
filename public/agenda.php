@@ -396,12 +396,12 @@ includeSidebar('Agenda');
 
         .modal-content {
             background: white;
-            border-radius: 20px;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+            border-radius: 14px;
+            box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
             width: 90%;
-            max-width: 700px;
+            max-width: 760px;
             max-height: 90vh;
-            overflow-y: auto;
+            overflow: hidden;
             position: relative;
             transform: scale(0.9) translateY(20px);
             transition: all 0.3s ease;
@@ -415,19 +415,20 @@ includeSidebar('Agenda');
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 25px 30px;
+            padding: 22px 30px;
             border-bottom: 1px solid #e5e7eb;
             background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
             color: white;
-            border-radius: 20px 20px 0 0;
+            border-radius: 14px 14px 0 0;
         }
 
         .modal-title {
-            font-size: 24px;
+            font-size: 25px;
             font-weight: 700;
             display: flex;
             align-items: center;
             gap: 10px;
+            margin: 0;
         }
 
         .close-button {
@@ -450,39 +451,75 @@ includeSidebar('Agenda');
             background: rgba(255, 255, 255, 0.1);
         }
 
+        .modal-body {
+            max-height: calc(90vh - 82px);
+            overflow-y: auto;
+            padding: 22px 24px 0;
+            background: #f8fafc;
+        }
+
+        #eventForm {
+            display: grid;
+            gap: 16px;
+        }
+
+        .form-section {
+            background: #ffffff;
+            border: 1px solid #dfe7f2;
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .form-section-title {
+            color: #0f172a;
+            font-size: 0.82rem;
+            font-weight: 800;
+            letter-spacing: 0;
+            margin: 0 0 14px;
+        }
+
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 14px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            font-weight: 750;
+            color: #334155;
         }
 
         .form-group input,
         .form-group textarea,
         .form-group select {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #ccc;
+            min-height: 44px;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
             border-radius: 8px;
             font-size: 1rem;
             box-sizing: border-box;
-            transition: border-color 0.3s ease;
+            background: #ffffff;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .form-group textarea {
+            min-height: 86px;
+            resize: vertical;
         }
 
         .form-group input:focus,
         .form-group textarea:focus,
         .form-group select:focus {
-            border-color: #1e3a8a;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
             outline: none;
         }
 
         .form-row {
             display: flex;
-            gap: 15px;
+            gap: 14px;
         }
 
         .form-row .form-group {
@@ -490,11 +527,7 @@ includeSidebar('Agenda');
         }
 
         #visitDetailsGroup {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 18px;
+            display: none;
         }
 
         #visitDetailsGroup .form-group:last-child {
@@ -502,12 +535,16 @@ includeSidebar('Agenda');
         }
 
         .form-actions {
+            background: #ffffff;
+            border-top: 1px solid #dfe7f2;
             display: flex;
             justify-content: flex-end;
             gap: 10px;
-            margin-top: 30px;
-            border-top: 1px solid #e0e7ff;
-            padding-top: 20px;
+            margin: 2px -24px 0;
+            padding: 16px 24px;
+            position: sticky;
+            bottom: 0;
+            z-index: 2;
         }
 
         .conflict-warning {
@@ -558,6 +595,25 @@ includeSidebar('Agenda');
             }
             .form-row {
                 flex-direction: column;
+                gap: 0;
+            }
+            .modal {
+                align-items: flex-start;
+                padding: 12px;
+                overflow-y: auto;
+            }
+            .modal-content {
+                width: 100%;
+                max-height: none;
+            }
+            .modal-body {
+                max-height: none;
+                padding: 16px 16px 0;
+            }
+            .form-actions {
+                margin-left: -16px;
+                margin-right: -16px;
+                padding: 14px 16px;
             }
     }
 </style>
@@ -677,37 +733,41 @@ includeSidebar('Agenda');
                 <input type="hidden" id="eventTipo" name="tipo">
                 <input type="hidden" id="forcarConflitoInput" name="forcar_conflito" value="0">
                 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="responsavel">Responsável *</label>
-                        <select id="responsavel" name="responsavel_usuario_id" required>
-                            <?php foreach ($usuarios as $user): ?>
-                                <?php
-                                    $user_login = trim((string)($user['login'] ?? ''));
-                                    $user_login_key = strtolower($user_login);
-                                    $can_receive_visit = in_array($user_login_key, $visita_responsaveis_logins, true);
-                                ?>
-                                <option
-                                    value="<?= $user['id'] ?>"
-                                    data-visit-responsible="<?= $can_receive_visit ? '1' : '0' ?>"
-                                >
-                                    <?= htmlspecialchars($user_login !== '' ? $user_login : $user['nome']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group" id="espacoGroup">
-                        <label for="espaco">Espaço</label>
-                        <select id="espaco" name="espaco_id">
-                            <option value="">Selecione um espaço</option>
-                            <?php foreach ($espacos as $espaco): ?>
-                                <option value="<?= $espaco['id'] ?>"><?= htmlspecialchars($espaco['nome']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                <div class="form-section" id="responsavelSection">
+                    <div class="form-section-title">Responsável e local</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="responsavel">Responsável *</label>
+                            <select id="responsavel" name="responsavel_usuario_id" required>
+                                <?php foreach ($usuarios as $user): ?>
+                                    <?php
+                                        $user_login = trim((string)($user['login'] ?? ''));
+                                        $user_login_key = strtolower($user_login);
+                                        $can_receive_visit = in_array($user_login_key, $visita_responsaveis_logins, true);
+                                    ?>
+                                    <option
+                                        value="<?= $user['id'] ?>"
+                                        data-visit-responsible="<?= $can_receive_visit ? '1' : '0' ?>"
+                                    >
+                                        <?= htmlspecialchars($user_login !== '' ? $user_login : $user['nome']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group" id="espacoGroup">
+                            <label for="espaco">Espaço</label>
+                            <select id="espaco" name="espaco_id">
+                                <option value="">Selecione um espaço</option>
+                                <?php foreach ($espacos as $espaco): ?>
+                                    <option value="<?= $espaco['id'] ?>"><?= htmlspecialchars($espaco['nome']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                     </div>
                 </div>
                 
-                <div id="visitDetailsGroup" style="display: none;">
+                <div id="visitDetailsGroup" class="form-section" style="display: none;">
+                    <div class="form-section-title">Dados do cliente</div>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="visitTipo">Tipo de visita *</label>
@@ -730,54 +790,62 @@ includeSidebar('Agenda');
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="titulo">Título *</label>
-                    <input type="text" id="titulo" name="titulo" required>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group" id="inicioGroup">
-                        <label for="inicio">Data/Hora Início *</label>
-                        <input type="datetime-local" id="inicio" name="inicio" required>
-                    </div>
-                    <div class="form-group" id="visitDurationGroup" style="display: none;">
-                        <label for="visitDuracao">Duração *</label>
-                        <select id="visitDuracao">
-                            <?php
-                                $duration_options = array_values(array_unique(array_merge([30, 60, 90, 120], array_map('intval', array_values($agenda_global_settings['visit_type_durations'] ?? [])))));
-                                sort($duration_options);
-                            ?>
-                            <?php foreach ($duration_options as $duration_option): ?>
-                                <option value="<?= (int)$duration_option ?>" <?= (int)$duration_option === 60 ? 'selected' : '' ?>>
-                                    <?= (int)$duration_option ?> minutos
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group" id="fimGroup">
-                        <label for="fim">Data/Hora Fim *</label>
-                        <input type="datetime-local" id="fim" name="fim" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="descricao">Observações</label>
-                    <textarea id="descricao" name="descricao" rows="3"></textarea>
-                </div>
-                
-                <div class="form-row">
+                <div class="form-section" id="titleSection">
                     <div class="form-group">
-                        <label for="lembrete">Lembrete (minutos antes)</label>
-                        <input type="number" id="lembrete" name="lembrete_minutos" min="0" max="1440" value="60">
+                        <label for="titulo">Título *</label>
+                        <input type="text" id="titulo" name="titulo" required>
                     </div>
-                    <div class="form-group" id="statusGroup" style="display: none;">
-                        <label for="status">Status</label>
-                        <select id="status" name="status">
-                            <option value="agendado">Agendado</option>
-                            <option value="realizado">Realizado</option>
-                            <option value="no_show">No Show</option>
-                            <option value="cancelado">Cancelado</option>
-                        </select>
+                </div>
+                
+                <div class="form-section" id="scheduleSection">
+                    <div class="form-section-title">Agendamento</div>
+                    <div class="form-row">
+                        <div class="form-group" id="inicioGroup">
+                            <label for="inicio">Data e horário *</label>
+                            <input type="datetime-local" id="inicio" name="inicio" required>
+                        </div>
+                        <div class="form-group" id="visitDurationGroup" style="display: none;">
+                            <label for="visitDuracao">Duração *</label>
+                            <select id="visitDuracao">
+                                <?php
+                                    $duration_options = array_values(array_unique(array_merge([30, 60, 90, 120], array_map('intval', array_values($agenda_global_settings['visit_type_durations'] ?? [])))));
+                                    sort($duration_options);
+                                ?>
+                                <?php foreach ($duration_options as $duration_option): ?>
+                                    <option value="<?= (int)$duration_option ?>" <?= (int)$duration_option === 60 ? 'selected' : '' ?>>
+                                        <?= (int)$duration_option ?> minutos
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group" id="fimGroup">
+                            <label for="fim">Data/Hora Fim *</label>
+                            <input type="datetime-local" id="fim" name="fim" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-section" id="notesSection">
+                    <div class="form-section-title">Observações e lembrete</div>
+                    <div class="form-group">
+                        <label for="descricao">Observações</label>
+                        <textarea id="descricao" name="descricao" rows="3"></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="lembrete">Lembrete (minutos antes)</label>
+                            <input type="number" id="lembrete" name="lembrete_minutos" min="0" max="1440" value="60">
+                        </div>
+                        <div class="form-group" id="statusGroup" style="display: none;">
+                            <label for="status">Status</label>
+                            <select id="status" name="status">
+                                <option value="agendado">Agendado</option>
+                                <option value="realizado">Realizado</option>
+                                <option value="no_show">No Show</option>
+                                <option value="cancelado">Cancelado</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
                 
@@ -1170,7 +1238,7 @@ includeSidebar('Agenda');
         function setVisitDetailsMode(enabled = false) {
             const group = document.getElementById('visitDetailsGroup');
             const tituloInput = document.getElementById('titulo');
-            const tituloGroup = tituloInput ? tituloInput.closest('.form-group') : null;
+            const tituloSection = document.getElementById('titleSection');
             const fimGroup = document.getElementById('fimGroup');
             const visitDurationGroup = document.getElementById('visitDurationGroup');
             const inicioLabel = document.querySelector('#inicioGroup label');
@@ -1182,8 +1250,8 @@ includeSidebar('Agenda');
             if (group) {
                 group.style.display = enabled ? 'block' : 'none';
             }
-            if (tituloGroup) {
-                tituloGroup.style.display = enabled ? 'none' : '';
+            if (tituloSection) {
+                tituloSection.style.display = enabled ? 'none' : '';
             }
             if (tituloInput) {
                 tituloInput.required = !enabled;
@@ -1294,13 +1362,12 @@ includeSidebar('Agenda');
                     espacoInput.required = false;
                     
                     // Ocultar campos de edição para eventos do Google
-                    document.getElementById('responsavel').closest('.form-group').style.display = 'none';
-                    document.getElementById('espacoGroup').style.display = 'none';
-                    document.getElementById('titulo').closest('.form-group').style.display = 'none';
-                    document.getElementById('inicio').closest('.form-group').style.display = 'none';
-                    document.getElementById('fim').closest('.form-group').style.display = 'none';
-                    document.getElementById('descricao').closest('.form-group').style.display = 'none';
-                    document.getElementById('lembrete').closest('.form-group').style.display = 'none';
+                    ['responsavelSection', 'titleSection', 'scheduleSection', 'notesSection'].forEach(sectionId => {
+                        const section = document.getElementById(sectionId);
+                        if (section) {
+                            section.style.display = 'none';
+                        }
+                    });
                     statusGroup.style.display = 'none';
                     conversionGroup.style.display = 'none';
                     
@@ -1378,6 +1445,9 @@ includeSidebar('Agenda');
                 } else {
                     title.textContent = 'Editar Evento';
                     // Mostrar todos os campos para eventos normais
+                    form.querySelectorAll('.form-section').forEach(el => {
+                        el.style.display = '';
+                    });
                     form.querySelectorAll('.form-group').forEach(el => {
                         if (el.id !== 'googleEventGroup') {
                             el.style.display = '';
@@ -1492,6 +1562,9 @@ includeSidebar('Agenda');
             }
             
             // Mostrar todos os campos novamente
+            form.querySelectorAll('.form-section').forEach(el => {
+                el.style.display = '';
+            });
             form.querySelectorAll('.form-group').forEach(el => {
                 if (el.id !== 'googleEventGroup') {
                     el.style.display = '';
