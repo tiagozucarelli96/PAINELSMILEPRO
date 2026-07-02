@@ -10,6 +10,7 @@ ini_set('log_errors', 1);
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/env_bootstrap.php';
 
 // Verificar se é GET (challenge do Google)
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -117,20 +118,28 @@ try {
         
         error_log("[GOOGLE_WEBHOOK] ✅ Flag 'precisa_sincronizar' marcado para: " . substr($channel_token, 0, 30));
 
-        // Disparar processamento fora da resposta do webhook.
-        // No servidor PHP embutido não existe fastcgi_finish_request, então processar aqui
-        // prende um worker e deixa o painel lento.
-        $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
-        if (file_exists($processor_script)) {
-            $cmd = sprintf(
-                '%s %s > /proc/1/fd/2 2>&1 &',
-                escapeshellarg(PHP_BINARY),
-                escapeshellarg($processor_script)
-            );
-            @exec($cmd);
-            error_log("[GOOGLE_WEBHOOK] Processador disparado em background");
+        $workerEnabled = function_exists('painel_env_bool')
+            ? painel_env_bool('GOOGLE_WORKER_ENABLED', false)
+            : filter_var(getenv('GOOGLE_WORKER_ENABLED') ?: false, FILTER_VALIDATE_BOOL);
+
+        if ($workerEnabled) {
+            error_log("[GOOGLE_WEBHOOK] Worker interno ativo; sync ficará para o worker");
         } else {
-            error_log("[GOOGLE_WEBHOOK] ⚠️ Processador não encontrado: $processor_script");
+            // Disparar processamento fora da resposta do webhook.
+            // No servidor PHP embutido não existe fastcgi_finish_request, então processar aqui
+            // prende um worker e deixa o painel lento.
+            $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
+            if (file_exists($processor_script)) {
+                $cmd = sprintf(
+                    '%s %s > /proc/1/fd/2 2>&1 &',
+                    escapeshellarg(PHP_BINARY),
+                    escapeshellarg($processor_script)
+                );
+                @exec($cmd);
+                error_log("[GOOGLE_WEBHOOK] Processador disparado em background");
+            } else {
+                error_log("[GOOGLE_WEBHOOK] ⚠️ Processador não encontrado: $processor_script");
+            }
         }
     } elseif ($resource_state === 'not_exists') {
         // Canal expirado - limpar webhook

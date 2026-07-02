@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/../conexao.php';
+require_once __DIR__ . '/../env_bootstrap.php';
 require_once __DIR__ . '/google_calendar_helper.php';
 
 /**
@@ -12,6 +13,17 @@ require_once __DIR__ . '/google_calendar_helper.php';
  */
 function google_calendar_auto_sync($pdo, string $source = ''): void {
     try {
+        $workerEnabled = function_exists('painel_env_bool')
+            ? painel_env_bool('GOOGLE_WORKER_ENABLED', false)
+            : filter_var(getenv('GOOGLE_WORKER_ENABLED') ?: false, FILTER_VALIDATE_BOOL);
+        $syncOnRequest = function_exists('painel_env_bool')
+            ? painel_env_bool('GOOGLE_SYNC_ON_REQUEST', !$workerEnabled)
+            : filter_var(getenv('GOOGLE_SYNC_ON_REQUEST') ?: (!$workerEnabled ? '1' : '0'), FILTER_VALIDATE_BOOL);
+
+        if ($workerEnabled && !$syncOnRequest) {
+            return;
+        }
+
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
