@@ -893,6 +893,7 @@ function renderDetail(d, mensagens, anexos) {
         </div>
         <form class="composer" onsubmit="sendMessage(event, ${Number(d.id)})">
             <textarea name="mensagem" placeholder="Escreva uma mensagem. Use @nome ou @setor para citar."></textarea>
+            <div class="composer-hint">Para mencionar, use <strong>@nome</strong> ou <strong>@setor</strong>. Ex.: @Gustavo ou @Comercial.</div>
             <div class="composer-row">
                 <div class="composer-attach">
                     <input class="file-input-native" id="demand-file-${Number(d.id)}" type="file" name="arquivo" onchange="updateAttachmentName(this)">

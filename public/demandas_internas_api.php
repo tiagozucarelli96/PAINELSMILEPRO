@@ -713,7 +713,16 @@ function demandasInternasList(PDO $pdo, int $userId, bool $isAdmin): void
             SELECT demanda_id, COUNT(*) AS total FROM demandas_internas_anexos GROUP BY demanda_id
         ) anexos ON anexos.demanda_id = d.id
         WHERE " . implode(' AND ', $where) . "
-        ORDER BY d.prazo ASC NULLS LAST, d.criado_em DESC
+        ORDER BY
+            CASE d.prioridade
+                WHEN 'urgente' THEN 1
+                WHEN 'alta' THEN 2
+                WHEN 'normal' THEN 3
+                WHEN 'baixa' THEN 4
+                ELSE 5
+            END ASC,
+            d.prazo ASC NULLS LAST,
+            d.criado_em DESC
         LIMIT 200
     ");
     $stmt->execute($params);
