@@ -184,6 +184,12 @@ function eventos_formatura_redirect(int $eventoId): void
     exit;
 }
 
+function eventos_formatura_redirect_financeiro(int $eventoId, int $formandoId): void
+{
+    header('Location: index.php?page=eventos_formatura&evento_id=' . $eventoId . '&formando_id=' . $formandoId);
+    exit;
+}
+
 $eventoId = (int)($_GET['evento_id'] ?? $_POST['evento_id'] ?? 0);
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $messages = [];
@@ -335,7 +341,7 @@ if ($requestMethod === 'POST') {
             ]);
 
             $_SESSION['eventos_formatura_message'] = 'Lançamento financeiro criado.';
-            eventos_formatura_redirect($eventoId);
+            eventos_formatura_redirect_financeiro($eventoId, $formandoId);
         }
     }
 }
@@ -348,6 +354,10 @@ if (!empty($_SESSION['eventos_formatura_message'])) {
 $clientes = eventos_formatura_clientes($pdo);
 $formandos = eventos_formatura_formandos($pdo, $eventoId);
 $financeiro = eventos_formatura_financeiro($pdo, $eventoId);
+$formandoFinanceiroId = (int)($_GET['formando_id'] ?? 0);
+$mostrarNovaCobranca = (string)($_GET['nova_cobranca'] ?? '') === '1';
+$formandoFinanceiro = null;
+$financeiroFormando = [];
 $clientesJson = [];
 foreach ($clientes as $cliente) {
     $labelParts = [(string)$cliente['nome']];
@@ -365,6 +375,21 @@ foreach ($clientes as $cliente) {
         'telefone' => (string)$cliente['telefone'],
         'label' => implode(' - ', array_filter($labelParts)),
     ];
+}
+
+foreach ($formandos as $formandoItem) {
+    if ((int)$formandoItem['id'] === $formandoFinanceiroId) {
+        $formandoFinanceiro = $formandoItem;
+        break;
+    }
+}
+
+if ($formandoFinanceiro) {
+    foreach ($financeiro as $financeiroItem) {
+        if ((int)$financeiroItem['formando_id'] === $formandoFinanceiroId) {
+            $financeiroFormando[] = $financeiroItem;
+        }
+    }
 }
 
 $totalConvidados = array_sum(array_map(static fn($item) => (int)$item['convidados'], $formandos));
@@ -445,6 +470,53 @@ includeSidebar('Formatura');
     display: flex;
     gap: 0.7rem;
     align-items: center;
+    flex-wrap: wrap;
+}
+.formatura-financeiro-head {
+    padding: 0 1.4rem 1.25rem;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.formatura-financeiro-head h3 {
+    margin: 0;
+    color: #4b5563;
+    font-size: 1.55rem;
+    font-weight: 850;
+}
+.formatura-financeiro-head p {
+    margin: 0.25rem 0 0;
+    color: #475569;
+    font-weight: 700;
+}
+.formatura-financeiro-resumo {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 230px;
+    color: #475569;
+    font-weight: 750;
+}
+.formatura-receita-card {
+    margin: 0 1.4rem 1.2rem;
+    padding: 1rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+.formatura-receita-card h3,
+.formatura-section-title {
+    margin: 0 0 0.9rem;
+    color: #475569;
+    font-size: 1rem;
+    font-weight: 900;
+}
+.formatura-inline-actions {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.7rem;
     flex-wrap: wrap;
 }
 .formatura-search {
@@ -674,6 +746,101 @@ includeSidebar('Formatura');
         <div class="alert alert-error"><?= eventos_formatura_e($error) ?></div>
     <?php endforeach; ?>
 
+    <?php if ($formandoFinanceiro): ?>
+        <?php
+        $financeiroFormandoLancado = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] !== 'cancelado')));
+        $financeiroFormandoPago = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] === 'pago')));
+        $financeiroFormandoSaldo = max(0, $financeiroFormandoLancado - $financeiroFormandoPago);
+        ?>
+        <section class="formatura-panel">
+            <div class="formatura-panel-head">
+                <h2>Financeiro do Formando</h2>
+            </div>
+            <div class="formatura-toolbar">
+                <a class="formatura-btn formatura-btn--warning" href="index.php?page=eventos_formatura&evento_id=<?= (int)$eventoId ?>">← Voltar</a>
+                <a class="formatura-btn formatura-btn--primary" href="index.php?page=eventos_formatura&evento_id=<?= (int)$eventoId ?>&formando_id=<?= (int)$formandoFinanceiroId ?>&nova_cobranca=1">＋ Adicionar Cobrança</a>
+            </div>
+
+            <div class="formatura-financeiro-head">
+                <div>
+                    <h3><?= eventos_formatura_e((string)$formandoFinanceiro['nome_formando']) ?></h3>
+                    <p><?= eventos_formatura_e((string)($formandoFinanceiro['cliente_telefone'] ?? '')) ?></p>
+                    <p class="formatura-muted"><?= eventos_formatura_e((string)($formandoFinanceiro['cliente_email'] ?? '')) ?></p>
+                </div>
+                <div class="formatura-financeiro-resumo">
+                    <span>Lançado: <strong>R$ <?= number_format($financeiroFormandoLancado, 2, ',', '.') ?></strong></span>
+                    <span>Pago: <strong>R$ <?= number_format($financeiroFormandoPago, 2, ',', '.') ?></strong></span>
+                    <span>Saldo: <strong>R$ <?= number_format($financeiroFormandoSaldo, 2, ',', '.') ?></strong></span>
+                </div>
+            </div>
+
+            <?php if ($mostrarNovaCobranca): ?>
+                <div class="formatura-receita-card">
+                    <h3>Criar receita</h3>
+                    <form method="post">
+                        <input type="hidden" name="action" value="save_financeiro">
+                        <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                        <input type="hidden" name="formando_id" value="<?= (int)$formandoFinanceiroId ?>">
+                        <div class="formatura-grid">
+                            <div class="formatura-field full">
+                                <label for="financeiroDescricao">Descrição</label>
+                                <textarea id="financeiroDescricao" name="descricao" placeholder="Ex.: Entrada do formando, parcela, adicional..." required></textarea>
+                            </div>
+                            <div class="formatura-field">
+                                <label for="financeiroValor">Valor</label>
+                                <input id="financeiroValor" name="valor" type="text" inputmode="decimal" placeholder="0,00" required>
+                            </div>
+                            <div class="formatura-field">
+                                <label for="financeiroVencimento">Vencimento</label>
+                                <input id="financeiroVencimento" name="vencimento" type="date">
+                            </div>
+                            <div class="formatura-field">
+                                <label for="financeiroStatus">Status</label>
+                                <select id="financeiroStatus" name="status">
+                                    <option value="pendente">Pendente</option>
+                                    <option value="pago">Pago</option>
+                                    <option value="cancelado">Cancelado</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="formatura-inline-actions">
+                            <a class="formatura-btn formatura-btn--light" href="index.php?page=eventos_formatura&evento_id=<?= (int)$eventoId ?>&formando_id=<?= (int)$formandoFinanceiroId ?>">Cancelar</a>
+                            <button type="submit" class="formatura-btn formatura-btn--primary">Salvar cobrança</button>
+                        </div>
+                    </form>
+                </div>
+            <?php endif; ?>
+
+            <div class="formatura-table-wrap">
+                <h3 class="formatura-section-title">Gerenciar Cobranças</h3>
+                <?php if (empty($financeiroFormando)): ?>
+                    <div class="formatura-empty">Nenhum valor lançado.</div>
+                <?php else: ?>
+                    <table class="formatura-table">
+                        <thead>
+                            <tr>
+                                <th>Descrição</th>
+                                <th>Vencimento</th>
+                                <th>Status</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($financeiroFormando as $cobranca): ?>
+                                <tr>
+                                    <td><?= eventos_formatura_e((string)$cobranca['descricao']) ?></td>
+                                    <td><?= !empty($cobranca['vencimento']) ? eventos_formatura_e(date('d/m/Y', strtotime((string)$cobranca['vencimento']))) : '-' ?></td>
+                                    <td><?= eventos_formatura_e(ucfirst((string)$cobranca['status'])) ?></td>
+                                    <td><strong>R$ <?= number_format((float)$cobranca['valor'], 2, ',', '.') ?></strong></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            </div>
+        </section>
+    <?php else: ?>
+
     <div class="formatura-stats">
         <div class="formatura-stat"><strong><?= count($formandos) ?></strong><span>Formandos</span></div>
         <div class="formatura-stat"><strong><?= (int)$totalConvidados ?></strong><span>Convidados</span></div>
@@ -743,7 +910,7 @@ includeSidebar('Formatura');
                                 <td>
                                     <div class="formatura-actions">
                                         <button type="button" class="formatura-icon-btn" title="Gerar documento" disabled>📄</button>
-                                        <button type="button" class="formatura-icon-btn btnFinanceiro" title="Financeiro" data-formando-id="<?= (int)$formando['id'] ?>" data-formando-nome="<?= eventos_formatura_e((string)$formando['nome_formando']) ?>">$</button>
+                                        <a class="formatura-icon-btn" title="Financeiro" href="index.php?page=eventos_formatura&evento_id=<?= (int)$eventoId ?>&formando_id=<?= (int)$formando['id'] ?>">$</a>
                                         <button
                                             type="button"
                                             class="formatura-icon-btn btnEditarFormando"
@@ -769,6 +936,7 @@ includeSidebar('Formatura');
             </div>
         <?php endif; ?>
     </section>
+    <?php endif; ?>
 </div>
 
 <div class="formatura-modal" id="modalFormando" aria-hidden="true">
@@ -811,48 +979,6 @@ includeSidebar('Formatura');
             <div class="formatura-modal-actions">
                 <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
                 <button type="submit" class="formatura-btn formatura-btn--primary">Salvar</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="formatura-modal" id="modalFinanceiro" aria-hidden="true">
-    <div class="formatura-modal-dialog">
-        <div class="formatura-modal-head">
-            <h3 id="modalFinanceiroTitulo">Financeiro do formando</h3>
-            <button type="button" class="formatura-close" data-close-modal>×</button>
-        </div>
-        <form method="post">
-            <div class="formatura-modal-body">
-                <input type="hidden" name="action" value="save_financeiro">
-                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
-                <input type="hidden" name="formando_id" id="financeiroFormandoId" value="">
-                <div class="formatura-grid">
-                    <div class="formatura-field full">
-                        <label for="financeiroDescricao">Descrição</label>
-                        <textarea id="financeiroDescricao" name="descricao" placeholder="Ex.: Entrada do formando, parcela, adicional..." required></textarea>
-                    </div>
-                    <div class="formatura-field">
-                        <label for="financeiroValor">Valor</label>
-                        <input id="financeiroValor" name="valor" type="text" inputmode="decimal" placeholder="0,00" required>
-                    </div>
-                    <div class="formatura-field">
-                        <label for="financeiroVencimento">Vencimento</label>
-                        <input id="financeiroVencimento" name="vencimento" type="date">
-                    </div>
-                    <div class="formatura-field">
-                        <label for="financeiroStatus">Status</label>
-                        <select id="financeiroStatus" name="status">
-                            <option value="pendente">Pendente</option>
-                            <option value="pago">Pago</option>
-                            <option value="cancelado">Cancelado</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="formatura-modal-actions">
-                <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
-                <button type="submit" class="formatura-btn formatura-btn--primary">Salvar lançamento</button>
             </div>
         </form>
     </div>
@@ -932,19 +1058,6 @@ document.querySelectorAll('.btnEditarFormando').forEach((btn) => {
         document.getElementById('mesas').value = btn.dataset.mesas || '0';
         setCliente(clienteById(btn.dataset.clienteId || 0));
         openModal(modalFormando);
-    });
-});
-
-const modalFinanceiro = document.getElementById('modalFinanceiro');
-document.querySelectorAll('.btnFinanceiro').forEach((btn) => {
-    btn.addEventListener('click', () => {
-        document.getElementById('financeiroFormandoId').value = btn.dataset.formandoId || '';
-        document.getElementById('modalFinanceiroTitulo').textContent = `Financeiro - ${btn.dataset.formandoNome || 'Formando'}`;
-        document.getElementById('financeiroDescricao').value = '';
-        document.getElementById('financeiroValor').value = '';
-        document.getElementById('financeiroVencimento').value = '';
-        document.getElementById('financeiroStatus').value = 'pendente';
-        openModal(modalFinanceiro);
     });
 });
 
