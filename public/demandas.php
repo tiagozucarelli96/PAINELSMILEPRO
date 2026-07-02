@@ -286,6 +286,14 @@ includeSidebar('Demandas');
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.file-input-native {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
 .composer-actions {
     display: flex;
     gap: 0.45rem;
@@ -363,23 +371,28 @@ includeSidebar('Demandas');
     font: inherit;
     color: #172033;
 }
-.checkbox-field {
+.field.checkbox-field {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     min-height: 24px;
+    width: auto;
 }
-.checkbox-field label {
+.field.checkbox-field label {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     margin: 0;
     cursor: pointer;
+    width: auto;
 }
-.checkbox-field input[type="checkbox"] {
+.field.checkbox-field input[type="checkbox"] {
     width: 16px;
     height: 16px;
     margin: 0;
+    padding: 0;
     flex: 0 0 auto;
+    border-radius: 3px;
 }
 .grid-2 {
     display: grid;
@@ -536,13 +549,12 @@ includeSidebar('Demandas');
                         <label for="create-responsavel-setor">Setor responsável</label>
                         <select id="create-responsavel-setor" name="responsavel_setor"></select>
                     </div>
-                    <div></div>
-                    <div class="field checkbox-field hidden" id="create-jordao-wrap">
-                        <label>
-                            <input type="checkbox" id="create-enviar-jordao" name="enviar_jordao" value="1">
-                            Enviar para o Jordão?
-                        </label>
-                    </div>
+                </div>
+                <div class="field checkbox-field hidden" id="create-jordao-wrap">
+                    <label for="create-enviar-jordao">
+                        <input type="checkbox" id="create-enviar-jordao" name="enviar_jordao" value="1">
+                        <span>Enviar para o Jordão?</span>
+                    </label>
                 </div>
                 <div class="grid-2">
                     <div class="field">
@@ -877,8 +889,8 @@ function renderDetail(d, mensagens, anexos) {
             <textarea name="mensagem" placeholder="Escreva uma mensagem. Use @nome ou @setor para citar."></textarea>
             <div class="composer-row">
                 <div class="composer-attach">
-                    <input class="hidden" id="demand-file-${Number(d.id)}" type="file" name="arquivo" onchange="updateAttachmentName(this)">
-                    <button class="btn" type="button" onclick="document.getElementById('demand-file-${Number(d.id)}').click()">Anexar arquivo</button>
+                    <input class="file-input-native" id="demand-file-${Number(d.id)}" type="file" name="arquivo" onchange="updateAttachmentName(this)">
+                    <label class="btn" for="demand-file-${Number(d.id)}">Anexar arquivo</label>
                     <span class="composer-file-name" data-file-name></span>
                 </div>
                 <div class="composer-actions">
