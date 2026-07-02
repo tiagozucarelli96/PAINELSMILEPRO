@@ -67,6 +67,9 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
             parcelamento_grupo VARCHAR(80) NULL,
             parcela_numero INTEGER NOT NULL DEFAULT 1,
             parcelas_total INTEGER NOT NULL DEFAULT 1,
+            asaas_payment_id VARCHAR(120) NULL,
+            asaas_invoice_url TEXT NULL,
+            asaas_payload JSONB NULL,
             pago_em TIMESTAMP NULL,
             created_by INTEGER NULL,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -80,6 +83,9 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS parcelamento_grupo VARCHAR(80) NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS parcela_numero INTEGER NOT NULL DEFAULT 1");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS parcelas_total INTEGER NOT NULL DEFAULT 1");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payment_id VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_invoice_url TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payload JSONB NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pago_em TIMESTAMP NULL");
 
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_formandos_evento ON eventos_formatura_formandos(evento_id)");
@@ -87,6 +93,7 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_formando ON eventos_formatura_financeiro(formando_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_evento ON eventos_formatura_financeiro(evento_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_grupo ON eventos_formatura_financeiro(parcelamento_grupo)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_asaas ON eventos_formatura_financeiro(asaas_payment_id)");
 
     $done = true;
 }
@@ -322,6 +329,146 @@ function eventos_formatura_salvar_receitas_manual_lote(PDO $pdo, int $eventoId, 
     }
 }
 
+function eventos_formatura_criar_pix_asaas(PDO $pdo, int $eventoId, array $evento, array $formando, array $dados, int $userId): array
+{
+    require_once __DIR__ . '/asaas_helper.php';
+
+    $valoresPost = is_array($dados['parcela_valor'] ?? null) ? $dados['parcela_valor'] : [];
+    $vencimentosPost = is_array($dados['parcela_vencimento'] ?? null) ? $dados['parcela_vencimento'] : [];
+    $valorTotal = eventos_formatura_money($dados['valor_total'] ?? 0);
+    $parcelas = max(1, min(24, (int)($dados['parcelas'] ?? count($valoresPost) ?: 1)));
+    $primeiroVencimento = trim((string)($dados['primeiro_vencimento'] ?? date('Y-m-d')));
+    $descricaoBase = trim((string)($dados['descricao'] ?? 'Receita do formando')) ?: 'Receita do formando';
+    $unidade = trim((string)($dados['unidade'] ?? ($evento['space_visivel'] ?? '')));
+
+    if (!empty($valoresPost)) {
+        $valores = array_map('eventos_formatura_money', $valoresPost);
+        $parcelas = count($valores);
+        $valorTotal = array_sum($valores);
+    } else {
+        $valores = eventos_financeiro_split_parcelas($valorTotal, $parcelas);
+    }
+    if ($valorTotal <= 0) {
+        return ['ok' => false, 'error' => 'Informe um valor maior que zero.'];
+    }
+
+    $responsavelNome = trim((string)($formando['cliente_nome'] ?? ''));
+    $responsavelEmail = trim((string)($formando['cliente_email'] ?? ''));
+    $responsavelTelefone = trim((string)($formando['cliente_telefone'] ?? ''));
+    $responsavelDocumento = preg_replace('/\D+/', '', (string)($formando['cliente_documento'] ?? ''));
+    if ($responsavelNome === '') {
+        return ['ok' => false, 'error' => 'O responsável do formando não tem nome cadastrado.'];
+    }
+    if ($responsavelDocumento === '') {
+        return ['ok' => false, 'error' => 'O responsável do formando precisa ter CPF/CNPJ cadastrado para gerar cobrança no Asaas.'];
+    }
+
+    $asaas = new AsaasHelper();
+    $created = 0;
+    $grupo = 'formatura_asaas_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+    $startedTransaction = !$pdo->inTransaction();
+
+    try {
+        $customer = $asaas->createCustomer([
+            'name' => $responsavelNome,
+            'email' => $responsavelEmail,
+            'phone' => $responsavelTelefone,
+            'cpf_cnpj' => $responsavelDocumento,
+            'external_reference' => 'formatura_formando:' . (int)$formando['id'],
+        ]);
+        $customerId = (string)($customer['id'] ?? '');
+        if ($customerId === '') {
+            return ['ok' => false, 'error' => 'Não foi possível criar o responsável do formando no Asaas.'];
+        }
+
+        if ($startedTransaction) {
+            $pdo->beginTransaction();
+        }
+
+        foreach ($valores as $index => $valorParcela) {
+            $numero = $index + 1;
+            $vencimento = trim((string)($vencimentosPost[$index] ?? ''));
+            if ($vencimento === '') {
+                $vencimento = date('Y-m-d', strtotime($primeiroVencimento . ' +' . ($index * 30) . ' days'));
+            }
+            $descricao = $parcelas > 1 ? $descricaoBase . " ({$numero}/{$parcelas})" : $descricaoBase;
+
+            $stmt = $pdo->prepare("
+                INSERT INTO eventos_formatura_financeiro
+                    (formando_id, evento_id, descricao, valor, vencimento, status, forma_pagamento,
+                     carteira, modo_pagamento, unidade, parcelamento_grupo, parcela_numero, parcelas_total,
+                     created_by, updated_at)
+                VALUES
+                    (:formando_id, :evento_id, :descricao, :valor, :vencimento, 'pendente', 'pix_asaas',
+                     'asaas', 'pix', :unidade, :parcelamento_grupo, :parcela_numero, :parcelas_total,
+                     :created_by, NOW())
+                RETURNING id
+            ");
+            $stmt->execute([
+                ':formando_id' => (int)$formando['id'],
+                ':evento_id' => $eventoId,
+                ':descricao' => $descricao,
+                ':valor' => $valorParcela,
+                ':vencimento' => $vencimento,
+                ':unidade' => $unidade !== '' ? $unidade : null,
+                ':parcelamento_grupo' => $grupo,
+                ':parcela_numero' => $numero,
+                ':parcelas_total' => $parcelas,
+                ':created_by' => $userId > 0 ? $userId : null,
+            ]);
+            $receitaId = (int)$stmt->fetchColumn();
+            $externalReference = 'formatura_financeiro_receita:' . $receitaId;
+
+            $payment = $asaas->createPixPayment([
+                'customer_id' => $customerId,
+                'value' => (float)$valorParcela,
+                'due_date' => $vencimento,
+                'description' => $descricao . ' - ' . (string)($formando['nome_formando'] ?? 'Formando') . ' - ' . (string)($evento['nome_evento'] ?? 'Formatura'),
+                'external_reference' => $externalReference,
+            ]);
+
+            $statusLocal = eventos_financeiro_status_from_asaas((string)($payment['status'] ?? ''));
+            $stmt = $pdo->prepare("
+                UPDATE eventos_formatura_financeiro
+                SET asaas_payment_id = :asaas_payment_id,
+                    asaas_invoice_url = :asaas_invoice_url,
+                    asaas_payload = :asaas_payload,
+                    status = :status,
+                    updated_at = NOW()
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                ':asaas_payment_id' => $payment['id'] ?? null,
+                ':asaas_invoice_url' => $payment['invoiceUrl'] ?? $payment['bankSlipUrl'] ?? null,
+                ':asaas_payload' => json_encode($payment, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ':status' => $statusLocal,
+                ':id' => $receitaId,
+            ]);
+            $created++;
+        }
+
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+        return ['ok' => true, 'created' => $created];
+    } catch (Throwable $e) {
+        if ($created > 0) {
+            if ($startedTransaction && $pdo->inTransaction()) {
+                $pdo->commit();
+            }
+            return [
+                'ok' => true,
+                'created' => $created,
+                'warning' => 'Parte das cobranças foi criada no Asaas, mas houve falha na sequência: ' . $e->getMessage(),
+            ];
+        }
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
 $eventoId = (int)($_GET['evento_id'] ?? $_POST['evento_id'] ?? 0);
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $messages = [];
@@ -453,10 +600,30 @@ if ($requestMethod === 'POST') {
         }
 
         if (empty($errors)) {
-            $result = eventos_formatura_salvar_receitas_manual_lote($pdo, $eventoId, $formandoId, $_POST, $userId);
+            $formandoSelecionado = null;
+            foreach ($formandos ?? [] as $formandoItem) {
+                if ((int)$formandoItem['id'] === $formandoId) {
+                    $formandoSelecionado = $formandoItem;
+                    break;
+                }
+            }
+            if (!$formandoSelecionado) {
+                $formandoSelecionado = eventos_formatura_formandos($pdo, $eventoId);
+                $formandoSelecionado = current(array_filter($formandoSelecionado, static fn($item) => (int)$item['id'] === $formandoId)) ?: null;
+            }
+
+            $carteira = (string)($_POST['carteira'] ?? 'manual');
+            if ($carteira === 'asaas' && is_array($formandoSelecionado)) {
+                $result = eventos_formatura_criar_pix_asaas($pdo, $eventoId, $evento, $formandoSelecionado, $_POST, $userId);
+            } else {
+                $result = eventos_formatura_salvar_receitas_manual_lote($pdo, $eventoId, $formandoId, $_POST, $userId);
+            }
             if (!empty($result['ok'])) {
                 $created = (int)($result['created'] ?? 1);
                 $_SESSION['eventos_formatura_message'] = $created > 1 ? 'Receitas criadas.' : 'Receita criada.';
+                if (!empty($result['warning'])) {
+                    $_SESSION['eventos_formatura_message'] .= ' ' . (string)$result['warning'];
+                }
                 eventos_formatura_redirect_financeiro($eventoId, $formandoId);
             }
             $errors[] = (string)($result['error'] ?? 'Não foi possível salvar a receita.');
@@ -982,6 +1149,7 @@ includeSidebar('Formatura');
                                 <label for="financeiroCarteira">Carteira</label>
                                 <select id="financeiroCarteira" name="carteira">
                                     <option value="manual">Manual</option>
+                                    <option value="asaas">Asaas</option>
                                 </select>
                             </div>
                             <div class="formatura-field">
@@ -1051,6 +1219,7 @@ includeSidebar('Formatura');
                                 <th>Carteira</th>
                                 <th>Status</th>
                                 <th>Valor</th>
+                                <th>Link</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1069,6 +1238,13 @@ includeSidebar('Formatura');
                                     </td>
                                     <td><?= eventos_formatura_e(eventos_formatura_label_status((string)$cobranca['status'])) ?></td>
                                     <td><strong>R$ <?= number_format((float)$cobranca['valor'], 2, ',', '.') ?></strong></td>
+                                    <td>
+                                        <?php if (!empty($cobranca['asaas_invoice_url'])): ?>
+                                            <a href="<?= eventos_formatura_e((string)$cobranca['asaas_invoice_url']) ?>" target="_blank" rel="noopener">Abrir</a>
+                                        <?php else: ?>
+                                            <span class="formatura-muted">-</span>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -1323,6 +1499,9 @@ const receitaPrimeiroVencimento = document.getElementById('financeiroPrimeiroVen
 const receitaParcelasBody = document.getElementById('financeiroParcelasBody');
 const receitaParcelasField = document.getElementById('financeiroParcelasField');
 const receitaTipoValor = document.getElementById('formaturaTipoValor');
+const receitaCarteira = document.getElementById('financeiroCarteira');
+const receitaModo = document.getElementById('financeiroModo');
+const receitaStatus = document.getElementById('financeiroStatus');
 let formaturaReceitaTipo = receitaTipoValor?.value || 'avista';
 
 function renderFormaturaParcelas() {
@@ -1356,6 +1535,19 @@ function updateFormaturaReceitaMode() {
         button.classList.toggle('is-active', button.dataset.formaturaTipo === formaturaReceitaTipo);
     });
     receitaParcelasField?.classList.toggle('formatura-hidden', formaturaReceitaTipo !== 'parcelado');
+    const isAsaas = receitaCarteira?.value === 'asaas';
+    if (isAsaas && receitaModo) {
+        receitaModo.value = 'pix';
+    }
+    receitaModo?.querySelectorAll('option').forEach((option) => {
+        option.disabled = isAsaas && option.value !== 'pix';
+    });
+    if (isAsaas && receitaStatus) {
+        receitaStatus.value = 'pendente';
+        receitaStatus.disabled = true;
+    } else if (receitaStatus) {
+        receitaStatus.disabled = false;
+    }
     renderFormaturaParcelas();
 }
 
@@ -1369,6 +1561,7 @@ document.querySelectorAll('[data-formatura-tipo]').forEach((button) => {
 [receitaValorTotal, receitaParcelasInput, receitaPrimeiroVencimento].forEach((input) => {
     input?.addEventListener('input', renderFormaturaParcelas);
 });
+receitaCarteira?.addEventListener('change', updateFormaturaReceitaMode);
 
 receitaValorTotal?.addEventListener('blur', () => {
     const value = formaturaMoneyToNumber(receitaValorTotal.value);

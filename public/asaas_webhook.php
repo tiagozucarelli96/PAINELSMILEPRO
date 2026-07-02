@@ -366,6 +366,14 @@ try {
             if ($updatedFinanceiro) {
                 logWebhook("Financeiro do evento atualizado pelo Asaas: payment_id=$payment_id");
             }
+            $updatedFormatura = eventos_formatura_financeiro_atualizar_asaas_payment(
+                $pdo,
+                (string)$payment_id,
+                is_array($webhook_data['payment'] ?? null) ? $webhook_data['payment'] : []
+            );
+            if ($updatedFormatura) {
+                logWebhook("Financeiro do formando atualizado pelo Asaas: payment_id=$payment_id");
+            }
         } catch (Throwable $e) {
             logWebhook("Aviso: falha ao atualizar financeiro do evento pelo Asaas: " . $e->getMessage());
         }
