@@ -30,22 +30,7 @@ const GLC_MARGEM_SEGURANCA = 1.05;
 
 function glc_unidade_usa_decimal(string $unidadeNome): bool
 {
-    $normalized = strtolower(trim($unidadeNome));
-    $normalized = strtr($normalized, [
-        'á' => 'a',
-        'à' => 'a',
-        'â' => 'a',
-        'ã' => 'a',
-        'é' => 'e',
-        'ê' => 'e',
-        'í' => 'i',
-        'ó' => 'o',
-        'ô' => 'o',
-        'õ' => 'o',
-        'ú' => 'u',
-        'ç' => 'c',
-    ]);
-
+    $normalized = glc_normalize_unit_name($unidadeNome);
     return in_array($normalized, ['kg', 'ml', 'l', 'lt', 'litro', 'litros'], true);
 }
 
@@ -521,6 +506,75 @@ function glc_add_total(array &$totals, int $eventId, int $insumoId, ?int $unidad
     $totals[$key]['origens'][] = $origin + ['quantidade' => $quantity];
 }
 
+function glc_normalize_unit_name(string $value): string
+{
+    $normalized = strtolower(trim($value));
+    return strtr($normalized, [
+        'á' => 'a',
+        'à' => 'a',
+        'â' => 'a',
+        'ã' => 'a',
+        'é' => 'e',
+        'ê' => 'e',
+        'í' => 'i',
+        'ó' => 'o',
+        'ô' => 'o',
+        'õ' => 'o',
+        'ú' => 'u',
+        'ç' => 'c',
+    ]);
+}
+
+function glc_find_unidade_id(array $unidades, array $nomes): ?int
+{
+    $normalizedNames = array_map('glc_normalize_unit_name', $nomes);
+    foreach ($unidades as $id => $nome) {
+        if (in_array(glc_normalize_unit_name((string)$nome), $normalizedNames, true)) {
+            return (int)$id;
+        }
+    }
+    return null;
+}
+
+function glc_normalizar_totais_cento(array $totals, array $unidades): array
+{
+    $centoId = glc_find_unidade_id($unidades, ['Cento']);
+    $unidadeId = glc_find_unidade_id($unidades, ['Un', 'Unidade', 'Unidades']);
+    if ($centoId === null || $unidadeId === null) {
+        return $totals;
+    }
+
+    $normalized = [];
+    foreach ($totals as $total) {
+        if ((int)($total['unidade_medida_id'] ?? 0) === $centoId) {
+            $total['unidade_medida_id'] = $unidadeId;
+            $total['quantidade'] = (float)$total['quantidade'] * 100;
+            foreach ($total['eventos'] as $eventId => $eventQty) {
+                $total['eventos'][$eventId] = (float)$eventQty * 100;
+            }
+            foreach ($total['origens'] as $index => $origin) {
+                if (isset($origin['quantidade'])) {
+                    $total['origens'][$index]['quantidade'] = (float)$origin['quantidade'] * 100;
+                }
+            }
+        }
+
+        $key = (int)$total['insumo_id'] . ':' . ((int)($total['unidade_medida_id'] ?? 0));
+        if (!isset($normalized[$key])) {
+            $normalized[$key] = $total;
+            continue;
+        }
+
+        $normalized[$key]['quantidade'] += (float)$total['quantidade'];
+        foreach ($total['eventos'] as $eventId => $eventQty) {
+            $normalized[$key]['eventos'][$eventId] = ($normalized[$key]['eventos'][$eventId] ?? 0) + (float)$eventQty;
+        }
+        $normalized[$key]['origens'] = array_merge($normalized[$key]['origens'], $total['origens']);
+    }
+
+    return $normalized;
+}
+
 function glc_insumo_usa_calculo_grupo(array $insumo): bool
 {
     return ($insumo['calculo_lista_metodo'] ?? 'rendimento') === 'grupo'
@@ -788,6 +842,8 @@ function glc_calcular_lista(PDO $pdo, array $events): array
             }
         }
     }
+
+    $totals = glc_normalizar_totais_cento($totals, $unidades);
 
     uasort($totals, static function (array $a, array $b) use ($insumos): int {
         $tipA = (string)($insumos[(int)$a['insumo_id']]['tipologia_nome'] ?? '');
