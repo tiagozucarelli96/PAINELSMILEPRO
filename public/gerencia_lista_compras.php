@@ -41,7 +41,7 @@ function glc_ensure_schema(PDO $pdo): void
         return;
     }
 
-    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v6';
+    $marker = sys_get_temp_dir() . '/gerencia_lista_compras_schema_checked_v7';
     $markerMtime = @filemtime($marker);
     if ($markerMtime !== false && (time() - $markerMtime) < 3600) {
         $done = true;
@@ -106,6 +106,7 @@ function glc_ensure_schema(PDO $pdo): void
         ALTER TABLE logistica_insumos
             ADD COLUMN IF NOT EXISTS calculo_lista_metodo VARCHAR(20) DEFAULT 'rendimento',
             ADD COLUMN IF NOT EXISTS arredondar_rendimento_lista BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS rendimento_quantidade_base NUMERIC(12,3) NOT NULL DEFAULT 1,
             ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3),
             ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3),
             ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id),
@@ -144,6 +145,7 @@ function glc_ensure_schema(PDO $pdo): void
           AND i.calculo_lista_metodo IS NULL
     ");
     $pdo->exec("UPDATE logistica_insumos SET calculo_lista_metodo = 'rendimento' WHERE calculo_lista_metodo IS NULL OR calculo_lista_metodo NOT IN ('rendimento', 'grupo')");
+    $pdo->exec("UPDATE logistica_insumos SET rendimento_quantidade_base = 1 WHERE rendimento_quantidade_base IS NULL OR rendimento_quantidade_base <= 0");
 
     @touch($marker);
 
@@ -389,6 +391,7 @@ function glc_fetch_catalogo(PDO $pdo): array
                            i.tipologia_insumo_id,
                            i.unidade_medida_padrao_id,
                            COALESCE(i.rendimento_base_pessoas, 100) AS rendimento_base_pessoas,
+                           COALESCE(i.rendimento_quantidade_base, 1) AS rendimento_quantidade_base,
                            COALESCE(
                                NULLIF(i.calculo_lista_metodo, ''),
                                CASE
@@ -726,7 +729,8 @@ function glc_calcular_lista(PDO $pdo, array $events): array
                     continue;
                 }
                 $yield = max(1, (int)($insumos[$itemId]['rendimento_base_pessoas'] ?? 100));
-                $quantity = ($convidados / $yield) * GLC_MARGEM_SEGURANCA;
+                $baseQuantity = max(0.001, (float)($insumos[$itemId]['rendimento_quantidade_base'] ?? 1));
+                $quantity = ($convidados / $yield) * $baseQuantity * GLC_MARGEM_SEGURANCA;
                 if (!empty($insumos[$itemId]['arredondar_rendimento_lista'])) {
                     $quantity = ceil($quantity);
                 }
