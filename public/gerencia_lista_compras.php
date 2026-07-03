@@ -30,8 +30,7 @@ const GLC_MARGEM_SEGURANCA = 1.05;
 
 function glc_format_quantidade(float $value): string
 {
-    $formatted = number_format($value, 3, ',', '.');
-    return rtrim(rtrim($formatted, '0'), ',');
+    return number_format($value, 3, ',', '.');
 }
 
 function glc_ensure_schema(PDO $pdo): void
@@ -666,6 +665,9 @@ function glc_expand_receita(
         }
         if (!glc_tipologia_permite_lista($insumos[$itemId])) {
             continue;
+        }
+        if (!empty($insumos[$itemId]['arredondar_rendimento_lista'])) {
+            $quantity = ceil($quantity);
         }
 
         $unitId = isset($component['unidade_medida_id']) && $component['unidade_medida_id'] !== ''
