@@ -254,7 +254,7 @@ function glc_fetch_eventos_disponiveis(PDO $pdo, array $scope): array
 {
     $params = [
         ':ini' => date('Y-m-d'),
-        ':fim' => date('Y-m-d', strtotime('+365 days')),
+        ':fim' => date('Y-m-d', strtotime('+30 days')),
     ];
     $scopeSql = glc_allowed_event_condition($scope, $params, 'e');
 
@@ -268,20 +268,34 @@ function glc_fetch_eventos_disponiveis(PDO $pdo, array $scope): array
                e.nome_evento,
                e.space_visivel,
                e.unidade_interna_id,
+               COALESCE(e.arquivado, FALSE) AS arquivado,
                u.nome AS unidade_nome,
-               r.id AS meeting_id,
-               cr.submitted_at,
-               COUNT(ri.id)::int AS cardapio_itens
+               MAX(r.id) AS meeting_id,
+               MAX(cr.id) AS resposta_id,
+               MAX(cr.submitted_at) AS submitted_at,
+               COUNT(DISTINCT ri.id)::int AS cardapio_itens,
+               CASE
+                   WHEN COALESCE(e.arquivado, FALSE) = TRUE THEN FALSE
+                   WHEN MAX(r.id) IS NULL THEN FALSE
+                   WHEN MAX(cr.id) IS NULL THEN FALSE
+                   WHEN COUNT(DISTINCT ri.id) = 0 THEN FALSE
+                   ELSE TRUE
+               END AS disponivel_calculo,
+               CASE
+                   WHEN COALESCE(e.arquivado, FALSE) = TRUE THEN 'Evento arquivado'
+                   WHEN MAX(r.id) IS NULL THEN 'Sem reunião final vinculada'
+                   WHEN MAX(cr.id) IS NULL THEN 'Sem resposta de cardápio'
+                   WHEN COUNT(DISTINCT ri.id) = 0 THEN 'Cardápio sem itens'
+                   ELSE ''
+               END AS motivo_indisponivel
         FROM logistica_eventos_espelho e
-        JOIN eventos_reunioes r ON r.me_event_id = e.me_event_id
-        JOIN eventos_cardapio_respostas cr ON cr.meeting_id = r.id
-        JOIN eventos_cardapio_resposta_itens ri ON ri.resposta_id = cr.id
+        LEFT JOIN eventos_reunioes r ON r.me_event_id = e.me_event_id
+        LEFT JOIN eventos_cardapio_respostas cr ON cr.meeting_id = r.id
+        LEFT JOIN eventos_cardapio_resposta_itens ri ON ri.resposta_id = cr.id
         LEFT JOIN logistica_unidades u ON u.id = e.unidade_interna_id
-        WHERE e.arquivado IS FALSE
-          AND e.data_evento BETWEEN :ini AND :fim
+        WHERE e.data_evento BETWEEN :ini AND :fim
           AND {$scopeSql}
-        GROUP BY e.id, u.nome, r.id, cr.submitted_at
-        HAVING COUNT(ri.id) > 0
+        GROUP BY e.id, u.nome
         ORDER BY e.data_evento ASC, e.hora_inicio ASC NULLS LAST, e.nome_evento ASC
     ");
     $stmt->execute($params);
@@ -1039,6 +1053,10 @@ ob_start();
     .glc-search { min-width: min(420px, 100%); flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; padding: .72rem .8rem; font-size: .94rem; }
     .glc-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(285px, 1fr)); gap: .75rem; max-height: 460px; overflow: auto; padding-right: .25rem; }
     .glc-event { border: 1px solid #e2e8f0; border-radius: 8px; padding: .85rem; display: flex; gap: .7rem; align-items: flex-start; background: #fff; }
+    .glc-event.inactive { border-color: #fecaca; background: #fff1f2; cursor: help; }
+    .glc-event.inactive strong { color: #991b1b; }
+    .glc-event.inactive .glc-event-meta { color: #9f1239; }
+    .glc-event.inactive input { cursor: not-allowed; }
     .glc-event.hidden { display: none; }
     .glc-event input { margin-top: .25rem; }
     .glc-event strong { display: block; color: #0f172a; margin-bottom: .25rem; }
@@ -1053,6 +1071,8 @@ ob_start();
     .glc-table { width: 100%; border-collapse: collapse; min-width: 780px; background: #fff; }
     .glc-table th { background: #f8fafc; color: #475569; text-align: left; padding: .72rem; font-size: .8rem; text-transform: uppercase; }
     .glc-table td { border-top: 1px solid #e2e8f0; padding: .72rem; vertical-align: top; }
+    .glc-group-row td { background: #eef2ff; color: #1e3a8a; font-weight: 900; text-transform: uppercase; letter-spacing: .02em; border-top: 1px solid #c7d2fe; }
+    .glc-group-count { color: #64748b; font-size: .78rem; font-weight: 800; text-transform: none; margin-left: .35rem; }
     .glc-muted { color: #64748b; }
     .glc-pill { display: inline-flex; border-radius: 999px; padding: .18rem .48rem; background: #eef2ff; color: #1e3a8a; font-size: .75rem; font-weight: 800; }
 </style>
@@ -1084,6 +1104,7 @@ ob_start();
 
         <section class="glc-panel">
             <h2>Eventos disponíveis</h2>
+            <p class="glc-muted">Mostrando eventos dos próximos 30 dias. Eventos em vermelho ainda não podem entrar no cálculo.</p>
             <div class="glc-toolbar">
                 <input class="glc-search" id="glcSearch" type="search" placeholder="Buscar por evento, data, local ou unidade">
                 <button class="glc-btn secondary" type="button" onclick="glcClearSelection()">Limpar seleção</button>
@@ -1091,13 +1112,15 @@ ob_start();
             </div>
 
             <?php if (empty($eventosDisponiveis)): ?>
-                <p class="glc-muted">Nenhum evento com cardápio salvo foi encontrado para sua unidade.</p>
+                <p class="glc-muted">Nenhum evento foi encontrado para sua unidade nos próximos 30 dias.</p>
             <?php else: ?>
                 <div class="glc-events" id="glcEvents">
                     <?php foreach ($eventosDisponiveis as $evento): ?>
                         <?php
                         $eventId = (int)$evento['id'];
-                        $checked = in_array($eventId, $selectedIds, true);
+                        $isAvailable = !array_key_exists('disponivel_calculo', $evento) || !empty($evento['disponivel_calculo']);
+                        $motivoIndisponivel = trim((string)($evento['motivo_indisponivel'] ?? 'Evento indisponível para cálculo'));
+                        $checked = $isAvailable && in_array($eventId, $selectedIds, true);
                         $searchText = strtolower(implode(' ', [
                             $evento['nome_evento'] ?? '',
                             $evento['data_evento'] ?? '',
@@ -1105,10 +1128,11 @@ ob_start();
                             $evento['localevento'] ?? '',
                             $evento['space_visivel'] ?? '',
                             $evento['unidade_nome'] ?? '',
+                            $motivoIndisponivel,
                         ]));
                         ?>
-                        <label class="glc-event" data-search="<?= h($searchText) ?>">
-                            <input type="checkbox" name="event_ids[]" value="<?= $eventId ?>" <?= $checked ? 'checked' : '' ?> onchange="glcUpdateCount()">
+                        <label class="glc-event<?= $isAvailable ? '' : ' inactive' ?>" data-search="<?= h($searchText) ?>" title="<?= $isAvailable ? '' : h($motivoIndisponivel) ?>">
+                            <input type="checkbox" name="event_ids[]" value="<?= $eventId ?>" <?= $checked ? 'checked' : '' ?> <?= $isAvailable ? '' : 'disabled' ?> onchange="glcUpdateCount()">
                             <span>
                                 <strong><?= h($evento['nome_evento'] ?? 'Evento') ?></strong>
                                 <span class="glc-event-meta">
@@ -1118,6 +1142,9 @@ ob_start();
                                     <?= h($evento['unidade_nome'] ?? $evento['space_visivel'] ?? '') ?>
                                     · <?= (int)($evento['convidados'] ?? 0) ?> convidados
                                     · <?= (int)($evento['cardapio_itens'] ?? 0) ?> item(ns)
+                                    <?php if (!$isAvailable): ?>
+                                        <br><strong><?= h($motivoIndisponivel) ?></strong>
+                                    <?php endif; ?>
                                 </span>
                             </span>
                         </label>
@@ -1178,6 +1205,17 @@ ob_start();
             <?php if (empty($calculo['totals'])): ?>
                 <p class="glc-muted">Nenhum item calculado.</p>
             <?php else: ?>
+                <?php
+                $totalsByType = [];
+                foreach ($calculo['totals'] as $total) {
+                    $insumo = $calculo['insumos'][(int)$total['insumo_id']] ?? [];
+                    $typeName = trim((string)($insumo['tipologia_nome'] ?? 'Sem tipo')) ?: 'Sem tipo';
+                    if (!isset($totalsByType[$typeName])) {
+                        $totalsByType[$typeName] = [];
+                    }
+                    $totalsByType[$typeName][] = $total;
+                }
+                ?>
                 <div class="glc-table-wrap">
                     <table class="glc-table">
                         <thead>
@@ -1188,18 +1226,26 @@ ob_start();
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($calculo['totals'] as $total): ?>
-                                <?php
-                                $insumo = $calculo['insumos'][(int)$total['insumo_id']] ?? [];
-                                $unidadeNome = !empty($total['unidade_medida_id'])
-                                    ? (string)($calculo['unidades'][(int)$total['unidade_medida_id']] ?? '')
-                                    : (string)($insumo['unidade_nome'] ?? '');
-                                ?>
-                                <tr>
-                                    <td><?= h($insumo['nome_oficial'] ?? ('Insumo #' . (int)$total['insumo_id'])) ?></td>
-                                    <td><?= h($unidadeNome) ?></td>
-                                    <td><strong><?= glc_format_quantidade((float)$total['quantidade'], $unidadeNome) ?></strong></td>
+                            <?php foreach ($totalsByType as $typeName => $typeTotals): ?>
+                                <tr class="glc-group-row">
+                                    <td colspan="3">
+                                        <?= h($typeName) ?>
+                                        <span class="glc-group-count"><?= count($typeTotals) ?> item(ns)</span>
+                                    </td>
                                 </tr>
+                                <?php foreach ($typeTotals as $total): ?>
+                                    <?php
+                                    $insumo = $calculo['insumos'][(int)$total['insumo_id']] ?? [];
+                                    $unidadeNome = !empty($total['unidade_medida_id'])
+                                        ? (string)($calculo['unidades'][(int)$total['unidade_medida_id']] ?? '')
+                                        : (string)($insumo['unidade_nome'] ?? '');
+                                    ?>
+                                    <tr>
+                                        <td><?= h($insumo['nome_oficial'] ?? ('Insumo #' . (int)$total['insumo_id'])) ?></td>
+                                        <td><?= h($unidadeNome) ?></td>
+                                        <td><strong><?= glc_format_quantidade((float)$total['quantidade'], $unidadeNome) ?></strong></td>
+                                    </tr>
+                                <?php endforeach; ?>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
