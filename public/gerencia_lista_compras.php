@@ -28,9 +28,31 @@ if (!$canAccess) {
 
 const GLC_MARGEM_SEGURANCA = 1.05;
 
-function glc_format_quantidade(float $value): string
+function glc_unidade_usa_decimal(string $unidadeNome): bool
 {
-    return number_format($value, 3, ',', '.');
+    $normalized = strtolower(trim($unidadeNome));
+    $normalized = strtr($normalized, [
+        'á' => 'a',
+        'à' => 'a',
+        'â' => 'a',
+        'ã' => 'a',
+        'é' => 'e',
+        'ê' => 'e',
+        'í' => 'i',
+        'ó' => 'o',
+        'ô' => 'o',
+        'õ' => 'o',
+        'ú' => 'u',
+        'ç' => 'c',
+    ]);
+
+    return in_array($normalized, ['kg', 'ml', 'l', 'lt', 'litro', 'litros'], true);
+}
+
+function glc_format_quantidade(float $value, string $unidadeNome = ''): string
+{
+    $decimals = glc_unidade_usa_decimal($unidadeNome) ? 3 : 0;
+    return number_format($value, $decimals, ',', '.');
 }
 
 function glc_ensure_schema(PDO $pdo): void
@@ -1120,7 +1142,7 @@ ob_start();
                                 <tr>
                                     <td><?= h($insumo['nome_oficial'] ?? ('Insumo #' . (int)$total['insumo_id'])) ?></td>
                                     <td><?= h($unidadeNome) ?></td>
-                                    <td><strong><?= glc_format_quantidade((float)$total['quantidade']) ?></strong></td>
+                                    <td><strong><?= glc_format_quantidade((float)$total['quantidade'], $unidadeNome) ?></strong></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
