@@ -650,16 +650,21 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
 .pp-gallery-meta { color: #64748b; font-size: 0.76rem; }
 .pp-gallery-empty { padding: 1rem; color: #64748b; }
 .pp-section-box { border: 1px solid #dbe6f3; border-radius: 12px; padding: 0.9rem; background: #f8fafc; display: grid; gap: 0.75rem; }
+.pp-service-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; margin-top: 0.85rem; }
+.pp-service-tools .pp-section-box { align-content: start; }
 .pp-service-price-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.65rem; }
 .pp-service-price-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 0.45rem; align-items: center; }
 .pp-service-price-row input { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #d1d9e6; border-radius: 8px; padding: 0.48rem 0.58rem; color: #1e293b; background: #fff; }
-.pp-recipe-search { max-width: 420px; }
-.pp-recipes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.55rem; max-height: 280px; overflow: auto; padding-right: 0.25rem; }
+.pp-recipe-summary { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.pp-recipe-count { color: #1e293b; font-weight: 900; font-size: 0.92rem; }
+.pp-recipe-selected { color: #64748b; font-size: 0.8rem; line-height: 1.35; }
+.pp-recipe-search { max-width: 520px; margin: 1rem 1rem 0; }
+.pp-recipes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0.55rem; max-height: min(62dvh, 520px); overflow: auto; padding: 1rem; }
 .pp-recipe-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.55rem; align-items: start; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; padding: 0.65rem; color: #1e293b; }
 .pp-recipe-option input { margin-top: 0.15rem; }
 .pp-recipe-name { font-weight: 900; font-size: 0.88rem; }
 .pp-recipe-meta { color: #64748b; font-size: 0.76rem; margin-top: 0.15rem; }
-@media (max-width: 900px) { .pp-grid, .pp-price-head { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .pp-grid, .pp-price-head, .pp-service-tools { grid-template-columns: 1fr; } }
 @media (max-width: 768px) {
     .pp-modal-backdrop { padding: 0.75rem; }
     .pp-modal { width: 100%; max-height: calc(100dvh - 1.5rem); border-radius: 12px; }
@@ -845,7 +850,7 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
                     <label for="pp-descricao">Descrição</label>
                     <textarea name="descricao" id="pp-descricao" rows="14"><?= cadastros_pp_e((string)$modalItem['descricao']) ?></textarea>
                 </div>
-                <div class="pp-service-fields <?= $modalIsServico ? '' : 'hidden' ?>">
+                <div class="pp-service-fields pp-service-tools <?= $modalIsServico ? '' : 'hidden' ?>">
                     <div class="pp-section-box">
                         <div>
                             <h3 class="pp-price-title">Valor por quantidade de pessoas</h3>
@@ -882,37 +887,27 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
                     <div class="pp-section-box">
                         <div>
                             <h3 class="pp-price-title">Receitas do serviço</h3>
-                            <p class="pp-price-help">Selecione as receitas que fazem parte deste serviço.</p>
+                            <p class="pp-price-help">Monte a lista de receitas que entram neste serviço.</p>
                         </div>
-                        <div>
-                            <a class="pp-btn secondary" href="index.php?page=logistica_receitas">Cadastrar receita</a>
-                        </div>
-                        <input type="search" class="pp-recipe-search" id="pp-recipe-search" placeholder="Buscar receita">
-                        <?php if (!empty($receitasCatalogo)): ?>
-                            <div class="pp-recipes-grid" id="pp-recipes-grid">
-                                <?php foreach ($receitasCatalogo as $receita): ?>
-                                    <?php
-                                    $receitaId = (int)($receita['id'] ?? 0);
-                                    $receitaNome = (string)($receita['nome'] ?? '');
-                                    $receitaMeta = array_values(array_filter([
-                                        (string)($receita['tipologia'] ?? ''),
-                                        (int)($receita['rendimento_base_pessoas'] ?? 0) > 0 ? 'Rendimento: ' . (int)$receita['rendimento_base_pessoas'] : '',
-                                    ]));
-                                    ?>
-                                    <label class="pp-recipe-option" data-recipe-option data-search="<?= cadastros_pp_e(mb_strtolower($receitaNome . ' ' . implode(' ', $receitaMeta), 'UTF-8')) ?>">
-                                        <input type="checkbox" name="receita_ids[]" value="<?= $receitaId ?>" <?= in_array($receitaId, $modalReceitaIds, true) ? 'checked' : '' ?>>
-                                        <span>
-                                            <span class="pp-recipe-name"><?= cadastros_pp_e($receitaNome) ?></span>
-                                            <?php if (!empty($receitaMeta)): ?>
-                                                <span class="pp-recipe-meta"><?= cadastros_pp_e(implode(' | ', $receitaMeta)) ?></span>
-                                            <?php endif; ?>
-                                        </span>
-                                    </label>
-                                <?php endforeach; ?>
+                        <?php
+                        $receitasSelecionadasNomes = [];
+                        foreach ($receitasCatalogo as $receitaResumo) {
+                            $receitaResumoId = (int)($receitaResumo['id'] ?? 0);
+                            if (in_array($receitaResumoId, $modalReceitaIds, true)) {
+                                $receitasSelecionadasNomes[] = (string)($receitaResumo['nome'] ?? '');
+                            }
+                        }
+                        ?>
+                        <div class="pp-recipe-summary">
+                            <div>
+                                <div class="pp-recipe-count"><span data-recipe-count><?= count($modalReceitaIds) ?></span> selecionada(s)</div>
+                                <div class="pp-recipe-selected" data-recipe-selected-label>
+                                    <?= !empty($receitasSelecionadasNomes) ? cadastros_pp_e(implode(', ', array_slice($receitasSelecionadasNomes, 0, 4)) . (count($receitasSelecionadasNomes) > 4 ? '...' : '')) : 'Nenhuma receita vinculada.' ?>
+                                </div>
                             </div>
-                        <?php else: ?>
-                            <p class="pp-price-help">Nenhuma receita ativa encontrada no catálogo logístico.</p>
-                        <?php endif; ?>
+                            <button class="pp-btn secondary" type="button" data-open-recipes>Selecionar receitas</button>
+                        </div>
+                        <a class="pp-muted" href="index.php?page=logistica_receitas">Cadastrar nova receita</a>
                     </div>
                 </div>
             </div>
@@ -1007,6 +1002,45 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
     </div>
 </div>
 
+<div class="pp-modal-backdrop" id="pp-recipes-modal" role="dialog" aria-modal="true" aria-labelledby="pp-recipes-title">
+    <div class="pp-modal">
+        <div class="pp-modal-header">
+            <h2 class="pp-modal-title" id="pp-recipes-title">Selecionar receitas</h2>
+            <button class="pp-modal-close" type="button" data-close-recipes aria-label="Fechar">×</button>
+        </div>
+        <?php if (!empty($receitasCatalogo)): ?>
+            <input type="search" class="pp-recipe-search" id="pp-recipe-search" placeholder="Buscar receita">
+            <div class="pp-recipes-grid" id="pp-recipes-grid">
+                <?php foreach ($receitasCatalogo as $receita): ?>
+                    <?php
+                    $receitaId = (int)($receita['id'] ?? 0);
+                    $receitaNome = (string)($receita['nome'] ?? '');
+                    $receitaMeta = array_values(array_filter([
+                        (string)($receita['tipologia'] ?? ''),
+                        (int)($receita['rendimento_base_pessoas'] ?? 0) > 0 ? 'Rendimento: ' . (int)$receita['rendimento_base_pessoas'] : '',
+                    ]));
+                    ?>
+                    <label class="pp-recipe-option" data-recipe-option data-recipe-name="<?= cadastros_pp_e($receitaNome) ?>" data-search="<?= cadastros_pp_e(mb_strtolower($receitaNome . ' ' . implode(' ', $receitaMeta), 'UTF-8')) ?>">
+                        <input type="checkbox" form="pp-form" name="receita_ids[]" value="<?= $receitaId ?>" <?= in_array($receitaId, $modalReceitaIds, true) ? 'checked' : '' ?>>
+                        <span>
+                            <span class="pp-recipe-name"><?= cadastros_pp_e($receitaNome) ?></span>
+                            <?php if (!empty($receitaMeta)): ?>
+                                <span class="pp-recipe-meta"><?= cadastros_pp_e(implode(' | ', $receitaMeta)) ?></span>
+                            <?php endif; ?>
+                        </span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <div class="pp-gallery-empty">Nenhuma receita ativa encontrada no catálogo logístico.</div>
+        <?php endif; ?>
+        <div class="pp-modal-actions">
+            <a class="pp-btn secondary" href="index.php?page=logistica_receitas">Cadastrar receita</a>
+            <button class="pp-btn" type="button" data-close-recipes>Concluir</button>
+        </div>
+    </div>
+</div>
+
 <div class="pp-modal-backdrop" id="pp-gallery-modal" role="dialog" aria-modal="true" aria-labelledby="pp-gallery-title">
     <div class="pp-modal">
         <div class="pp-modal-header">
@@ -1044,6 +1078,7 @@ const ppActiveTab = <?= json_encode($activeTab, JSON_UNESCAPED_UNICODE | JSON_UN
 const ppDefaultCategoria = <?= json_encode($activeCategoria, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const ppModal = document.getElementById('pp-modal');
 const ppGalleryModal = document.getElementById('pp-gallery-modal');
+const ppRecipesModal = document.getElementById('pp-recipes-modal');
 const ppForm = document.getElementById('pp-form');
 const ppCategoria = document.getElementById('pp-categoria');
 const ppModeloPreco = document.getElementById('pp-modelo-preco');
@@ -1089,7 +1124,7 @@ function initPpTiny() {
         promotion: false,
         plugins: 'lists link image table code fullscreen',
         toolbar: 'undo redo | bold italic underline strikethrough | alignleft aligncenter alignright | bullist numlist outdent indent | link image galeriaSmile table | removeformat | code fullscreen',
-        height: 340,
+        height: 260,
         paste_data_images: true,
         automatic_uploads: true,
         setup: function(editor) {
@@ -1232,6 +1267,21 @@ function closePpGalleryModal() {
     ppGalleryModal?.classList.remove('open');
 }
 
+function closePpRecipesModal() {
+    ppRecipesModal?.classList.remove('open');
+}
+
+function updateRecipeSummary() {
+    const checkedOptions = Array.from(document.querySelectorAll('[data-recipe-option] input[type="checkbox"]:checked'));
+    const names = checkedOptions.map((input) => input.closest('[data-recipe-option]')?.dataset.recipeName || '').filter(Boolean);
+    const countEl = document.querySelector('[data-recipe-count]');
+    const labelEl = document.querySelector('[data-recipe-selected-label]');
+    if (countEl) countEl.textContent = String(checkedOptions.length);
+    if (labelEl) {
+        labelEl.textContent = names.length > 0 ? `${names.slice(0, 4).join(', ')}${names.length > 4 ? '...' : ''}` : 'Nenhuma receita vinculada.';
+    }
+}
+
 function openPpModalFromUrl() {
     const params = new URLSearchParams(window.location.search || '');
     const editId = params.get('edit_id');
@@ -1259,7 +1309,15 @@ ppModal?.addEventListener('click', (event) => {
 ppGalleryModal?.addEventListener('click', (event) => {
     if (event.target === ppGalleryModal) closePpGalleryModal();
 });
+ppRecipesModal?.addEventListener('click', (event) => {
+    if (event.target === ppRecipesModal) closePpRecipesModal();
+});
 document.querySelectorAll('[data-close-pp-gallery]').forEach((button) => button.addEventListener('click', closePpGalleryModal));
+document.querySelectorAll('[data-open-recipes]').forEach((button) => button.addEventListener('click', () => {
+    ppRecipesModal?.classList.add('open');
+    document.getElementById('pp-recipe-search')?.focus();
+}));
+document.querySelectorAll('[data-close-recipes]').forEach((button) => button.addEventListener('click', closePpRecipesModal));
 ppCategoria?.addEventListener('change', updateCategoriaFields);
 ppModeloPreco?.addEventListener('change', updatePrecoTabState);
 
@@ -1320,9 +1378,14 @@ document.getElementById('pp-recipe-search')?.addEventListener('input', (event) =
         option.hidden = term !== '' && !text.includes(term);
     });
 });
+document.querySelectorAll('[data-recipe-option] input[type="checkbox"]').forEach((input) => {
+    input.addEventListener('change', updateRecipeSummary);
+});
+updateRecipeSummary();
 
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+        closePpRecipesModal();
         closePpGalleryModal();
         closePpModal();
     }
