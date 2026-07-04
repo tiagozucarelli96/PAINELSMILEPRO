@@ -220,6 +220,21 @@ function logistica_pacotes_evento_e(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 }
 
+function logistica_pacotes_evento_descricao_preview(string $value): string {
+    $decoded = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $plain = trim(preg_replace('/\s+/', ' ', strip_tags($decoded)) ?? '');
+    if ($plain === '') {
+        return '-';
+    }
+    if (function_exists('mb_strlen') && mb_strlen($plain, 'UTF-8') > 140) {
+        return mb_substr($plain, 0, 140, 'UTF-8') . '...';
+    }
+    if (strlen($plain) > 140) {
+        return substr($plain, 0, 140) . '...';
+    }
+    return $plain;
+}
+
 includeSidebar('Pacotes de Evento');
 ?>
 
@@ -371,6 +386,18 @@ includeSidebar('Pacotes de Evento');
         text-align: left;
         font-size: 0.9rem;
         vertical-align: top;
+    }
+
+    .packages-table {
+        min-width: 1120px;
+    }
+
+    .package-description-preview {
+        max-width: 320px;
+        color: #475569;
+        line-height: 1.35;
+        word-break: normal;
+        overflow-wrap: anywhere;
     }
 
     .status-pill {
@@ -856,7 +883,7 @@ includeSidebar('Pacotes de Evento');
     <div class="card">
         <h2>Pacotes Cadastrados</h2>
         <div class="table-wrap">
-            <table class="table">
+            <table class="table packages-table">
                 <thead>
                     <tr>
 	                        <th>Nome</th>
@@ -880,7 +907,11 @@ includeSidebar('Pacotes de Evento');
                         ?>
 	                        <tr>
 	                            <td><?= logistica_pacotes_evento_e((string)($pacote['nome'] ?? '')) ?></td>
-	                            <td><?= logistica_pacotes_evento_e((string)($pacote['descricao'] ?? '')) ?></td>
+	                            <td>
+                                    <div class="package-description-preview">
+                                        <?= logistica_pacotes_evento_e(logistica_pacotes_evento_descricao_preview((string)($pacote['descricao'] ?? ''))) ?>
+                                    </div>
+                                </td>
 	                            <td>
 	                                <?php
 	                                $tipo_key = (string)($pacote['tipo_evento_real'] ?? '');
