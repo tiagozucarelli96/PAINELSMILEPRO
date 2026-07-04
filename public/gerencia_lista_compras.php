@@ -268,21 +268,18 @@ function glc_fetch_eventos_disponiveis(PDO $pdo, array $scope): array
                e.nome_evento,
                e.space_visivel,
                e.unidade_interna_id,
-               COALESCE(e.arquivado, FALSE) AS arquivado,
                u.nome AS unidade_nome,
                MAX(r.id) AS meeting_id,
                MAX(cr.id) AS resposta_id,
                MAX(cr.submitted_at) AS submitted_at,
                COUNT(DISTINCT ri.id)::int AS cardapio_itens,
                CASE
-                   WHEN COALESCE(e.arquivado, FALSE) = TRUE THEN FALSE
                    WHEN MAX(r.id) IS NULL THEN FALSE
                    WHEN MAX(cr.id) IS NULL THEN FALSE
                    WHEN COUNT(DISTINCT ri.id) = 0 THEN FALSE
                    ELSE TRUE
                END AS disponivel_calculo,
                CASE
-                   WHEN COALESCE(e.arquivado, FALSE) = TRUE THEN 'Evento arquivado'
                    WHEN MAX(r.id) IS NULL THEN 'Sem reunião final vinculada'
                    WHEN MAX(cr.id) IS NULL THEN 'Sem resposta de cardápio'
                    WHEN COUNT(DISTINCT ri.id) = 0 THEN 'Cardápio sem itens'
@@ -293,7 +290,8 @@ function glc_fetch_eventos_disponiveis(PDO $pdo, array $scope): array
         LEFT JOIN eventos_cardapio_respostas cr ON cr.meeting_id = r.id
         LEFT JOIN eventos_cardapio_resposta_itens ri ON ri.resposta_id = cr.id
         LEFT JOIN logistica_unidades u ON u.id = e.unidade_interna_id
-        WHERE e.data_evento BETWEEN :ini AND :fim
+        WHERE e.arquivado IS FALSE
+          AND e.data_evento BETWEEN :ini AND :fim
           AND {$scopeSql}
         GROUP BY e.id, u.nome
         ORDER BY e.data_evento ASC, e.hora_inicio ASC NULLS LAST, e.nome_evento ASC
