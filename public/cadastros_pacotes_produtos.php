@@ -142,6 +142,8 @@ $editId = cadastros_pp_route_int_param('edit_id', $queryParams);
 $modalItem = [
     'id' => 0,
     'categoria' => 'Pacote',
+    'tipo_evento_real' => '',
+    'modelo_preco' => 'simples',
     'nome' => '',
     'valor_venda' => '',
     'valor_pacote' => '',
@@ -166,6 +168,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $valorPacote = cadastros_pp_money_to_float((string)($_POST['valor_pacote'] ?? '0'));
         $pessoasBase = max(0, (int)($_POST['pessoas_base'] ?? 0));
         $valorConvidadoAdicional = cadastros_pp_money_to_float((string)($_POST['valor_convidado_adicional'] ?? '0'));
+        $tipoEventoReal = trim((string)($_POST['tipo_evento_real'] ?? ''));
+        $modeloPreco = in_array(($_POST['modelo_preco'] ?? 'simples'), ['simples', 'tabela'], true) ? (string)$_POST['modelo_preco'] : 'simples';
 
         if ($nome === '') {
             $errors[] = 'Informe o nome.';
@@ -179,6 +183,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         SET categoria = :categoria,
                             nome = :nome,
                             descricao = :descricao,
+                            tipo_evento_real = :tipo_evento_real,
+                            modelo_preco = :modelo_preco,
                             valor_venda = :valor_venda,
                             valor_pacote = :valor_pacote,
                             pessoas_base = :pessoas_base,
@@ -192,6 +198,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':categoria' => $categoria,
                         ':nome' => $nome,
                         ':descricao' => $descricao !== '' ? $descricao : null,
+                        ':tipo_evento_real' => $categoria === 'Pacote' && $tipoEventoReal !== '' ? $tipoEventoReal : null,
+                        ':modelo_preco' => $categoria === 'Pacote' ? $modeloPreco : 'simples',
                         ':valor_venda' => $categoria === 'Pacote' ? null : $valorVenda,
                         ':valor_pacote' => $categoria === 'Pacote' ? $valorPacote : null,
                         ':pessoas_base' => $categoria === 'Pacote' && $pessoasBase > 0 ? $pessoasBase : null,
@@ -201,10 +209,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $stmt = $pdo->prepare("
                         INSERT INTO logistica_pacotes_evento (
-                            categoria, nome, descricao, valor_venda, valor_pacote, pessoas_base,
+                            categoria, nome, descricao, tipo_evento_real, modelo_preco, valor_venda, valor_pacote, pessoas_base,
                             valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at
                         ) VALUES (
-                            :categoria, :nome, :descricao, :valor_venda, :valor_pacote, :pessoas_base,
+                            :categoria, :nome, :descricao, :tipo_evento_real, :modelo_preco, :valor_venda, :valor_pacote, :pessoas_base,
                             :valor_convidado_adicional, FALSE, :created_by_user_id, NOW(), NOW()
                         )
                     ");
@@ -212,6 +220,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':categoria' => $categoria,
                         ':nome' => $nome,
                         ':descricao' => $descricao !== '' ? $descricao : null,
+                        ':tipo_evento_real' => $categoria === 'Pacote' && $tipoEventoReal !== '' ? $tipoEventoReal : null,
+                        ':modelo_preco' => $categoria === 'Pacote' ? $modeloPreco : 'simples',
                         ':valor_venda' => $categoria === 'Pacote' ? null : $valorVenda,
                         ':valor_pacote' => $categoria === 'Pacote' ? $valorPacote : null,
                         ':pessoas_base' => $categoria === 'Pacote' && $pessoasBase > 0 ? $pessoasBase : null,
@@ -229,24 +239,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'save_prices') {
+        $id = (int)($_POST['id'] ?? 0);
+        try {
+            $result = pacotes_evento_preco_variacoes_salvar($pdo, $id, $_POST['variacoes'] ?? []);
+            if (!empty($result['ok'])) {
+                $_SESSION['cadastros_pp_success'] = 'Tabela de valores salva com sucesso.';
+                header('Location: index.php?page=cadastros_pacotes_produtos&edit_id=' . $id . '#pp-modal');
+                exit;
+            }
+            $errors[] = (string)($result['error'] ?? 'Não foi possível salvar a tabela de valores.');
+        } catch (Throwable $e) {
+            error_log('cadastros_pp save_prices: ' . $e->getMessage());
+            $errors[] = 'Não foi possível salvar a tabela de valores.';
+        }
+    }
+
     if ($action === 'duplicate') {
         $id = (int)($_POST['id'] ?? 0);
         try {
             $stmt = $pdo->prepare("
                 INSERT INTO logistica_pacotes_evento (
-                    categoria, nome, descricao, valor_venda, valor_pacote, pessoas_base,
+                    categoria, nome, descricao, tipo_evento_real, modelo_preco, valor_venda, valor_pacote, pessoas_base,
                     valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at
                 )
-                SELECT categoria, nome || ' (Cópia)', descricao, valor_venda, valor_pacote, pessoas_base,
+                SELECT categoria, nome || ' (Cópia)', descricao, tipo_evento_real, modelo_preco, valor_venda, valor_pacote, pessoas_base,
                        valor_convidado_adicional, FALSE, :created_by_user_id, NOW(), NOW()
                 FROM logistica_pacotes_evento
                 WHERE id = :id
                   AND deleted_at IS NULL
+                RETURNING id
             ");
             $stmt->execute([
                 ':id' => $id,
                 ':created_by_user_id' => $userId > 0 ? $userId : null,
             ]);
+            $novoId = (int)$stmt->fetchColumn();
+            if ($novoId > 0) {
+                $variacoesCopia = [];
+                foreach (pacotes_evento_preco_variacoes_listar($pdo, $id) as $variacao) {
+                    $variacoesCopia[] = $variacao;
+                }
+                if (!empty($variacoesCopia)) {
+                    pacotes_evento_preco_variacoes_salvar($pdo, $novoId, $variacoesCopia);
+                }
+            }
             $_SESSION['cadastros_pp_success'] = 'Cadastro duplicado com sucesso.';
             header('Location: index.php?page=cadastros_pacotes_produtos');
             exit;
@@ -291,6 +328,8 @@ if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['acti
     $modalItem = [
         'id' => (int)($_POST['id'] ?? 0),
         'categoria' => trim((string)($_POST['categoria'] ?? 'Pacote')),
+        'tipo_evento_real' => trim((string)($_POST['tipo_evento_real'] ?? '')),
+        'modelo_preco' => trim((string)($_POST['modelo_preco'] ?? 'simples')),
         'nome' => trim((string)($_POST['nome'] ?? '')),
         'valor_venda' => trim((string)($_POST['valor_venda'] ?? '')),
         'valor_pacote' => trim((string)($_POST['valor_pacote'] ?? '')),
@@ -314,6 +353,8 @@ if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['acti
             $modalItem = [
                 'id' => (int)$itemEdicao['id'],
                 'categoria' => (string)($itemEdicao['categoria'] ?? 'Pacote'),
+                'tipo_evento_real' => (string)($itemEdicao['tipo_evento_real'] ?? ''),
+                'modelo_preco' => (string)($itemEdicao['modelo_preco'] ?? 'simples'),
                 'nome' => (string)($itemEdicao['nome'] ?? ''),
                 'valor_venda' => (string)($itemEdicao['valor_venda'] ?? ''),
                 'valor_pacote' => (string)($itemEdicao['valor_pacote'] ?? ''),
@@ -380,6 +421,19 @@ includeSidebar('Pacotes, Serviços e Produtos');
 
 $modalCategoria = in_array((string)$modalItem['categoria'], ['Pacote', 'Serviço', 'Produto'], true) ? (string)$modalItem['categoria'] : 'Pacote';
 $modalIsPacote = $modalCategoria === 'Pacote';
+$tiposEvento = pacotes_evento_tipos_evento_listar($pdo);
+$editPriceVariations = [];
+if ($modalIsPacote && (int)$modalItem['id'] > 0) {
+    $editPriceVariations = pacotes_evento_preco_variacoes_listar($pdo, (int)$modalItem['id']);
+}
+$diasSemanaLabels = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom'];
+$defaultPriceVariations = [
+    ['nome' => 'Segunda a quinta', 'dias_semana' => '1,2,3,4', 'inclui_feriado' => false, 'inclui_vespera_feriado' => false, 'ativo' => true, 'faixas' => []],
+    ['nome' => 'Sexta, sábado, domingo e feriado', 'dias_semana' => '5,6,7', 'inclui_feriado' => true, 'inclui_vespera_feriado' => false, 'ativo' => true, 'faixas' => []],
+    ['nome' => 'Domingo e feriado', 'dias_semana' => '7', 'inclui_feriado' => true, 'inclui_vespera_feriado' => false, 'ativo' => false, 'faixas' => []],
+];
+$priceVariationsForForm = !empty($editPriceVariations) ? $editPriceVariations : $defaultPriceVariations;
+$defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 ?>
 
 <style>
@@ -402,6 +456,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
 .pp-table th { background: #f8fafc; color: #475569; font-size: 0.78rem; text-transform: uppercase; }
 .pp-name { color: #2878b8; font-weight: 900; }
 .pp-pill { display: inline-flex; border-radius: 999px; padding: 0.22rem 0.58rem; font-size: 0.78rem; font-weight: 900; background: #e0f2fe; color: #075985; }
+.pp-muted { color: #64748b; font-size: 0.84rem; }
 .pp-row-actions { display: flex; gap: 0.45rem; flex-wrap: wrap; }
 .pp-icon-btn { width: 38px; height: 38px; border: none; border-radius: 8px; color: #fff; font-weight: 900; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .pp-icon-btn.copy { background: #263747; }
@@ -423,6 +478,15 @@ $modalIsPacote = $modalCategoria === 'Pacote';
 .pp-field input, .pp-field select, .pp-field textarea { width: 100%; border: 1px solid #d1d9e6; border-radius: 10px; padding: 0.68rem 0.78rem; color: #1e293b; background: #fff; }
 .pp-modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; border-top: 1px solid #e2e8f0; padding: 1rem; flex-shrink: 0; background: #fff; }
 .pp-service-fields.hidden, .pp-package-fields.hidden { display: none; }
+.pp-price-section { border-top: 1px solid #e2e8f0; padding: 1rem; display: grid; gap: 0.8rem; max-height: 42dvh; overflow: auto; }
+.pp-price-title { margin: 0; color: #1e293b; font-size: 1rem; font-weight: 900; }
+.pp-price-help { margin: 0; color: #64748b; font-size: 0.84rem; }
+.pp-price-card { border: 1px solid #dbe6f3; border-radius: 12px; padding: 0.9rem; background: #f8fafc; display: grid; gap: 0.75rem; }
+.pp-price-head { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.5fr); gap: 0.8rem; }
+.pp-days { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.pp-day-chip { display: inline-flex; align-items: center; gap: 0.28rem; border: 1px solid #cbd5e1; border-radius: 999px; padding: 0.24rem 0.45rem; background: #fff; color: #334155; font-size: 0.78rem; font-weight: 800; }
+.pp-price-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.55rem; }
+.pp-price-row { display: grid; grid-template-columns: 0.72fr 1fr; gap: 0.45rem; }
 .pp-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.8rem; padding: 1rem; }
 .pp-gallery-item { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: hidden; display: grid; text-align: left; cursor: pointer; }
 .pp-gallery-thumb { aspect-ratio: 4 / 3; background: #f1f5f9; overflow: hidden; }
@@ -435,7 +499,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
     .pp-modal-backdrop { left: 280px; }
     .main-content.expanded .pp-modal-backdrop { left: 0; }
 }
-@media (max-width: 900px) { .pp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .pp-grid, .pp-price-head { grid-template-columns: 1fr; } }
 @media (max-width: 768px) {
     .pp-modal-backdrop { padding: 0.75rem; }
     .pp-modal { width: 100%; max-height: calc(100dvh - 1.5rem); border-radius: 12px; }
@@ -466,6 +530,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                         <th>Nome</th>
                         <th>Categoria</th>
                         <th>Base</th>
+                        <th>Preço</th>
                         <th>Valor venda</th>
                         <th>Opções</th>
                     </tr>
@@ -475,11 +540,22 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                         <?php
                         $categoria = trim((string)($item['categoria'] ?? 'Pacote'));
                         $valorVenda = $categoria === 'Pacote' ? ($item['valor_pacote'] ?? 0) : ($item['valor_venda'] ?? 0);
+                        $modeloPrecoItem = (string)($item['modelo_preco'] ?? 'simples');
                         ?>
                         <tr>
                             <td><span class="pp-name"><?= cadastros_pp_e((string)$item['nome']) ?></span></td>
                             <td><span class="pp-pill"><?= cadastros_pp_e($categoria) ?></span></td>
                             <td><?= $categoria === 'Pacote' ? (int)($item['pessoas_base'] ?? 0) . ' pessoas' : '-' ?></td>
+                            <td>
+                                <?php if ($categoria === 'Pacote'): ?>
+                                    <span class="pp-pill"><?= $modeloPrecoItem === 'tabela' ? 'Tabela' : 'Simples' ?></span>
+                                    <?php if (trim((string)($item['tipo_evento_real'] ?? '')) !== ''): ?>
+                                        <div class="pp-muted"><?= cadastros_pp_e((string)($tiposEvento[(string)$item['tipo_evento_real']] ?? $item['tipo_evento_real'])) ?></div>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="pp-muted">-</span>
+                                <?php endif; ?>
+                            </td>
                             <td><?= cadastros_pp_money($valorVenda) ?></td>
                             <td>
                                 <div class="pp-row-actions">
@@ -492,7 +568,6 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                                         class="pp-icon-btn edit"
                                         href="index.php?page=cadastros_pacotes_produtos&edit_id=<?= (int)$item['id'] ?>#pp-modal"
                                         title="Editar"
-                                        data-edit-pp
                                         data-id="<?= (int)$item['id'] ?>"
                                     >✎</a>
                                     <form method="post" onsubmit="return confirm('Arquivar este cadastro?');">
@@ -505,7 +580,7 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                         </tr>
                     <?php endforeach; ?>
                     <?php if (empty($itens)): ?>
-                        <tr><td colspan="5">Nenhum cadastro encontrado.</td></tr>
+                        <tr><td colspan="6">Nenhum cadastro encontrado.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
@@ -540,6 +615,25 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                     <input type="text" name="valor_venda" id="pp-valor-venda" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_venda']) ?>">
                 </div>
                 <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
+                    <label for="pp-tipo-evento-real">Tipo de evento</label>
+                    <select name="tipo_evento_real" id="pp-tipo-evento-real">
+                        <option value="">Sem tipo definido</option>
+                        <?php foreach ($tiposEvento as $tipoKey => $tipoLabel): ?>
+                            <option value="<?= cadastros_pp_e((string)$tipoKey) ?>" <?= (string)$modalItem['tipo_evento_real'] === (string)$tipoKey ? 'selected' : '' ?>>
+                                <?= cadastros_pp_e((string)$tipoLabel) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
+                    <label for="pp-modelo-preco">Modelo de preço</label>
+                    <select name="modelo_preco" id="pp-modelo-preco">
+                        <?php $modalModeloPreco = (string)($modalItem['modelo_preco'] ?? 'simples'); ?>
+                        <option value="simples" <?= $modalModeloPreco !== 'tabela' ? 'selected' : '' ?>>Simples</option>
+                        <option value="tabela" <?= $modalModeloPreco === 'tabela' ? 'selected' : '' ?>>Tabela por dia/quantidade</option>
+                    </select>
+                </div>
+                <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
                     <label for="pp-valor-pacote">Valor Base</label>
                     <input type="text" name="valor_pacote" id="pp-valor-pacote" inputmode="decimal" placeholder="R$ 0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_pacote']) ?>">
                 </div>
@@ -557,8 +651,79 @@ $modalIsPacote = $modalCategoria === 'Pacote';
                 </div>
             </div>
         </form>
+        <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
+            <form method="post" class="pp-price-section pp-package-fields" id="pp-price-form">
+                <input type="hidden" name="action" value="save_prices">
+                <input type="hidden" name="id" value="<?= (int)$modalItem['id'] ?>">
+                <div>
+                    <h3 class="pp-price-title">Tabela de valores</h3>
+                    <p class="pp-price-help">Use quando o modelo de preço estiver como tabela. Pacotes simples continuam usando o valor base acima.</p>
+                </div>
+                <?php foreach ($priceVariationsForForm as $vIndex => $variation): ?>
+                    <?php
+                    $diasSelecionados = array_filter(array_map('intval', explode(',', (string)($variation['dias_semana'] ?? ''))));
+                    $faixasMap = [];
+                    foreach (($variation['faixas'] ?? []) as $faixa) {
+                        $faixasMap[(int)($faixa['pessoas'] ?? 0)] = $faixa;
+                    }
+                    $peopleForVariation = array_values(array_unique(array_merge($defaultPricePeople, array_keys($faixasMap))));
+                    sort($peopleForVariation);
+                    ?>
+                    <div class="pp-price-card">
+                        <input type="hidden" name="variacoes[<?= $vIndex ?>][ordem]" value="<?= $vIndex + 1 ?>">
+                        <input type="hidden" name="variacoes[<?= $vIndex ?>][ativo]" value="0">
+                        <div class="pp-price-head">
+                            <div class="pp-field">
+                                <label>Nome da variação</label>
+                                <input type="text" name="variacoes[<?= $vIndex ?>][nome]" maxlength="120" value="<?= cadastros_pp_e((string)($variation['nome'] ?? '')) ?>">
+                                <label class="pp-day-chip">
+                                    <input type="checkbox" name="variacoes[<?= $vIndex ?>][ativo]" value="1" <?= !isset($variation['ativo']) || !empty($variation['ativo']) ? 'checked' : '' ?>>
+                                    Ativa
+                                </label>
+                            </div>
+                            <div class="pp-field">
+                                <label>Dias aplicáveis</label>
+                                <div class="pp-days">
+                                    <?php foreach ($diasSemanaLabels as $diaNumero => $diaLabel): ?>
+                                        <label class="pp-day-chip">
+                                            <input type="checkbox" name="variacoes[<?= $vIndex ?>][dias_semana][]" value="<?= $diaNumero ?>" <?= in_array($diaNumero, $diasSelecionados, true) ? 'checked' : '' ?>>
+                                            <?= cadastros_pp_e($diaLabel) ?>
+                                        </label>
+                                    <?php endforeach; ?>
+                                    <label class="pp-day-chip">
+                                        <input type="checkbox" name="variacoes[<?= $vIndex ?>][inclui_feriado]" value="1" <?= !empty($variation['inclui_feriado']) ? 'checked' : '' ?>>
+                                        Feriado
+                                    </label>
+                                    <label class="pp-day-chip">
+                                        <input type="checkbox" name="variacoes[<?= $vIndex ?>][inclui_vespera_feriado]" value="1" <?= !empty($variation['inclui_vespera_feriado']) ? 'checked' : '' ?>>
+                                        Véspera
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="pp-price-rows">
+                            <?php foreach ($peopleForVariation as $fIndex => $pessoas): ?>
+                                <?php $faixa = $faixasMap[(int)$pessoas] ?? null; ?>
+                                <div class="pp-price-row">
+                                    <input type="number" min="0" name="variacoes[<?= $vIndex ?>][faixas][<?= $fIndex ?>][pessoas]" value="<?= (int)$pessoas ?>" placeholder="Pessoas">
+                                    <input type="text" inputmode="decimal" class="pp-price-money" name="variacoes[<?= $vIndex ?>][faixas][<?= $fIndex ?>][valor]" value="<?= $faixa ? cadastros_pp_e(pacotes_evento_format_money($faixa['valor'] ?? 0)) : '' ?>" placeholder="R$ 0,00">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </form>
+        <?php elseif ($modalIsPacote): ?>
+            <div class="pp-price-section pp-package-fields">
+                <h3 class="pp-price-title">Tabela de valores</h3>
+                <p class="pp-price-help">Salve o pacote primeiro para liberar a tabela por dia da semana e quantidade de pessoas.</p>
+            </div>
+        <?php endif; ?>
         <div class="pp-modal-actions">
             <a class="pp-btn secondary" href="index.php?page=cadastros_pacotes_produtos" data-close-pp-modal>Cancelar</a>
+            <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
+                <button class="pp-btn secondary" type="submit" form="pp-price-form">Salvar tabela</button>
+            <?php endif; ?>
             <button class="pp-btn" type="submit" form="pp-form">Salvar</button>
         </div>
     </div>
@@ -700,6 +865,8 @@ function openPpModal(data = null) {
     document.getElementById('pp-id').value = data?.id || '0';
     ppCategoria.value = data?.categoria || 'Pacote';
     document.getElementById('pp-nome').value = data?.nome || '';
+    document.getElementById('pp-tipo-evento-real').value = data?.tipoEventoReal || '';
+    document.getElementById('pp-modelo-preco').value = data?.modeloPreco || 'simples';
     document.getElementById('pp-valor-venda').value = data?.valorVenda || '';
     document.getElementById('pp-valor-pacote').value = data?.valorPacote || '';
     document.getElementById('pp-pessoas-base').value = data?.pessoasBase || '';
@@ -724,6 +891,8 @@ function getPpItemModalData(id) {
     return {
         id: item.id || id || '0',
         categoria: item.categoria || 'Pacote',
+        tipoEventoReal: item.tipo_evento_real || '',
+        modeloPreco: item.modelo_preco || 'simples',
         nome: item.nome || '',
         valorVenda: item.valor_venda || '',
         valorPacote: item.valor_pacote || '',
@@ -806,6 +975,11 @@ ppPackageMoneyFieldIds.forEach((id) => {
     field?.addEventListener('blur', () => ppFormatMoneyField(field));
 });
 
+document.querySelectorAll('.pp-price-money').forEach((field) => {
+    field.addEventListener('input', () => ppFormatMoneyField(field));
+    field.addEventListener('blur', () => ppFormatMoneyField(field));
+});
+
 document.querySelectorAll('[data-gallery-image]').forEach((button) => {
     button.addEventListener('click', () => {
         const src = button.dataset.src || '';
@@ -843,6 +1017,8 @@ document.addEventListener('keydown', (event) => {
         return {
             id: item.id || id || '0',
             categoria: item.categoria || 'Pacote',
+            tipoEventoReal: item.tipo_evento_real || '',
+            modeloPreco: item.modelo_preco || 'simples',
             nome: item.nome || '',
             valorVenda: item.valor_venda || '',
             valorPacote: item.valor_pacote || '',
@@ -869,6 +1045,8 @@ document.addEventListener('keydown', (event) => {
         setField('pp-id', data?.id || '0');
         setField('pp-categoria', data?.categoria || 'Pacote');
         setField('pp-nome', data?.nome || '');
+        setField('pp-tipo-evento-real', data?.tipoEventoReal || '');
+        setField('pp-modelo-preco', data?.modeloPreco || 'simples');
         setField('pp-valor-venda', data?.valorVenda || '');
         setField('pp-valor-pacote', data?.valorPacote || '');
         setField('pp-pessoas-base', data?.pessoasBase || '');
