@@ -465,7 +465,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 .pp-modal-backdrop { position: fixed; inset: 0; z-index: 1300; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(15, 23, 42, 0.55); }
 .pp-modal-backdrop.open,
 #pp-modal:target { display: flex; }
-.pp-modal { width: min(1040px, 100%); max-height: calc(100dvh - 2rem); overflow: hidden; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); display: flex; flex-direction: column; }
+.pp-modal { width: min(1120px, 100%); max-height: calc(100dvh - 2rem); overflow: hidden; background: #fff; border-radius: 16px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); display: flex; flex-direction: column; }
 .pp-modal-header { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 .pp-modal-title { margin: 0; color: #1e293b; font-weight: 900; font-size: 1.15rem; }
 .pp-modal-close { width: 36px; height: 36px; border: none; border-radius: 999px; background: #f1f5f9; color: #334155; cursor: pointer; font-size: 1.25rem; line-height: 1; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -478,15 +478,23 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 .pp-field input, .pp-field select, .pp-field textarea { width: 100%; border: 1px solid #d1d9e6; border-radius: 10px; padding: 0.68rem 0.78rem; color: #1e293b; background: #fff; }
 .pp-modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; border-top: 1px solid #e2e8f0; padding: 1rem; flex-shrink: 0; background: #fff; }
 .pp-service-fields.hidden, .pp-package-fields.hidden { display: none; }
-.pp-price-section { border-top: 1px solid #e2e8f0; padding: 1rem; display: grid; gap: 0.8rem; max-height: 42dvh; overflow: auto; }
+.pp-tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid #e2e8f0; margin-top: 0.25rem; }
+.pp-tab-button { border: none; border-radius: 9px 9px 0 0; background: transparent; color: #475569; cursor: pointer; font-weight: 900; padding: 0.65rem 0.9rem; }
+.pp-tab-button.active { background: #eff6ff; color: #1d4ed8; }
+.pp-tab-button[disabled] { cursor: not-allowed; opacity: 0.45; }
+.pp-tab-panel { display: none; min-width: 0; }
+.pp-tab-panel.active { display: block; }
+.pp-price-section { padding: 1rem 0 0; gap: 0.8rem; overflow: visible; }
+.pp-tab-panel.active.pp-price-section { display: grid; }
 .pp-price-title { margin: 0; color: #1e293b; font-size: 1rem; font-weight: 900; }
 .pp-price-help { margin: 0; color: #64748b; font-size: 0.84rem; }
-.pp-price-card { border: 1px solid #dbe6f3; border-radius: 12px; padding: 0.9rem; background: #f8fafc; display: grid; gap: 0.75rem; }
+.pp-price-card { border: 1px solid #dbe6f3; border-radius: 12px; padding: 0.9rem; background: #f8fafc; display: grid; gap: 0.75rem; min-width: 0; }
 .pp-price-head { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.5fr); gap: 0.8rem; }
 .pp-days { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .pp-day-chip { display: inline-flex; align-items: center; gap: 0.28rem; border: 1px solid #cbd5e1; border-radius: 999px; padding: 0.24rem 0.45rem; background: #fff; color: #334155; font-size: 0.78rem; font-weight: 800; }
-.pp-price-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.55rem; }
-.pp-price-row { display: grid; grid-template-columns: 0.72fr 1fr; gap: 0.45rem; }
+.pp-price-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.65rem; }
+.pp-price-row { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 0.45rem; align-items: center; min-width: 0; }
+.pp-price-row input { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #d1d9e6; border-radius: 8px; padding: 0.48rem 0.58rem; color: #1e293b; background: #fff; }
 .pp-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.8rem; padding: 1rem; }
 .pp-gallery-item { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: hidden; display: grid; text-align: left; cursor: pointer; }
 .pp-gallery-thumb { aspect-ratio: 4 / 3; background: #f1f5f9; overflow: hidden; }
@@ -645,6 +653,12 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                     <label for="pp-valor-convidado-adicional">Convidado adicional</label>
                     <input type="text" name="valor_convidado_adicional" id="pp-valor-convidado-adicional" inputmode="decimal" placeholder="R$ 0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_convidado_adicional']) ?>">
                 </div>
+            </div>
+            <div class="pp-tabs" role="tablist" aria-label="Cadastro do pacote">
+                <button type="button" class="pp-tab-button active" data-pp-tab="descricao">Descrição</button>
+                <button type="button" class="pp-tab-button pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>" data-pp-tab="precos" <?= (string)($modalItem['modelo_preco'] ?? 'simples') === 'tabela' ? '' : 'disabled' ?>>Tabela de valores</button>
+            </div>
+            <div class="pp-tab-panel active" data-pp-panel="descricao">
                 <div class="pp-field full">
                     <label for="pp-descricao">Descrição</label>
                     <textarea name="descricao" id="pp-descricao" rows="14"><?= cadastros_pp_e((string)$modalItem['descricao']) ?></textarea>
@@ -652,7 +666,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
             </div>
         </form>
         <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
-            <form method="post" class="pp-price-section pp-package-fields" id="pp-price-form">
+            <form method="post" class="pp-price-section pp-package-fields pp-tab-panel" data-pp-panel="precos" id="pp-price-form">
                 <input type="hidden" name="action" value="save_prices">
                 <input type="hidden" name="id" value="<?= (int)$modalItem['id'] ?>">
                 <div>
@@ -714,7 +728,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                 <?php endforeach; ?>
             </form>
         <?php elseif ($modalIsPacote): ?>
-            <div class="pp-price-section pp-package-fields">
+            <div class="pp-price-section pp-package-fields pp-tab-panel" data-pp-panel="precos">
                 <h3 class="pp-price-title">Tabela de valores</h3>
                 <p class="pp-price-help">Salve o pacote primeiro para liberar a tabela por dia da semana e quantidade de pessoas.</p>
             </div>
@@ -722,7 +736,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
         <div class="pp-modal-actions">
             <a class="pp-btn secondary" href="index.php?page=cadastros_pacotes_produtos" data-close-pp-modal>Cancelar</a>
             <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
-                <button class="pp-btn secondary" type="submit" form="pp-price-form">Salvar tabela</button>
+                <button class="pp-btn secondary" type="submit" form="pp-price-form" data-pp-table-submit <?= (string)($modalItem['modelo_preco'] ?? 'simples') === 'tabela' ? '' : 'hidden disabled' ?>>Salvar tabela</button>
             <?php endif; ?>
             <button class="pp-btn" type="submit" form="pp-form">Salvar</button>
         </div>
@@ -766,6 +780,7 @@ const ppModal = document.getElementById('pp-modal');
 const ppGalleryModal = document.getElementById('pp-gallery-modal');
 const ppForm = document.getElementById('pp-form');
 const ppCategoria = document.getElementById('pp-categoria');
+const ppModeloPreco = document.getElementById('pp-modelo-preco');
 const ppDescricao = document.getElementById('pp-descricao');
 const ppPackageMoneyFieldIds = ['pp-valor-pacote', 'pp-valor-convidado-adicional'];
 let ppItems = {};
@@ -858,6 +873,36 @@ function updateCategoriaFields() {
     const isPacote = ppCategoria.value === 'Pacote';
     document.querySelectorAll('.pp-package-fields').forEach((el) => el.classList.toggle('hidden', !isPacote));
     document.querySelectorAll('.pp-service-fields').forEach((el) => el.classList.toggle('hidden', isPacote));
+    updatePrecoTabState();
+}
+
+function switchPpTab(tabName) {
+    const button = document.querySelector(`[data-pp-tab="${tabName}"]`);
+    if (!button || button.disabled || button.classList.contains('hidden')) return;
+    document.querySelectorAll('[data-pp-tab]').forEach((tab) => tab.classList.toggle('active', tab === button));
+    document.querySelectorAll('[data-pp-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.ppPanel === tabName));
+    if (tabName === 'descricao') {
+        initPpTiny();
+    }
+}
+
+function updatePrecoTabState() {
+    const isPacote = ppCategoria?.value === 'Pacote';
+    const isTabela = ppModeloPreco?.value === 'tabela';
+    const priceTab = document.querySelector('[data-pp-tab="precos"]');
+    const tableSubmit = document.querySelector('[data-pp-table-submit]');
+    if (priceTab) {
+        priceTab.disabled = !isPacote || !isTabela;
+        priceTab.classList.toggle('hidden', !isPacote);
+    }
+    if (tableSubmit) {
+        tableSubmit.hidden = !isPacote || !isTabela;
+        tableSubmit.disabled = !isPacote || !isTabela;
+    }
+    const pricePanelActive = document.querySelector('[data-pp-panel="precos"]')?.classList.contains('active');
+    if ((!isPacote || !isTabela) && pricePanelActive) {
+        switchPpTab('descricao');
+    }
 }
 
 function openPpModal(data = null) {
@@ -873,6 +918,7 @@ function openPpModal(data = null) {
     document.getElementById('pp-valor-convidado-adicional').value = data?.valorConvidadoAdicional || '';
     ppFormatPackageMoneyFields();
     updateCategoriaFields();
+    updatePrecoTabState();
     ppModal.style.display = 'flex';
     ppModal.classList.add('open');
     initPpTiny();
@@ -945,6 +991,11 @@ ppGalleryModal?.addEventListener('click', (event) => {
 });
 document.querySelectorAll('[data-close-pp-gallery]').forEach((button) => button.addEventListener('click', closePpGalleryModal));
 ppCategoria?.addEventListener('change', updateCategoriaFields);
+ppModeloPreco?.addEventListener('change', updatePrecoTabState);
+
+document.querySelectorAll('[data-pp-tab]').forEach((button) => {
+    button.addEventListener('click', () => switchPpTab(button.dataset.ppTab || 'descricao'));
+});
 
 document.querySelectorAll('[data-edit-pp]').forEach((button) => {
     button.addEventListener('click', (event) => {
@@ -1038,6 +1089,9 @@ document.addEventListener('keydown', (event) => {
         const isPacote = categoria === 'Pacote';
         document.querySelectorAll('.pp-package-fields').forEach((el) => el.classList.toggle('hidden', !isPacote));
         document.querySelectorAll('.pp-service-fields').forEach((el) => el.classList.toggle('hidden', isPacote));
+        if (typeof updatePrecoTabState === 'function') {
+            updatePrecoTabState();
+        }
     }
 
     function open(data) {
@@ -1056,6 +1110,9 @@ document.addEventListener('keydown', (event) => {
             ppFormatPackageMoneyFields();
         }
         syncCategory();
+        if (typeof switchPpTab === 'function') {
+            switchPpTab('descricao');
+        }
         modal.style.display = 'flex';
         modal.classList.add('open');
     }
