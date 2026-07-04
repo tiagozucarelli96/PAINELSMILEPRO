@@ -44,6 +44,11 @@ $reuniao = null;
 $portal = null;
 $snapshot = [];
 $contexto_cardapio = ['ok' => false];
+$adicional_morango = [
+    'ok' => true,
+    'adicional_morango_bolo' => false,
+    'updated_at' => '',
+];
 
 if ($meeting_id <= 0) {
     $error = 'Reunião inválida.';
@@ -60,6 +65,8 @@ if ($meeting_id <= 0) {
         $contexto_cardapio = logistica_cardapio_evento_contexto($pdo, $meeting_id);
         if (empty($contexto_cardapio['ok'])) {
             $error = (string)($contexto_cardapio['error'] ?? 'Não foi possível carregar o cardápio do evento.');
+        } else {
+            $adicional_morango = logistica_cardapio_adicional_morango_get($pdo, $meeting_id);
         }
     }
 }
@@ -87,6 +94,9 @@ $submitted_fmt = $submitted_at !== '' ? date('d/m/Y H:i', strtotime($submitted_a
 $portal_url = trim((string)($portal['url'] ?? ''));
 $visivel_cardapio = !empty($portal['visivel_cardapio']);
 $editavel_cardapio = !empty($portal['editavel_cardapio']);
+$adicional_morango_marcado = !empty($adicional_morango['adicional_morango_bolo']);
+$adicional_morango_updated_at = trim((string)($adicional_morango['updated_at'] ?? ''));
+$adicional_morango_updated_fmt = $adicional_morango_updated_at !== '' ? date('d/m/Y H:i', strtotime($adicional_morango_updated_at)) : '';
 
 includeSidebar('Cardápio do Evento');
 ?>
@@ -236,6 +246,11 @@ includeSidebar('Cardápio do Evento');
         color: #334155;
     }
 
+    .badge-orange {
+        background: #ffedd5;
+        color: #9a3412;
+    }
+
     .sections-grid {
         display: grid;
         gap: 1rem;
@@ -383,6 +398,11 @@ includeSidebar('Cardápio do Evento');
                 </span>
                 <?php if ($submitted_fmt !== ''): ?>
                     <span class="badge badge-green">Enviado em <?= cardapio_evento_e($submitted_fmt) ?></span>
+                <?php endif; ?>
+                <?php if ($adicional_morango_marcado): ?>
+                    <span class="badge badge-orange">
+                        Adicional de morango<?= $adicional_morango_updated_fmt !== '' ? ' • ' . cardapio_evento_e($adicional_morango_updated_fmt) : '' ?>
+                    </span>
                 <?php endif; ?>
             </div>
         </div>

@@ -107,6 +107,19 @@ function logistica_cardapio_validar_item_tipo(string $item_tipo): string
     return in_array($item_tipo, ['insumo', 'receita'], true) ? $item_tipo : '';
 }
 
+function logistica_cardapio_bool($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+    if (is_int($value) || is_float($value)) {
+        return (int)$value === 1;
+    }
+
+    $normalized = strtolower(trim((string)$value));
+    return in_array($normalized, ['1', 't', 'true', 's', 'sim', 'yes', 'y', 'on'], true);
+}
+
 function logistica_cardapio_fetch_valid_ids(PDO $pdo, string $sql_prefix, array $ids): array
 {
     $ids = logistica_cardapio_normalizar_ids($ids);
@@ -279,8 +292,26 @@ function logistica_cardapio_resposta_normalizar(?array $row): ?array
 function logistica_cardapio_schema_marker_path(bool $withMeetingSchema): string
 {
     return $withMeetingSchema
-        ? '/tmp/logistica_cardapio_schema_full_ready_v3'
-        : '/tmp/logistica_cardapio_schema_basic_ready_v3';
+        ? '/tmp/logistica_cardapio_schema_full_ready_v4'
+        : '/tmp/logistica_cardapio_schema_basic_ready_v4';
+}
+
+function logistica_cardapio_ensure_adicional_morango_schema(PDO $pdo): void
+{
+    static $done = false;
+    if ($done || !painel_runtime_schema_setup_enabled()) {
+        return;
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS adicional_morango_bolo BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS adicional_morango_updated_by INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS adicional_morango_updated_at TIMESTAMP NULL");
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_ensure_adicional_morango_schema: ' . $e->getMessage());
+    }
+
+    $done = true;
 }
 
 function logistica_cardapio_ensure_secao_infantil_schema(PDO $pdo): void
@@ -351,7 +382,19 @@ function logistica_cardapio_schema_basico_pronto(PDO $pdo, bool $withMeetingSche
                   AND column_name = 'visivel_portal_infantil'
             )
         ");
-        return (bool)$stmt->fetchColumn();
+        if (!(bool)$stmt->fetchColumn()) {
+            return false;
+        }
+
+        if ($withMeetingSchema) {
+            foreach (['adicional_morango_bolo', 'adicional_morango_updated_by', 'adicional_morango_updated_at'] as $column) {
+                if (!logistica_cardapio_has_column($pdo, 'eventos_cardapio_respostas', $column)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     } catch (Throwable $e) {
         error_log('logistica_cardapio_schema_basico_pronto: ' . $e->getMessage());
         return false;
@@ -565,6 +608,9 @@ function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = tr
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS meeting_id BIGINT");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS portal_id BIGINT NULL");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS adicional_morango_bolo BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS adicional_morango_updated_by INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS adicional_morango_updated_at TIMESTAMP NULL");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cardapio_respostas ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_eventos_cardapio_respostas_meeting ON eventos_cardapio_respostas(meeting_id)");
@@ -1834,6 +1880,89 @@ function logistica_cardapio_resposta_salvar_cliente(PDO $pdo, int $meeting_id, ?
         'ok' => true,
         'resposta' => logistica_cardapio_resposta_get($pdo, $meeting_id),
     ];
+}
+
+function logistica_cardapio_adicional_morango_get(PDO $pdo, int $meeting_id): array
+{
+    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_adicional_morango_schema($pdo);
+    if ($meeting_id <= 0) {
+        return [
+            'ok' => false,
+            'adicional_morango_bolo' => false,
+            'error' => 'Reunião inválida.',
+        ];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT adicional_morango_bolo,
+                   adicional_morango_updated_by,
+                   adicional_morango_updated_at
+            FROM eventos_cardapio_respostas
+            WHERE meeting_id = :meeting_id
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'ok' => true,
+            'adicional_morango_bolo' => logistica_cardapio_bool($row['adicional_morango_bolo'] ?? false),
+            'updated_by' => isset($row['adicional_morango_updated_by']) ? (int)$row['adicional_morango_updated_by'] : null,
+            'updated_at' => trim((string)($row['adicional_morango_updated_at'] ?? '')),
+        ];
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_adicional_morango_get: ' . $e->getMessage());
+        return [
+            'ok' => false,
+            'adicional_morango_bolo' => false,
+            'error' => 'Erro ao carregar adicional de morango.',
+        ];
+    }
+}
+
+function logistica_cardapio_adicional_morango_salvar(PDO $pdo, int $meeting_id, bool $ativo, ?int $usuario_id): array
+{
+    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_adicional_morango_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida.'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_cardapio_respostas
+                (meeting_id, adicional_morango_bolo, adicional_morango_updated_by, adicional_morango_updated_at, created_at, updated_at)
+            VALUES
+                (:meeting_id, :adicional_morango_bolo, :usuario_id, NOW(), NOW(), NOW())
+            ON CONFLICT (meeting_id)
+            DO UPDATE SET
+                adicional_morango_bolo = EXCLUDED.adicional_morango_bolo,
+                adicional_morango_updated_by = EXCLUDED.adicional_morango_updated_by,
+                adicional_morango_updated_at = NOW(),
+                updated_at = NOW()
+            RETURNING adicional_morango_bolo,
+                      adicional_morango_updated_by,
+                      adicional_morango_updated_at
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':adicional_morango_bolo' => $ativo ? 1 : 0,
+            ':usuario_id' => $usuario_id && $usuario_id > 0 ? $usuario_id : null,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'ok' => true,
+            'adicional_morango_bolo' => logistica_cardapio_bool($row['adicional_morango_bolo'] ?? false),
+            'updated_by' => isset($row['adicional_morango_updated_by']) ? (int)$row['adicional_morango_updated_by'] : null,
+            'updated_at' => trim((string)($row['adicional_morango_updated_at'] ?? '')),
+        ];
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_adicional_morango_salvar: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao salvar adicional de morango.'];
+    }
 }
 
 function logistica_cardapio_pick_text(array $source, array $paths): string

@@ -22,6 +22,13 @@ $portal = null;
 $reuniao = null;
 $snapshot = [];
 $contexto_cardapio = ['ok' => false];
+$usuario_interno_logado = !empty($_SESSION['logado']) && (int)($_SESSION['logado'] ?? 0) === 1;
+$usuario_interno_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+$adicional_morango = [
+    'ok' => true,
+    'adicional_morango_bolo' => false,
+    'updated_at' => '',
+];
 
 if ($token === '') {
     $error = 'Link inválido.';
@@ -52,7 +59,26 @@ if ($token === '') {
 
             if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $post_action = (string)($_POST['action'] ?? '');
-                if ($post_action === 'save_cardapio') {
+                if ($post_action === 'save_adicional_morango') {
+                    if (!$usuario_interno_logado) {
+                        $error = 'Apenas usuários internos podem alterar o adicional de morango.';
+                    } else {
+                        $result = logistica_cardapio_adicional_morango_salvar(
+                            $pdo,
+                            (int)$reuniao['id'],
+                            !empty($_POST['adicional_morango_bolo']),
+                            $usuario_interno_id > 0 ? $usuario_interno_id : null
+                        );
+                        if (!empty($result['ok'])) {
+                            $success = !empty($result['adicional_morango_bolo'])
+                                ? 'Adicional de morango marcado para este bolo.'
+                                : 'Adicional de morango removido deste bolo.';
+                            $adicional_morango = $result;
+                        } else {
+                            $error = (string)($result['error'] ?? 'Não foi possível salvar o adicional de morango.');
+                        }
+                    }
+                } elseif ($post_action === 'save_cardapio') {
                     if (empty($portal['editavel_cardapio'])) {
                         $error = 'O cardápio não está habilitado para edição neste portal.';
                     } elseif (!empty($contexto_cardapio['locked'])) {
@@ -86,6 +112,10 @@ if ($token === '') {
                     }
                 }
             }
+
+            if ($error === '' && $usuario_interno_logado) {
+                $adicional_morango = logistica_cardapio_adicional_morango_get($pdo, (int)$reuniao['id']);
+            }
         }
     }
 }
@@ -107,6 +137,9 @@ $submitted_fmt = $submitted_at !== '' ? date('d/m/Y H:i', strtotime($submitted_a
 $pode_editar = $error === ''
     && !empty($portal['editavel_cardapio'])
     && empty($contexto_cardapio['locked']);
+$adicional_morango_marcado = !empty($adicional_morango['adicional_morango_bolo']);
+$adicional_morango_updated_at = trim((string)($adicional_morango['updated_at'] ?? ''));
+$adicional_morango_updated_fmt = $adicional_morango_updated_at !== '' ? date('d/m/Y H:i', strtotime($adicional_morango_updated_at)) : '';
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -461,6 +494,48 @@ $pode_editar = $error === ''
             margin: 0;
         }
 
+        .internal-card {
+            border: 1px solid #fed7aa;
+            background: #fff7ed;
+            border-radius: 18px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .internal-card-title {
+            color: #9a3412;
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 0.35rem;
+        }
+
+        .internal-card label {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.65rem;
+            color: #0f172a;
+            font-weight: 800;
+        }
+
+        .internal-card input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: #ea580c;
+        }
+
+        .internal-card-meta {
+            color: #9a3412;
+            font-size: 0.85rem;
+            margin-top: 0.3rem;
+        }
+
         @media (max-width: 640px) {
             .hero h1 {
                 font-size: 1.55rem;
@@ -545,6 +620,29 @@ $pode_editar = $error === ''
             <?php elseif (empty($contexto_cardapio['secoes'])): ?>
                 <div class="alert alert-info">O cardápio deste evento ainda não está pronto para seleção. Entre em contato com a equipe.</div>
             <?php else: ?>
+                <?php if ($usuario_interno_logado): ?>
+                    <form method="POST" class="internal-card">
+                        <input type="hidden" name="action" value="save_adicional_morango">
+                        <input type="hidden" name="token" value="<?= eventos_cliente_cardapio_e($token) ?>">
+                        <div>
+                            <div class="internal-card-title">Opção interna</div>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    name="adicional_morango_bolo"
+                                    value="1"
+                                    <?= $adicional_morango_marcado ? 'checked' : '' ?>
+                                >
+                                Adicional de morango no bolo
+                            </label>
+                            <?php if ($adicional_morango_updated_fmt !== ''): ?>
+                                <div class="internal-card-meta">Atualizado em <?= eventos_cliente_cardapio_e($adicional_morango_updated_fmt) ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <button class="btn-submit" type="submit">Salvar adicional</button>
+                    </form>
+                <?php endif; ?>
+
                 <?php if (!empty($contexto_cardapio['locked'])): ?>
                     <div class="alert alert-info unlock-request">
                         <p>
