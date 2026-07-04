@@ -59,6 +59,11 @@ $crons_info = [
         'descricao' => 'Envia WhatsApp de feedback para eventos da ME realizados no fim de semana anterior',
         'frequencia' => 'Segunda-feira às 09:00'
     ],
+    'eventos_cliente_pendencias_whatsapp' => [
+        'nome' => 'Pendências do Portal',
+        'descricao' => 'Envia WhatsApp para clientes com cardápio, formulário ou lista de convidados pendentes no prazo configurado',
+        'frequencia' => 'Diário às 08:00'
+    ],
     'portao_auto_close' => [
         'nome' => 'Portão - Auto Close',
         'descricao' => 'Processa fechamento automatico do portao quando vencer o timer',

@@ -476,6 +476,28 @@ if ($tipo === 'demandas_fixas') {
         echo json_encode($resultado);
     }
 
+} elseif ($tipo === 'eventos_cliente_pendencias_whatsapp') {
+    // Cron diario para avisar clientes sobre pendencias do portal no prazo correto.
+    try {
+        require_once __DIR__ . '/eventos_cliente_pendencias_whatsapp_helper.php';
+
+        $resultado = eventos_cliente_pendencias_whatsapp_processar($pdo, [
+            'dry_run' => !empty($_GET['dry_run']),
+            'ref_date' => $_GET['ref_date'] ?? null,
+            'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 200,
+            'exclude_event_dates' => $_GET['exclude_event_dates'] ?? ($_GET['excluir_datas'] ?? []),
+        ]);
+
+        cron_logger_finish($pdo, $execucao_id, !empty($resultado['success']), $resultado, $inicio_ms);
+        echo json_encode($resultado);
+
+    } catch (Exception $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
+        http_response_code(500);
+        echo json_encode($resultado);
+    }
+
 } elseif ($tipo === 'eventos_feedback_fim_semana') {
     // Cron de segunda-feira para pedir feedback dos eventos do fim de semana anterior.
     try {
@@ -514,6 +536,7 @@ if ($tipo === 'demandas_fixas') {
             'google_calendar_renewal',
             'eventos_limpeza_anexos',
             'eventos_formularios_pendentes',
+            'eventos_cliente_pendencias_whatsapp',
             'eventos_feedback_fim_semana'
         ]
     ]);
