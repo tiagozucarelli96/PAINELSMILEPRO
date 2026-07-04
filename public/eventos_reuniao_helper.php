@@ -4565,6 +4565,53 @@ function eventos_cliente_portal_aplicar_padrao_infantil(PDO $pdo, int $meeting_i
     }
 }
 
+function eventos_cliente_portal_aplicar_padrao_nao_infantil(PDO $pdo, int $meeting_id): array
+{
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT tipo_evento_real, me_event_snapshot
+            FROM eventos_reunioes
+            WHERE id = :meeting_id
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $reuniao = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$reuniao || eventos_reuniao_eh_infantil($reuniao)) {
+            return ['ok' => true, 'applied' => false, 'reason' => 'Evento é infantil'];
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE eventos_cliente_portais
+            SET visivel_reuniao = TRUE,
+                visivel_dj = TRUE,
+                visivel_secao_decoracao = TRUE,
+                visivel_secao_observacoes_gerais = TRUE,
+                visivel_secao_dj_protocolo = TRUE,
+                visivel_secao_formulario = TRUE,
+                visivel_arquivos = TRUE,
+                editavel_arquivos = TRUE,
+                updated_at = NOW()
+            WHERE meeting_id = :meeting_id
+              AND COALESCE(is_active, TRUE) IS TRUE
+            RETURNING *
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        return [
+            'ok' => true,
+            'applied' => (bool)$row,
+            'portal' => $row ? eventos_cliente_portal_normalizar_row($row) : null,
+        ];
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_aplicar_padrao_nao_infantil: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao atualizar padrão do portal'];
+    }
+}
+
 function eventos_cliente_portal_template_ativo(PDO $pdo, string $nome, string $categoria = '15anos'): ?array
 {
     try {
