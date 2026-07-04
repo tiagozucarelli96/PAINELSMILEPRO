@@ -200,21 +200,6 @@ function logistica_pacotes_evento_e(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 }
 
-function logistica_pacotes_evento_descricao_preview(string $value): string {
-    $decoded = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    $plain = trim(preg_replace('/\s+/', ' ', strip_tags($decoded)) ?? '');
-    if ($plain === '') {
-        return '-';
-    }
-    if (function_exists('mb_strlen') && mb_strlen($plain, 'UTF-8') > 140) {
-        return mb_substr($plain, 0, 140, 'UTF-8') . '...';
-    }
-    if (strlen($plain) > 140) {
-        return substr($plain, 0, 140) . '...';
-    }
-    return $plain;
-}
-
 includeSidebar('Regra do Pacote');
 ?>
 
@@ -369,15 +354,7 @@ includeSidebar('Regra do Pacote');
     }
 
     .packages-table {
-        min-width: 1120px;
-    }
-
-    .package-description-preview {
-        max-width: 320px;
-        color: #475569;
-        line-height: 1.35;
-        word-break: normal;
-        overflow-wrap: anywhere;
+        min-width: 880px;
     }
 
     .status-pill {
@@ -527,51 +504,8 @@ includeSidebar('Regra do Pacote');
         <div class="alert alert-success"><?= logistica_pacotes_evento_e((string)$message) ?></div>
     <?php endforeach; ?>
 
-    <?php if ((int)$edit_item['id'] <= 0): ?>
     <div class="card">
-        <h2>Selecione um pacote</h2>
-        <p class="helper-text">Crie e edite dados comerciais, valores e tabela de preços em "Pacotes, serviços e produtos". Depois volte aqui para configurar somente as regras de seções do cardápio.</p>
-        <div class="form-actions">
-            <a class="btn-primary" href="index.php?page=cadastros_pacotes_produtos">Abrir Pacotes, serviços e produtos</a>
-        </div>
-    </div>
-    <?php else: ?>
-    <div class="card">
-        <h2>Editar dados básicos</h2>
-        <form method="POST">
-            <input type="hidden" name="action" value="save">
-            <input type="hidden" name="id" value="<?= (int)$edit_item['id'] ?>">
-
-            <div class="form-row">
-                <div class="form-field">
-                    <label for="pacoteNome">Nome do pacote</label>
-                    <input id="pacoteNome" class="form-input" name="nome" required maxlength="180"
-                           value="<?= logistica_pacotes_evento_e((string)($edit_item['nome'] ?? '')) ?>">
-                </div>
-            </div>
-
-            <div class="form-field">
-                <label for="pacoteDescricao">Descrição (opcional)</label>
-                <textarea id="pacoteDescricao" class="form-textarea" name="descricao" maxlength="2000"><?= logistica_pacotes_evento_e((string)($edit_item['descricao'] ?? '')) ?></textarea>
-            </div>
-
-            <label class="form-check">
-                <input type="checkbox" name="oculto" value="1" <?= !empty($edit_item['oculto']) ? 'checked' : '' ?>>
-                <span>Ocultar pacote da seleção da organização</span>
-            </label>
-
-            <div class="form-actions">
-                <button type="submit" class="btn-primary">Salvar pacote</button>
-                <?php if ((int)$edit_item['id'] > 0): ?>
-                    <a class="btn-secondary" href="index.php?page=logistica_pacotes_evento">Cancelar edição</a>
-                <?php endif; ?>
-            </div>
-        </form>
-    </div>
-    <?php endif; ?>
-
-    <div class="card">
-        <h2>Seções do Pacote</h2>
+        <h2>Seções do Pacote<?= (int)$edit_item['id'] > 0 ? ': ' . logistica_pacotes_evento_e((string)($edit_item['nome'] ?? '')) : '' ?></h2>
         <?php if ((int)$edit_item['id'] <= 0): ?>
             <p class="helper-text">Clique em "Editar" em um pacote cadastrado para configurar quantas opções o cliente pode escolher em cada seção.</p>
         <?php elseif (empty($secoes)): ?>
@@ -590,7 +524,6 @@ includeSidebar('Regra do Pacote');
                             <tr>
                                 <th class="drag-cell">Ordem</th>
                                 <th>Seção</th>
-                                <th>Descrição</th>
                                 <th>Qtd. de escolhas</th>
                                 <th>Regra</th>
                             </tr>
@@ -616,7 +549,6 @@ includeSidebar('Regra do Pacote');
                                             <span class="rule-chip">Inativa</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?= logistica_pacotes_evento_e((string)($secao['descricao'] ?? '')) ?></td>
                                     <td>
                                         <input type="hidden" name="regras[<?= $index ?>][secao_cardapio_id]" value="<?= $secao_id ?>">
                                         <input class="form-input" type="number" min="0" step="1"
@@ -653,6 +585,7 @@ includeSidebar('Regra do Pacote');
                 <div class="form-actions">
                     <button type="submit" class="btn-primary">Salvar regras das seções</button>
                     <a class="btn-secondary" href="index.php?page=logistica_cardapio_secoes">Gerenciar seções</a>
+                    <a class="btn-secondary" href="index.php?page=logistica_pacotes_evento">Cancelar edição</a>
                 </div>
             </form>
         <?php endif; ?>
@@ -664,11 +597,10 @@ includeSidebar('Regra do Pacote');
             <table class="table packages-table">
                 <thead>
                     <tr>
-	                        <th>Nome</th>
-	                        <th>Descrição</th>
-	                        <th>Seções configuradas</th>
-	                        <th>Status</th>
-	                        <th>Atualizado</th>
+                        <th>Nome</th>
+                        <th>Seções configuradas</th>
+                        <th>Status</th>
+                        <th>Atualizado</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -681,14 +613,9 @@ includeSidebar('Regra do Pacote');
                         $is_oculto = !empty($pacote['oculto']);
                         $pacote_rules = $regras_by_pacote[$pacote_id] ?? [];
                         ?>
-	                        <tr>
-	                            <td><?= logistica_pacotes_evento_e((string)($pacote['nome'] ?? '')) ?></td>
-	                            <td>
-                                    <div class="package-description-preview">
-                                        <?= logistica_pacotes_evento_e(logistica_pacotes_evento_descricao_preview((string)($pacote['descricao'] ?? ''))) ?>
-                                    </div>
-                                </td>
-	                            <td>
+                        <tr>
+                            <td><?= logistica_pacotes_evento_e((string)($pacote['nome'] ?? '')) ?></td>
+                            <td>
                                 <?php if (!empty($pacote_rules)): ?>
                                     <div class="rules-summary">
                                         <?php foreach ($pacote_rules as $rule): ?>
@@ -711,23 +638,14 @@ includeSidebar('Regra do Pacote');
                             <td>
                                 <div class="row-actions">
                                     <a class="btn-secondary" href="index.php?page=logistica_pacotes_evento&edit_id=<?= $pacote_id ?>">Editar</a>
-
-                                    <form method="POST" class="inline-form">
-                                        <input type="hidden" name="action" value="toggle_oculto">
-                                        <input type="hidden" name="id" value="<?= $pacote_id ?>">
-                                        <button type="submit" class="btn-secondary">
-                                            <?= $is_oculto ? 'Reexibir' : 'Ocultar' ?>
-                                        </button>
-                                    </form>
-
                                 </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
-	                    <?php if (empty($pacotes)): ?>
-	                        <tr>
-	                            <td colspan="6">Nenhum pacote cadastrado.</td>
-	                        </tr>
+                    <?php if (empty($pacotes)): ?>
+                        <tr>
+                            <td colspan="5">Nenhum pacote cadastrado.</td>
+                        </tr>
                     <?php endif; ?>
                 </tbody>
             </table>
