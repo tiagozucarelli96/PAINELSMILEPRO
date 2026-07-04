@@ -470,7 +470,8 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 .pp-modal-title { margin: 0; color: #1e293b; font-weight: 900; font-size: 1.15rem; }
 .pp-modal-close { width: 36px; height: 36px; border: none; border-radius: 999px; background: #f1f5f9; color: #334155; cursor: pointer; font-size: 1.25rem; line-height: 1; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .pp-modal-close:hover { background: #e2e8f0; color: #0f172a; }
-.pp-form { padding: 1rem; display: grid; gap: 0.9rem; overflow: auto; min-height: 0; }
+.pp-modal-scroll { padding: 1rem; display: grid; gap: 0.9rem; overflow: auto; min-height: 0; }
+.pp-form { display: grid; gap: 0.9rem; min-height: 0; }
 .pp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
 .pp-field { display: grid; gap: 0.35rem; }
 .pp-field.full { grid-column: 1 / -1; }
@@ -484,7 +485,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 .pp-tab-button[disabled] { cursor: not-allowed; opacity: 0.45; }
 .pp-tab-panel { display: none; min-width: 0; }
 .pp-tab-panel.active { display: block; }
-.pp-price-section { padding: 1rem 0 0; gap: 0.8rem; overflow: visible; }
+.pp-price-section { padding: 0; gap: 0.8rem; overflow: visible; }
 .pp-tab-panel.active.pp-price-section { display: grid; }
 .pp-price-title { margin: 0; color: #1e293b; font-size: 1rem; font-weight: 900; }
 .pp-price-help { margin: 0; color: #64748b; font-size: 0.84rem; }
@@ -503,10 +504,6 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 .pp-gallery-name { font-weight: 900; color: #1e293b; font-size: 0.86rem; }
 .pp-gallery-meta { color: #64748b; font-size: 0.76rem; }
 .pp-gallery-empty { padding: 1rem; color: #64748b; }
-@media (min-width: 769px) {
-    .pp-modal-backdrop { left: 280px; }
-    .main-content.expanded .pp-modal-backdrop { left: 0; }
-}
 @media (max-width: 900px) { .pp-grid, .pp-price-head { grid-template-columns: 1fr; } }
 @media (max-width: 768px) {
     .pp-modal-backdrop { padding: 0.75rem; }
@@ -602,6 +599,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
             <h2 class="pp-modal-title" id="pp-modal-title"><?= (int)$modalItem['id'] > 0 ? 'Editar cadastro' : 'Adicionar cadastro' ?></h2>
             <button class="pp-modal-close" type="button" data-close-pp-modal aria-label="Fechar">×</button>
         </div>
+        <div class="pp-modal-scroll">
         <form method="post" class="pp-form" id="pp-form">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="id" id="pp-id" value="<?= (int)$modalItem['id'] ?>">
@@ -733,6 +731,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                 <p class="pp-price-help">Salve o pacote primeiro para liberar a tabela por dia da semana e quantidade de pessoas.</p>
             </div>
         <?php endif; ?>
+        </div>
         <div class="pp-modal-actions">
             <a class="pp-btn secondary" href="index.php?page=cadastros_pacotes_produtos" data-close-pp-modal>Cancelar</a>
             <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
@@ -1049,110 +1048,4 @@ document.addEventListener('keydown', (event) => {
         closePpModal();
     }
 });
-</script>
-<script>
-(function () {
-    const modal = document.getElementById('pp-modal');
-    if (!modal) return;
-
-    function readItems() {
-        try {
-            return JSON.parse(document.getElementById('pp-items-json')?.textContent || '{}');
-        } catch (error) {
-            return {};
-        }
-    }
-
-    function itemData(id) {
-        const item = readItems()[id || ''] || {};
-        return {
-            id: item.id || id || '0',
-            categoria: item.categoria || 'Pacote',
-            tipoEventoReal: item.tipo_evento_real || '',
-            modeloPreco: item.modelo_preco || 'simples',
-            nome: item.nome || '',
-            valorVenda: item.valor_venda || '',
-            valorPacote: item.valor_pacote || '',
-            pessoasBase: item.pessoas_base || '',
-            valorConvidadoAdicional: item.valor_convidado_adicional || '',
-            descricao: item.descricao || '',
-        };
-    }
-
-    function setField(id, value) {
-        const field = document.getElementById(id);
-        if (field) field.value = value || '';
-    }
-
-    function syncCategory() {
-        const categoria = document.getElementById('pp-categoria')?.value || 'Pacote';
-        const isPacote = categoria === 'Pacote';
-        document.querySelectorAll('.pp-package-fields').forEach((el) => el.classList.toggle('hidden', !isPacote));
-        document.querySelectorAll('.pp-service-fields').forEach((el) => el.classList.toggle('hidden', isPacote));
-        if (typeof updatePrecoTabState === 'function') {
-            updatePrecoTabState();
-        }
-    }
-
-    function open(data) {
-        document.getElementById('pp-modal-title').textContent = data ? 'Editar cadastro' : 'Adicionar cadastro';
-        setField('pp-id', data?.id || '0');
-        setField('pp-categoria', data?.categoria || 'Pacote');
-        setField('pp-nome', data?.nome || '');
-        setField('pp-tipo-evento-real', data?.tipoEventoReal || '');
-        setField('pp-modelo-preco', data?.modeloPreco || 'simples');
-        setField('pp-valor-venda', data?.valorVenda || '');
-        setField('pp-valor-pacote', data?.valorPacote || '');
-        setField('pp-pessoas-base', data?.pessoasBase || '');
-        setField('pp-valor-convidado-adicional', data?.valorConvidadoAdicional || '');
-        setField('pp-descricao', data?.descricao || '');
-        if (typeof ppFormatPackageMoneyFields === 'function') {
-            ppFormatPackageMoneyFields();
-        }
-        syncCategory();
-        if (typeof switchPpTab === 'function') {
-            switchPpTab('descricao');
-        }
-        modal.style.display = 'flex';
-        modal.classList.add('open');
-    }
-
-    function close() {
-        modal.classList.remove('open');
-        modal.style.display = 'none';
-        history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos');
-    }
-
-    document.addEventListener('click', function (event) {
-        const add = event.target.closest('[data-open-pp-modal]');
-        if (add) {
-            event.preventDefault();
-            history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos&novo=1#pp-modal');
-            open(null);
-            return;
-        }
-
-        const edit = event.target.closest('[data-edit-pp]');
-        if (edit) {
-            event.preventDefault();
-            history.replaceState(null, '', `index.php?page=cadastros_pacotes_produtos&edit_id=${edit.dataset.id || ''}#pp-modal`);
-            open(itemData(edit.dataset.id || ''));
-            return;
-        }
-
-        if (event.target.closest('[data-close-pp-modal]')) {
-            event.preventDefault();
-            close();
-        }
-    });
-
-    document.getElementById('pp-categoria')?.addEventListener('change', syncCategory);
-
-    const params = new URLSearchParams(window.location.search || '');
-    if (params.get('edit_id')) {
-        open(itemData(params.get('edit_id')));
-    } else if (params.has('novo')) {
-        open(null);
-    }
-})();
 </script>
