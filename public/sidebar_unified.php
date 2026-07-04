@@ -370,19 +370,23 @@ if ($current_page === 'dashboard') {
         }
     }
 
-    $dashboard_stats_cache_key = 'stats:v3:' . $dashboard_previous_month->format('Y-m') . ':' . $dashboard_current_month->format('Y-m') . ':' . ($is_superadmin_dashboard ? '1' : '0');
+    $dashboard_stats_cache_key = 'stats:v4:' . $dashboard_previous_month->format('Y-m') . ':' . $dashboard_current_month->format('Y-m') . ':' . ($is_superadmin_dashboard ? '1' : '0');
     $cached_stats = $dashboard_bypass_cache ? null : dashboardCacheRead($dashboard_stats_cache_key, 60);
     if (is_array($cached_stats)) {
         $stats = $cached_stats;
         $stats['meta_vendas'] = max(0, (int)($stats['meta_vendas'] ?? 0));
         $stats['vendas_realizadas'] = max(0, (int)($stats['vendas_realizadas'] ?? 0));
         $dashboard_sales_months = is_array($stats['sales_months'] ?? null) ? $stats['sales_months'] : [];
+        $stats['inscritos_degustacao'] = max(0, (int)($stats['inscritos_degustacao'] ?? 0));
+        $stats['pessoas_degustacao'] = max(0, (int)($stats['pessoas_degustacao'] ?? 0));
         $stats['visitas_realizadas'] = max(0, (int)($stats['visitas_realizadas'] ?? 0));
         $stats['fechamentos_realizados'] = (float)($stats['fechamentos_realizados'] ?? 0);
     } else {
         try {
             $stmt = $pdo->prepare("
-                SELECT COUNT(*) as total 
+                SELECT
+                    COUNT(*) AS total_inscritos,
+                    COALESCE(SUM(GREATEST(COALESCE(ci.qtd_pessoas, 1), 1)), 0) AS total_pessoas
                 FROM comercial_inscricoes ci
                 JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
                 WHERE cd.status = 'publicado'
@@ -390,7 +394,9 @@ if ($current_page === 'dashboard') {
                 AND ci.status IN ('confirmado', 'lista_espera')
             ");
             $stmt->execute();
-            $stats['inscritos_degustacao'] = $stmt->fetchColumn() ?: 0;
+            $degustacao_stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $stats['inscritos_degustacao'] = (int)($degustacao_stats['total_inscritos'] ?? 0);
+            $stats['pessoas_degustacao'] = (int)($degustacao_stats['total_pessoas'] ?? 0);
 
             dashboardEnsureConfigTable($pdo);
             $dashboard_sales_months = [];
@@ -438,6 +444,7 @@ if ($current_page === 'dashboard') {
         } catch (Exception $e) {
             $stats = [
                 'inscritos_degustacao' => 0,
+                'pessoas_degustacao' => 0,
                 'vendas_realizadas' => 0,
                 'meta_vendas' => 0,
                 'visitas_realizadas' => 0,
@@ -768,6 +775,14 @@ if ($current_page === 'dashboard') {
     }
     .metric-card-feedback.error {
         color: #b91c1c;
+    }
+    .metric-content small {
+        display: block;
+        margin-top: 0.3rem;
+        color: #64748b;
+        font-size: 0.78rem;
+        font-weight: 600;
+        line-height: 1.25;
     }
     .sales-goal-card {
         grid-column: span 2;
@@ -1145,6 +1160,7 @@ if ($current_page === 'dashboard') {
                 <div class="metric-content">
                     <h3>' . $stats['inscritos_degustacao'] . '</h3>
                     <p>Inscritos em Degustações</p>
+                    <small>' . $stats['pessoas_degustacao'] . ' pessoas no total</small>
                 </div>
             </div>
             

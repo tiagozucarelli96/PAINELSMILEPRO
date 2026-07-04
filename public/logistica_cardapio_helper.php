@@ -45,6 +45,36 @@ function logistica_cardapio_has_table(PDO $pdo, string $table_name): bool
     return $cache[$table_name];
 }
 
+function logistica_cardapio_has_column(PDO $pdo, string $table_name, string $column_name): bool
+{
+    static $cache = [];
+    $key = strtolower(trim($table_name)) . '.' . strtolower(trim($column_name));
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = CURRENT_SCHEMA()
+              AND table_name = :table_name
+              AND column_name = :column_name
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':table_name' => trim(strtolower($table_name)),
+            ':column_name' => trim(strtolower($column_name)),
+        ]);
+        $cache[$key] = (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_has_column: ' . $e->getMessage());
+        $cache[$key] = false;
+    }
+
+    return $cache[$key];
+}
+
 function logistica_cardapio_normalizar_ids(array $values): array
 {
     $normalized = [];
