@@ -385,6 +385,28 @@ if ($tipo === 'demandas_fixas') {
         echo json_encode($resultado);
     }
 
+} elseif ($tipo === 'demandas_resumo_semanal') {
+    // Cron de segunda-feira para enviar por WhatsApp as demandas pendentes da semana.
+    try {
+        require_once __DIR__ . '/demandas_resumo_semanal_helper.php';
+
+        $resultado = demandas_resumo_semanal_processar($pdo, [
+            'dry_run' => !empty($_GET['dry_run']),
+            'force' => !empty($_GET['force']),
+            'ref_date' => $_GET['ref_date'] ?? null,
+            'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 200,
+        ]);
+
+        cron_logger_finish($pdo, $execucao_id, !empty($resultado['success']), $resultado, $inicio_ms);
+        echo json_encode($resultado, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    } catch (Exception $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
+        http_response_code(500);
+        echo json_encode($resultado);
+    }
+
 } elseif ($tipo === 'portao_auto_close') {
     // Cron para processar auto-fechamento do portao
     try {
@@ -485,6 +507,7 @@ if ($tipo === 'demandas_fixas') {
             'demandas_fixas',
             'notificacoes',
             'agenda_visitas_whatsapp',
+            'demandas_resumo_semanal',
             'portao_auto_close',
             'google_calendar_daily',
             'google_calendar_sync',

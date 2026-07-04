@@ -62,11 +62,13 @@ function demandasInternasEnsureSchema(PDO $pdo): void
             prazo DATE NOT NULL,
             encerrada_em TIMESTAMPTZ,
             request_key VARCHAR(120),
+            enviar_jordao BOOLEAN NOT NULL DEFAULT FALSE,
             criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     ");
     $pdo->exec("ALTER TABLE demandas_internas ADD COLUMN IF NOT EXISTS request_key VARCHAR(120)");
+    $pdo->exec("ALTER TABLE demandas_internas ADD COLUMN IF NOT EXISTS enviar_jordao BOOLEAN NOT NULL DEFAULT FALSE");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS demandas_internas_mensagens (
@@ -815,11 +817,11 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
             INSERT INTO demandas_internas (
                 titulo, descricao, criador_id, responsavel_tipo, responsavel_id, responsavel_setor,
                 evento_tipo, evento_id, evento_data, evento_local, evento_nome, evento_whatsapp,
-                status, prioridade, prazo, request_key
+                status, prioridade, prazo, request_key, enviar_jordao
             ) VALUES (
                 :titulo, :descricao, :criador_id, :responsavel_tipo, :responsavel_id, :responsavel_setor,
                 :evento_tipo, :evento_id, :evento_data, :evento_local, :evento_nome, :evento_whatsapp,
-                :status, :prioridade, :prazo, :request_key
+                :status, :prioridade, :prazo, :request_key, :enviar_jordao
             )
             RETURNING id
         ");
@@ -840,6 +842,7 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
             ':prioridade' => $prioridade,
             ':prazo' => $prazo,
             ':request_key' => $requestKey !== '' ? $requestKey : null,
+            ':enviar_jordao' => $enviarJordao,
         ]);
         $demandaId = (int)$stmt->fetchColumn();
     } catch (PDOException $e) {
