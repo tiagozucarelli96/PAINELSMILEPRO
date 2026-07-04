@@ -4496,6 +4496,75 @@ function eventos_reuniao_eh_15anos(array $reuniao): bool
     return strpos($nome, '15 anos') !== false;
 }
 
+function eventos_reuniao_eh_infantil(array $reuniao): bool
+{
+    $tipo = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ''));
+    if ($tipo === 'infantil') {
+        return true;
+    }
+
+    $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+    if (!is_array($snapshot)) {
+        $snapshot = [];
+    }
+
+    $tipo_snapshot = eventos_reuniao_normalizar_tipo_evento_real((string)($snapshot['tipo_evento_real'] ?? ''));
+    return $tipo_snapshot === 'infantil';
+}
+
+function eventos_cliente_portal_aplicar_padrao_infantil(PDO $pdo, int $meeting_id): array
+{
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT tipo_evento_real, me_event_snapshot
+            FROM eventos_reunioes
+            WHERE id = :meeting_id
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $reuniao = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$reuniao || !eventos_reuniao_eh_infantil($reuniao)) {
+            return ['ok' => true, 'applied' => false, 'reason' => 'Evento não é infantil'];
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE eventos_cliente_portais
+            SET visivel_reuniao = FALSE,
+                editavel_reuniao = FALSE,
+                visivel_dj = FALSE,
+                editavel_dj = FALSE,
+                visivel_secao_decoracao = FALSE,
+                editavel_secao_decoracao = FALSE,
+                visivel_secao_observacoes_gerais = FALSE,
+                editavel_secao_observacoes_gerais = FALSE,
+                visivel_secao_dj_protocolo = FALSE,
+                editavel_secao_dj_protocolo = FALSE,
+                visivel_secao_formulario = FALSE,
+                editavel_secao_formulario = FALSE,
+                visivel_arquivos = FALSE,
+                editavel_arquivos = FALSE,
+                updated_at = NOW()
+            WHERE meeting_id = :meeting_id
+              AND COALESCE(is_active, TRUE) IS TRUE
+            RETURNING *
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        return [
+            'ok' => true,
+            'applied' => (bool)$row,
+            'portal' => $row ? eventos_cliente_portal_normalizar_row($row) : null,
+        ];
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_aplicar_padrao_infantil: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao atualizar padrão infantil'];
+    }
+}
+
 function eventos_cliente_portal_template_ativo(PDO $pdo, string $nome, string $categoria = '15anos'): ?array
 {
     try {
@@ -4798,6 +4867,8 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
     $has_created_by_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'created_by_user_id');
     $has_created_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'created_at');
     $has_updated_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at');
+    $reuniao_defaults = eventos_reuniao_get($pdo, $meeting_id) ?: [];
+    $is_infantil_defaults = !empty($reuniao_defaults) && eventos_reuniao_eh_infantil($reuniao_defaults);
 
     try {
         $existing = eventos_cliente_portal_get($pdo, $meeting_id);
@@ -4856,7 +4927,7 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         }
         if ($has_visivel_reuniao_col) {
             $columns[] = 'visivel_reuniao';
-            $values[] = 'TRUE';
+            $values[] = $is_infantil_defaults ? 'FALSE' : 'TRUE';
         }
         if ($has_editavel_reuniao_col) {
             $columns[] = 'editavel_reuniao';
@@ -4864,7 +4935,7 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         }
         if ($has_visivel_dj_col) {
             $columns[] = 'visivel_dj';
-            $values[] = 'TRUE';
+            $values[] = $is_infantil_defaults ? 'FALSE' : 'TRUE';
         }
         if ($has_editavel_dj_col) {
             $columns[] = 'editavel_dj';
@@ -4880,11 +4951,11 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         }
         if ($has_visivel_arquivos_col) {
             $columns[] = 'visivel_arquivos';
-            $values[] = 'TRUE';
+            $values[] = $is_infantil_defaults ? 'FALSE' : 'TRUE';
         }
         if ($has_editavel_arquivos_col) {
             $columns[] = 'editavel_arquivos';
-            $values[] = 'TRUE';
+            $values[] = $is_infantil_defaults ? 'FALSE' : 'TRUE';
         }
         if ($has_visivel_cardapio_col) {
             $columns[] = 'visivel_cardapio';

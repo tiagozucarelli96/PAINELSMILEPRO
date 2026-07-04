@@ -257,6 +257,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     exit;
                 }
                 $updated = eventos_reuniao_atualizar_tipo_evento_real($pdo, $meeting_id, $tipo_evento_real, $user_id);
+                if (!empty($updated['ok']) && $tipo_evento_real === 'infantil') {
+                    $padrao_infantil = eventos_cliente_portal_aplicar_padrao_infantil($pdo, $meeting_id);
+                    if (empty($padrao_infantil['ok'])) {
+                        error_log('eventos_organizacao atualizar_tipo_evento_real padrao infantil: ' . ($padrao_infantil['error'] ?? 'erro desconhecido'));
+                    }
+                }
                 echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
 
