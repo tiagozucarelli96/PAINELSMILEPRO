@@ -66,10 +66,44 @@ if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
 
 $pacotes_evento = pacotes_evento_listar($pdo, false);
 $pacotes_evento_validos = [];
+$pacotes_evento_precos_js = [];
 foreach ($pacotes_evento as $pacote_evento_item) {
     $pacote_evento_item_id = (int)($pacote_evento_item['id'] ?? 0);
     if ($pacote_evento_item_id > 0) {
         $pacotes_evento_validos[$pacote_evento_item_id] = true;
+        $variacoes = [];
+        if ((string)($pacote_evento_item['modelo_preco'] ?? 'simples') === 'tabela') {
+            foreach (pacotes_evento_preco_variacoes_listar($pdo, $pacote_evento_item_id) as $variacao) {
+                if (empty($variacao['ativo'])) {
+                    continue;
+                }
+                $faixas = [];
+                foreach (($variacao['faixas'] ?? []) as $faixa) {
+                    $pessoas = (int)($faixa['pessoas'] ?? 0);
+                    $valor = (float)($faixa['valor'] ?? 0);
+                    if ($pessoas > 0 && $valor > 0) {
+                        $faixas[] = ['pessoas' => $pessoas, 'valor' => $valor];
+                    }
+                }
+                $variacoes[] = [
+                    'id' => (int)($variacao['id'] ?? 0),
+                    'nome' => (string)($variacao['nome'] ?? ''),
+                    'dias_semana' => array_values(array_filter(array_map('intval', explode(',', (string)($variacao['dias_semana'] ?? ''))))),
+                    'inclui_feriado' => !empty($variacao['inclui_feriado']),
+                    'inclui_vespera_feriado' => !empty($variacao['inclui_vespera_feriado']),
+                    'faixas' => $faixas,
+                ];
+            }
+        }
+        $pacotes_evento_precos_js[$pacote_evento_item_id] = [
+            'id' => $pacote_evento_item_id,
+            'nome' => (string)($pacote_evento_item['nome'] ?? ''),
+            'modelo_preco' => (string)($pacote_evento_item['modelo_preco'] ?? 'simples'),
+            'valor_pacote' => (float)($pacote_evento_item['valor_pacote'] ?? 0),
+            'pessoas_base' => (int)($pacote_evento_item['pessoas_base'] ?? 0),
+            'valor_convidado_adicional' => (float)($pacote_evento_item['valor_convidado_adicional'] ?? 0),
+            'variacoes' => $variacoes,
+        ];
     }
 }
 
@@ -223,7 +257,7 @@ function vendas_collect_comercial_payload_from_post(): array {
 
 function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $payload, int $usuario_id, bool $registrar_pronto_aprovacao = true): array {
     $stmt_pre = $pdo->prepare("
-        SELECT id, status, nome_completo, tipo_evento, data_evento, unidade
+        SELECT id, status, nome_completo, tipo_evento, data_evento, unidade, num_convidados
         FROM vendas_pre_contratos
         WHERE id = ?
         FOR UPDATE
@@ -238,6 +272,27 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
     $novo_status = $status_anterior;
     if ($registrar_pronto_aprovacao && !in_array($status_anterior, ['aprovado_criado_me', 'cancelado_nao_fechou'], true)) {
         $novo_status = 'pronto_aprovacao';
+    }
+
+    $preco_pacote_aplicado = null;
+    if ((float)$payload['valor_negociado'] <= 0 && (int)$payload['pacote_evento_id'] > 0) {
+        $preco_pacote = pacotes_evento_resolver_preco(
+            $pdo,
+            (int)$payload['pacote_evento_id'],
+            (string)($pre_contrato['data_evento'] ?? ''),
+            (int)($pre_contrato['num_convidados'] ?? 0)
+        );
+        if (!empty($preco_pacote['ok']) && (float)($preco_pacote['valor'] ?? 0) > 0) {
+            $payload['valor_negociado'] = (float)$preco_pacote['valor'];
+            $payload['valor_total'] = $payload['valor_negociado'] + array_sum(array_column($payload['adicionais'], 'valor')) - (float)$payload['desconto'];
+            $preco_pacote_aplicado = [
+                'modelo' => $preco_pacote['modelo'] ?? null,
+                'variacao_id' => $preco_pacote['variacao_id'] ?? null,
+                'variacao_nome' => $preco_pacote['variacao_nome'] ?? null,
+                'pessoas_referencia' => $preco_pacote['pessoas_referencia'] ?? null,
+                'valor' => (float)$preco_pacote['valor'],
+            ];
+        }
     }
 
     $stmt = $pdo->prepare("
@@ -297,7 +352,11 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
     }
 
     $stmt_log = $pdo->prepare("INSERT INTO vendas_logs (pre_contrato_id, acao, usuario_id, detalhes) VALUES (?, 'dados_comerciais_salvos', ?, ?)");
-    $stmt_log->execute([$pre_contrato_id, $usuario_id, json_encode(['valor_total' => $payload['valor_total']])]);
+    $detalhes_log = ['valor_total' => $payload['valor_total']];
+    if ($preco_pacote_aplicado !== null) {
+        $detalhes_log['preco_pacote_aplicado'] = $preco_pacote_aplicado;
+    }
+    $stmt_log->execute([$pre_contrato_id, $usuario_id, json_encode($detalhes_log)]);
 
     return [
         'pre_contrato' => $pre_contrato,
@@ -1785,16 +1844,17 @@ ob_start();
 
                             <div class="form-group">
                                 <label for="pacote_evento_id">Pacote da organização <?php echo $admin_context ? '<span class="required">*</span>' : ''; ?></label>
-                                <select id="pacote_evento_id" name="pacote_evento_id" <?php echo $admin_context ? 'required' : ''; ?>>
-                                    <option value="">Selecione...</option>
-                                    <?php foreach ($pacotes_evento as $pacote_evento): ?>
-                                        <?php $pacote_item_id = (int)($pacote_evento['id'] ?? 0); ?>
-                                        <option value="<?php echo $pacote_item_id; ?>" <?php echo $pacote_evento_id_edicao === $pacote_item_id ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars((string)($pacote_evento['nome'] ?? '')); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
+	                                <select id="pacote_evento_id" name="pacote_evento_id" <?php echo $admin_context ? 'required' : ''; ?>>
+	                                    <option value="">Selecione...</option>
+	                                    <?php foreach ($pacotes_evento as $pacote_evento): ?>
+	                                        <?php $pacote_item_id = (int)($pacote_evento['id'] ?? 0); ?>
+	                                        <option value="<?php echo $pacote_item_id; ?>" <?php echo $pacote_evento_id_edicao === $pacote_item_id ? 'selected' : ''; ?>>
+	                                            <?php echo htmlspecialchars((string)($pacote_evento['nome'] ?? '')); ?>
+	                                        </option>
+	                                    <?php endforeach; ?>
+	                                </select>
+	                                <small id="pacote_preco_hint" style="display:block;color:#64748b;margin-top:.35rem;"></small>
+	                            </div>
 
                             <div class="form-group">
                                 <label for="pacote_contratado">Pacote contratado</label>
@@ -1859,10 +1919,11 @@ ob_start();
                                             class="money-input adicional-valor-input"
                                             id="valor_negociado"
                                             name="valor_negociado"
-                                            value="<?php echo htmlspecialchars(vendas_format_money_brl($pre_contrato_editar['valor_negociado'] ?? 0)); ?>"
-                                            required
-                                        >
-                                    </td>
+	                                            value="<?php echo htmlspecialchars(vendas_format_money_brl($pre_contrato_editar['valor_negociado'] ?? 0)); ?>"
+	                                            required
+	                                        >
+	                                        <small id="valor_base_hint" style="display:block;color:#64748b;margin-top:.25rem;"></small>
+	                                    </td>
                                     <td><span class="valor-base-badge">Base</span></td>
                                 </tr>
                                 <?php foreach ($adicionais_editar as $idx => $adicional): ?>
@@ -2143,6 +2204,11 @@ ob_start();
 
 <script>
 let itemIndex = <?php echo count($adicionais_editar); ?>;
+const pacotesEventoPrecos = <?php echo json_encode($pacotes_evento_precos_js, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+const preContratoEvento = <?php echo json_encode([
+    'data_evento' => (string)($pre_contrato_editar['data_evento'] ?? ''),
+    'num_convidados' => (int)($pre_contrato_editar['num_convidados'] ?? 0),
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
 function formatMoneyFromDigits(digits) {
     if (!digits) return '';
@@ -2220,6 +2286,91 @@ function calcularTotal() {
     document.getElementById('desconto_display').value = formatMoneyDisplay(desconto);
     document.getElementById('valor_total_display').value = formatMoneyDisplay(total);
 }
+
+function pacoteDiaSemanaIso(dataEvento) {
+    if (!dataEvento) return 0;
+    const date = new Date(`${dataEvento}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return 0;
+    const jsDay = date.getDay();
+    return jsDay === 0 ? 7 : jsDay;
+}
+
+function resolverPrecoPacoteSelecionado() {
+    const pacoteSelect = document.getElementById('pacote_evento_id');
+    if (!pacoteSelect) return null;
+    const pacoteId = pacoteSelect.value || '';
+    const pacote = pacotesEventoPrecos[pacoteId];
+    if (!pacote) return null;
+
+    const convidados = Number(preContratoEvento.num_convidados || 0);
+    if (pacote.modelo_preco !== 'tabela') {
+        const base = Number(pacote.valor_pacote || 0);
+        const pessoasBase = Number(pacote.pessoas_base || 0);
+        const adicional = Number(pacote.valor_convidado_adicional || 0);
+        const extras = pessoasBase > 0 ? Math.max(0, convidados - pessoasBase) : 0;
+        return {
+            modelo: 'simples',
+            valor: base + (extras * adicional),
+            descricao: pessoasBase > 0 ? `Preço simples: ${pessoasBase} pessoas base` : 'Preço simples'
+        };
+    }
+
+    const diaSemana = pacoteDiaSemanaIso(preContratoEvento.data_evento);
+    for (const variacao of (pacote.variacoes || [])) {
+        const dias = Array.isArray(variacao.dias_semana) ? variacao.dias_semana.map(Number) : [];
+        if (!dias.includes(diaSemana)) continue;
+        const faixas = [...(variacao.faixas || [])].sort((a, b) => Number(a.pessoas || 0) - Number(b.pessoas || 0));
+        for (const faixa of faixas) {
+            if (Number(faixa.pessoas || 0) >= convidados) {
+                return {
+                    modelo: 'tabela',
+                    valor: Number(faixa.valor || 0),
+                    descricao: `${variacao.nome || 'Tabela'}: ${faixa.pessoas} pessoas`
+                };
+            }
+        }
+    }
+    return {
+        modelo: 'tabela',
+        valor: 0,
+        descricao: 'Sem faixa configurada para a data/convidados deste evento'
+    };
+}
+
+function aplicarSugestaoPrecoPacote(force = false) {
+    const pacoteSelect = document.getElementById('pacote_evento_id');
+    const pacoteInput = document.getElementById('pacote_contratado');
+    const valorInput = document.getElementById('valor_negociado');
+    const pacoteHint = document.getElementById('pacote_preco_hint');
+    const valorHint = document.getElementById('valor_base_hint');
+    if (!pacoteSelect || !valorInput) return;
+
+    const selectedText = pacoteSelect.selectedOptions?.[0]?.textContent?.trim() || '';
+    if (selectedText && pacoteInput && (force || pacoteInput.value.trim() === '')) {
+        pacoteInput.value = selectedText;
+    }
+
+    const preco = resolverPrecoPacoteSelecionado();
+    if (!preco) {
+        if (pacoteHint) pacoteHint.textContent = '';
+        if (valorHint) valorHint.textContent = '';
+        return;
+    }
+
+    if (pacoteHint) pacoteHint.textContent = preco.descricao;
+    if (valorHint) valorHint.textContent = preco.valor > 0 ? `Valor sugerido: ${formatMoneyDisplay(preco.valor)}` : preco.descricao;
+
+    const valorAtual = parseMoneyValue(valorInput.value || 0);
+    if (preco.valor > 0 && (force || valorAtual <= 0)) {
+        valorInput.value = formatMoneyDisplay(preco.valor).replace(/^R\\$\\s*/, '');
+        calcularTotal();
+    }
+}
+
+document.getElementById('pacote_evento_id')?.addEventListener('change', function() {
+    aplicarSugestaoPrecoPacote(true);
+});
+aplicarSugestaoPrecoPacote(false);
 
 function abrirModalAprovacao() {
     document.getElementById('modalAprovacao').classList.add('active');

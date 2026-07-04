@@ -9,7 +9,7 @@ require_once __DIR__ . '/conexao.php';
 function pacotes_evento_schema_marker_is_fresh(): bool
 {
     $ttl = max(300, (int)(painel_env('PACOTES_EVENTO_SCHEMA_TTL_SECONDS', '3600') ?? '3600'));
-    $mtime = @filemtime('/tmp/pacotes_evento_schema_ready');
+    $mtime = @filemtime('/tmp/pacotes_evento_schema_ready_v2');
     if ($mtime === false) {
         return false;
     }
@@ -19,7 +19,57 @@ function pacotes_evento_schema_marker_is_fresh(): bool
 
 function pacotes_evento_touch_schema_marker(): void
 {
-    @touch('/tmp/pacotes_evento_schema_ready');
+    @touch('/tmp/pacotes_evento_schema_ready_v2');
+}
+
+function pacotes_evento_parse_money($value): float
+{
+    if (is_float($value) || is_int($value)) {
+        return round((float)$value, 2);
+    }
+
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return 0.0;
+    }
+
+    $raw = preg_replace('/[^0-9,.\-]/', '', $raw) ?? '';
+    if ($raw === '' || $raw === '-' || $raw === ',' || $raw === '.') {
+        return 0.0;
+    }
+
+    $lastComma = strrpos($raw, ',');
+    $lastDot = strrpos($raw, '.');
+    if ($lastComma !== false && ($lastDot === false || $lastComma > $lastDot)) {
+        $raw = str_replace('.', '', $raw);
+        $raw = str_replace(',', '.', $raw);
+    } else {
+        $raw = str_replace(',', '', $raw);
+    }
+
+    return round((float)$raw, 2);
+}
+
+function pacotes_evento_format_money($value): string
+{
+    return number_format((float)($value ?? 0), 2, ',', '.');
+}
+
+function pacotes_evento_slug(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    if (function_exists('iconv')) {
+        $converted = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($converted) && $converted !== '') {
+            $value = $converted;
+        }
+    }
+    $value = strtolower($value);
+    $value = preg_replace('/[^a-z0-9]+/', '_', $value) ?? '';
+    return trim($value, '_');
 }
 
 /**
@@ -67,6 +117,8 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_pacote NUMERIC(12,2) NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS pessoas_base INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS tipo_evento_real VARCHAR(60) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS modelo_preco VARCHAR(30) NOT NULL DEFAULT 'simples'");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS oculto BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
@@ -76,6 +128,42 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_nome ON logistica_pacotes_evento(lower(nome))");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_oculto ON logistica_pacotes_evento(oculto, deleted_at)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_categoria ON logistica_pacotes_evento(categoria, deleted_at)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_tipo_real ON logistica_pacotes_evento(tipo_evento_real, deleted_at)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_modelo_preco ON logistica_pacotes_evento(modelo_preco, deleted_at)");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS logistica_pacote_preco_variacoes (
+                id BIGSERIAL PRIMARY KEY,
+                pacote_evento_id BIGINT NOT NULL REFERENCES logistica_pacotes_evento(id) ON DELETE CASCADE,
+                nome VARCHAR(120) NOT NULL,
+                codigo VARCHAR(80) NULL,
+                dias_semana VARCHAR(30) NULL,
+                inclui_feriado BOOLEAN NOT NULL DEFAULT FALSE,
+                inclui_vespera_feriado BOOLEAN NOT NULL DEFAULT FALSE,
+                ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                ordem INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        ");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacote_preco_variacoes ADD COLUMN IF NOT EXISTS codigo VARCHAR(80) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacote_preco_variacoes ADD COLUMN IF NOT EXISTS dias_semana VARCHAR(30) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacote_preco_variacoes ADD COLUMN IF NOT EXISTS inclui_feriado BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacote_preco_variacoes ADD COLUMN IF NOT EXISTS inclui_vespera_feriado BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacote_preco_variacoes ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacote_preco_variacoes ADD COLUMN IF NOT EXISTS ordem INTEGER NOT NULL DEFAULT 0");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacote_preco_variacoes_pacote ON logistica_pacote_preco_variacoes(pacote_evento_id, ativo, ordem)");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS logistica_pacote_preco_faixas (
+                id BIGSERIAL PRIMARY KEY,
+                variacao_id BIGINT NOT NULL REFERENCES logistica_pacote_preco_variacoes(id) ON DELETE CASCADE,
+                pessoas INTEGER NOT NULL,
+                valor NUMERIC(12,2) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                UNIQUE (variacao_id, pessoas)
+            )
+        ");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacote_preco_faixas_variacao ON logistica_pacote_preco_faixas(variacao_id, pessoas)");
     } catch (Throwable $e) {
         error_log('pacotes_evento_ensure_schema tabela pacotes: ' . $e->getMessage());
     }
@@ -118,6 +206,8 @@ function pacotes_evento_listar(PDO $pdo, bool $incluir_ocultos = false): array {
         $row['nome'] = trim((string)($row['nome'] ?? ''));
         $row['descricao'] = trim((string)($row['descricao'] ?? ''));
         $row['categoria'] = trim((string)($row['categoria'] ?? 'Pacote'));
+        $row['tipo_evento_real'] = trim((string)($row['tipo_evento_real'] ?? ''));
+        $row['modelo_preco'] = trim((string)($row['modelo_preco'] ?? 'simples'));
         $row['oculto'] = !empty($row['oculto']);
     }
     unset($row);
@@ -157,6 +247,8 @@ function pacotes_evento_get(PDO $pdo, int $pacote_id): ?array {
     $row['nome'] = trim((string)($row['nome'] ?? ''));
     $row['descricao'] = trim((string)($row['descricao'] ?? ''));
     $row['categoria'] = trim((string)($row['categoria'] ?? 'Pacote'));
+    $row['tipo_evento_real'] = trim((string)($row['tipo_evento_real'] ?? ''));
+    $row['modelo_preco'] = trim((string)($row['modelo_preco'] ?? 'simples'));
     $row['oculto'] = !empty($row['oculto']);
     return $row;
 }
@@ -170,7 +262,8 @@ function pacotes_evento_salvar(
     string $nome,
     ?string $descricao = null,
     bool $oculto = false,
-    int $user_id = 0
+    int $user_id = 0,
+    array $options = []
 ): array {
     pacotes_evento_ensure_schema($pdo);
 
@@ -185,6 +278,18 @@ function pacotes_evento_salvar(
     if (function_exists('mb_strlen') && mb_strlen($descricao_limpa, 'UTF-8') > 2000) {
         $descricao_limpa = mb_substr($descricao_limpa, 0, 2000, 'UTF-8');
     }
+    $categoria = trim((string)($options['categoria'] ?? 'Pacote'));
+    if ($categoria === '') {
+        $categoria = 'Pacote';
+    }
+    $tipo_evento_real = trim((string)($options['tipo_evento_real'] ?? ''));
+    $modelo_preco = (string)($options['modelo_preco'] ?? 'simples');
+    if (!in_array($modelo_preco, ['simples', 'tabela'], true)) {
+        $modelo_preco = 'simples';
+    }
+    $valor_pacote = pacotes_evento_parse_money($options['valor_pacote'] ?? 0);
+    $pessoas_base = max(0, (int)($options['pessoas_base'] ?? 0));
+    $valor_convidado_adicional = pacotes_evento_parse_money($options['valor_convidado_adicional'] ?? 0);
 
     try {
         if ($pacote_id > 0) {
@@ -192,6 +297,12 @@ function pacotes_evento_salvar(
                 UPDATE logistica_pacotes_evento
                 SET nome = :nome,
                     descricao = :descricao,
+                    categoria = :categoria,
+                    tipo_evento_real = :tipo_evento_real,
+                    modelo_preco = :modelo_preco,
+                    valor_pacote = :valor_pacote,
+                    pessoas_base = :pessoas_base,
+                    valor_convidado_adicional = :valor_convidado_adicional,
                     oculto = :oculto,
                     updated_at = NOW()
                 WHERE id = :id
@@ -201,6 +312,12 @@ function pacotes_evento_salvar(
             $stmt->execute([
                 ':nome' => $nome_limpo,
                 ':descricao' => $descricao_limpa !== '' ? $descricao_limpa : null,
+                ':categoria' => $categoria,
+                ':tipo_evento_real' => $tipo_evento_real !== '' ? $tipo_evento_real : null,
+                ':modelo_preco' => $modelo_preco,
+                ':valor_pacote' => $valor_pacote,
+                ':pessoas_base' => $pessoas_base > 0 ? $pessoas_base : null,
+                ':valor_convidado_adicional' => $valor_convidado_adicional,
                 ':oculto' => $oculto ? 1 : 0,
                 ':id' => $pacote_id,
             ]);
@@ -213,14 +330,20 @@ function pacotes_evento_salvar(
 
         $stmt = $pdo->prepare("
             INSERT INTO logistica_pacotes_evento
-                (nome, descricao, oculto, created_by_user_id, created_at, updated_at)
+                (nome, descricao, categoria, tipo_evento_real, modelo_preco, valor_pacote, pessoas_base, valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at)
             VALUES
-                (:nome, :descricao, :oculto, :created_by_user_id, NOW(), NOW())
+                (:nome, :descricao, :categoria, :tipo_evento_real, :modelo_preco, :valor_pacote, :pessoas_base, :valor_convidado_adicional, :oculto, :created_by_user_id, NOW(), NOW())
             RETURNING *
         ");
         $stmt->execute([
             ':nome' => $nome_limpo,
             ':descricao' => $descricao_limpa !== '' ? $descricao_limpa : null,
+            ':categoria' => $categoria,
+            ':tipo_evento_real' => $tipo_evento_real !== '' ? $tipo_evento_real : null,
+            ':modelo_preco' => $modelo_preco,
+            ':valor_pacote' => $valor_pacote,
+            ':pessoas_base' => $pessoas_base > 0 ? $pessoas_base : null,
+            ':valor_convidado_adicional' => $valor_convidado_adicional,
             ':oculto' => $oculto ? 1 : 0,
             ':created_by_user_id' => $user_id > 0 ? $user_id : null,
         ]);
@@ -230,6 +353,234 @@ function pacotes_evento_salvar(
         error_log('pacotes_evento_salvar: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Erro ao salvar pacote do evento.'];
     }
+}
+
+function pacotes_evento_tipos_evento_listar(PDO $pdo): array
+{
+    try {
+        $stmt = $pdo->query("
+            SELECT tipo_key, label
+            FROM eventos_tipos_reais_config
+            WHERE COALESCE(ativo, TRUE) = TRUE
+            ORDER BY ordem ASC, label ASC
+        ");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        $rows = [];
+    }
+
+    if (empty($rows)) {
+        $rows = [
+            ['tipo_key' => 'infantil', 'label' => 'Infantil'],
+            ['tipo_key' => 'casamento', 'label' => 'Casamento'],
+            ['tipo_key' => '15anos', 'label' => '15 anos'],
+            ['tipo_key' => 'formatura', 'label' => 'Formatura'],
+        ];
+    }
+
+    $out = [];
+    foreach ($rows as $row) {
+        $key = trim((string)($row['tipo_key'] ?? ''));
+        $label = trim((string)($row['label'] ?? ''));
+        if ($key === '') {
+            continue;
+        }
+        $out[$key] = $label !== '' ? $label : $key;
+    }
+    return $out;
+}
+
+function pacotes_evento_preco_variacoes_listar(PDO $pdo, int $pacote_id): array
+{
+    pacotes_evento_ensure_schema($pdo);
+    if ($pacote_id <= 0) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM logistica_pacote_preco_variacoes
+        WHERE pacote_evento_id = :pacote_id
+        ORDER BY ordem ASC, id ASC
+    ");
+    $stmt->execute([':pacote_id' => $pacote_id]);
+    $variacoes = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $stmtFaixas = $pdo->prepare("
+        SELECT *
+        FROM logistica_pacote_preco_faixas
+        WHERE variacao_id = :variacao_id
+        ORDER BY pessoas ASC
+    ");
+
+    foreach ($variacoes as &$variacao) {
+        $variacao['id'] = (int)($variacao['id'] ?? 0);
+        $variacao['pacote_evento_id'] = (int)($variacao['pacote_evento_id'] ?? 0);
+        $variacao['ativo'] = !empty($variacao['ativo']);
+        $variacao['inclui_feriado'] = !empty($variacao['inclui_feriado']);
+        $variacao['inclui_vespera_feriado'] = !empty($variacao['inclui_vespera_feriado']);
+        $stmtFaixas->execute([':variacao_id' => $variacao['id']]);
+        $variacao['faixas'] = $stmtFaixas->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+    unset($variacao);
+
+    return $variacoes;
+}
+
+function pacotes_evento_preco_variacoes_salvar(PDO $pdo, int $pacote_id, array $variacoes): array
+{
+    pacotes_evento_ensure_schema($pdo);
+    if ($pacote_id <= 0) {
+        return ['ok' => false, 'error' => 'Pacote inválido para salvar valores.'];
+    }
+
+    try {
+        $pdo->beginTransaction();
+        $pdo->prepare("DELETE FROM logistica_pacote_preco_variacoes WHERE pacote_evento_id = :pacote_id")
+            ->execute([':pacote_id' => $pacote_id]);
+
+        $insertVariacao = $pdo->prepare("
+            INSERT INTO logistica_pacote_preco_variacoes
+                (pacote_evento_id, nome, codigo, dias_semana, inclui_feriado, inclui_vespera_feriado, ativo, ordem, created_at, updated_at)
+            VALUES
+                (:pacote_evento_id, :nome, :codigo, :dias_semana, :inclui_feriado, :inclui_vespera_feriado, :ativo, :ordem, NOW(), NOW())
+            RETURNING id
+        ");
+        $insertFaixa = $pdo->prepare("
+            INSERT INTO logistica_pacote_preco_faixas
+                (variacao_id, pessoas, valor, created_at, updated_at)
+            VALUES
+                (:variacao_id, :pessoas, :valor, NOW(), NOW())
+        ");
+
+        foreach ($variacoes as $index => $raw) {
+            if (!is_array($raw)) {
+                continue;
+            }
+            $nome = trim((string)($raw['nome'] ?? ''));
+            $dias = $raw['dias_semana'] ?? [];
+            if (!is_array($dias)) {
+                $dias = array_filter(array_map('trim', explode(',', (string)$dias)));
+            }
+            $dias = array_values(array_intersect(array_map('intval', $dias), [1, 2, 3, 4, 5, 6, 7]));
+            sort($dias);
+            $faixasRaw = $raw['faixas'] ?? [];
+            $faixasValidas = [];
+            foreach ($faixasRaw as $faixa) {
+                if (!is_array($faixa)) {
+                    continue;
+                }
+                $pessoas = max(0, (int)($faixa['pessoas'] ?? 0));
+                $valor = pacotes_evento_parse_money($faixa['valor'] ?? 0);
+                if ($pessoas <= 0 || $valor <= 0) {
+                    continue;
+                }
+                $faixasValidas[$pessoas] = $valor;
+            }
+            if ($nome === '' && empty($dias) && empty($faixasValidas)) {
+                continue;
+            }
+            if ($nome === '') {
+                $nome = 'Variação ' . ((int)$index + 1);
+            }
+
+            $insertVariacao->execute([
+                ':pacote_evento_id' => $pacote_id,
+                ':nome' => $nome,
+                ':codigo' => pacotes_evento_slug($nome),
+                ':dias_semana' => implode(',', $dias),
+                ':inclui_feriado' => !empty($raw['inclui_feriado']) ? 1 : 0,
+                ':inclui_vespera_feriado' => !empty($raw['inclui_vespera_feriado']) ? 1 : 0,
+                ':ativo' => !isset($raw['ativo']) || !empty($raw['ativo']) ? 1 : 0,
+                ':ordem' => (int)($raw['ordem'] ?? ($index + 1)),
+            ]);
+            $variacaoId = (int)$insertVariacao->fetchColumn();
+            foreach ($faixasValidas as $pessoas => $valor) {
+                $insertFaixa->execute([
+                    ':variacao_id' => $variacaoId,
+                    ':pessoas' => $pessoas,
+                    ':valor' => $valor,
+                ]);
+            }
+        }
+
+        $pdo->commit();
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('pacotes_evento_preco_variacoes_salvar: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao salvar tabela de valores.'];
+    }
+}
+
+function pacotes_evento_resolver_preco(
+    PDO $pdo,
+    int $pacote_id,
+    string $data_evento,
+    int $convidados,
+    bool $eh_feriado = false,
+    bool $eh_vespera_feriado = false
+): array {
+    $pacote = pacotes_evento_get($pdo, $pacote_id);
+    if (!$pacote) {
+        return ['ok' => false, 'error' => 'Pacote não encontrado.'];
+    }
+
+    $modelo = (string)($pacote['modelo_preco'] ?? 'simples');
+    if ($modelo !== 'tabela') {
+        $base = (float)($pacote['valor_pacote'] ?? 0);
+        $pessoasBase = max(0, (int)($pacote['pessoas_base'] ?? 0));
+        $adicional = (float)($pacote['valor_convidado_adicional'] ?? 0);
+        $extras = $pessoasBase > 0 ? max(0, $convidados - $pessoasBase) : 0;
+        return [
+            'ok' => true,
+            'modelo' => 'simples',
+            'pacote_id' => $pacote_id,
+            'valor' => round($base + ($extras * $adicional), 2),
+            'pessoas_referencia' => $pessoasBase,
+            'variacao' => null,
+            'faixa' => null,
+        ];
+    }
+
+    try {
+        $dt = new DateTime($data_evento);
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => 'Data do evento inválida.'];
+    }
+    $diaSemana = (int)$dt->format('N');
+    $variacoes = pacotes_evento_preco_variacoes_listar($pdo, $pacote_id);
+    foreach ($variacoes as $variacao) {
+        if (empty($variacao['ativo'])) {
+            continue;
+        }
+        $dias = array_filter(array_map('intval', explode(',', (string)($variacao['dias_semana'] ?? ''))));
+        $matchDia = in_array($diaSemana, $dias, true);
+        $matchFeriado = $eh_feriado && !empty($variacao['inclui_feriado']);
+        $matchVespera = $eh_vespera_feriado && !empty($variacao['inclui_vespera_feriado']);
+        if (!$matchDia && !$matchFeriado && !$matchVespera) {
+            continue;
+        }
+        $faixas = $variacao['faixas'] ?? [];
+        usort($faixas, static fn(array $a, array $b): int => (int)$a['pessoas'] <=> (int)$b['pessoas']);
+        foreach ($faixas as $faixa) {
+            if ((int)($faixa['pessoas'] ?? 0) >= $convidados) {
+                return [
+                    'ok' => true,
+                    'modelo' => 'tabela',
+                    'pacote_id' => $pacote_id,
+                    'valor' => round((float)$faixa['valor'], 2),
+                    'pessoas_referencia' => (int)$faixa['pessoas'],
+                    'variacao' => $variacao,
+                    'faixa' => $faixa,
+                ];
+            }
+        }
+    }
+
+    return ['ok' => false, 'error' => 'Nenhuma faixa de preço encontrada para data e convidados informados.'];
 }
 
 /**

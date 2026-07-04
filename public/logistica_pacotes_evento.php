@@ -38,6 +38,12 @@ $edit_item = [
     'id' => 0,
     'nome' => '',
     'descricao' => '',
+    'categoria' => 'Pacote',
+    'tipo_evento_real' => '',
+    'modelo_preco' => 'simples',
+    'valor_pacote' => '',
+    'pessoas_base' => '',
+    'valor_convidado_adicional' => '',
     'oculto' => false,
 ];
 
@@ -58,15 +64,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nome = trim((string)($_POST['nome'] ?? ''));
         $descricao = trim((string)($_POST['descricao'] ?? ''));
         $oculto = ((string)($_POST['oculto'] ?? '0') === '1');
+        $modelo_preco = in_array(($_POST['modelo_preco'] ?? 'simples'), ['simples', 'tabela'], true) ? (string)$_POST['modelo_preco'] : 'simples';
+        $tipo_evento_real = trim((string)($_POST['tipo_evento_real'] ?? ''));
 
         $edit_item = [
             'id' => $pacote_id,
             'nome' => $nome,
             'descricao' => $descricao,
+            'categoria' => trim((string)($_POST['categoria'] ?? 'Pacote')),
+            'tipo_evento_real' => $tipo_evento_real,
+            'modelo_preco' => $modelo_preco,
+            'valor_pacote' => $_POST['valor_pacote'] ?? '',
+            'pessoas_base' => $_POST['pessoas_base'] ?? '',
+            'valor_convidado_adicional' => $_POST['valor_convidado_adicional'] ?? '',
             'oculto' => $oculto,
         ];
 
-        $result = pacotes_evento_salvar($pdo, $pacote_id, $nome, $descricao, $oculto, $user_id);
+        $result = pacotes_evento_salvar($pdo, $pacote_id, $nome, $descricao, $oculto, $user_id, [
+            'categoria' => $_POST['categoria'] ?? 'Pacote',
+            'tipo_evento_real' => $tipo_evento_real,
+            'modelo_preco' => $modelo_preco,
+            'valor_pacote' => $_POST['valor_pacote'] ?? 0,
+            'pessoas_base' => $_POST['pessoas_base'] ?? 0,
+            'valor_convidado_adicional' => $_POST['valor_convidado_adicional'] ?? 0,
+        ]);
         if (!empty($result['ok'])) {
             $saved_pacote_id = (int)($result['pacote']['id'] ?? $pacote_id);
             $refreshed = $saved_pacote_id > 0 ? pacotes_evento_get($pdo, $saved_pacote_id) : null;
@@ -83,6 +104,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } else {
             $errors[] = (string)($result['error'] ?? 'Não foi possível salvar o pacote.');
+        }
+    }
+
+    if ($action === 'save_prices') {
+        $pacote_id = (int)($_POST['id'] ?? 0);
+        $result = pacotes_evento_preco_variacoes_salvar($pdo, $pacote_id, $_POST['variacoes'] ?? []);
+        if (!empty($result['ok'])) {
+            $messages[] = 'Tabela de valores salva com sucesso.';
+            $refreshed = pacotes_evento_get($pdo, $pacote_id);
+            if ($refreshed) {
+                $edit_item = $refreshed;
+            }
+        } else {
+            $errors[] = (string)($result['error'] ?? 'Não foi possível salvar a tabela de valores.');
         }
     }
 
@@ -128,6 +163,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'id' => 0,
                     'nome' => '',
                     'descricao' => '',
+                    'categoria' => 'Pacote',
+                    'tipo_evento_real' => '',
+                    'modelo_preco' => 'simples',
+                    'valor_pacote' => '',
+                    'pessoas_base' => '',
+                    'valor_convidado_adicional' => '',
                     'oculto' => false,
                 ];
             }
@@ -138,6 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pacotes = pacotes_evento_listar($pdo, true);
+$tipos_evento = pacotes_evento_tipos_evento_listar($pdo);
 $secoes = logistica_cardapio_listar_secoes($pdo, true);
 $regras_by_pacote = [];
 foreach ($pacotes as $pacote_row) {
@@ -153,9 +195,13 @@ $edit_rules_map = [];
 $secoes_for_edit = $secoes;
 if ((int)$edit_item['id'] > 0) {
     $edit_rules = $regras_by_pacote[(int)$edit_item['id']] ?? [];
+    $edit_price_variations = pacotes_evento_preco_variacoes_listar($pdo, (int)$edit_item['id']);
     foreach ($edit_rules as $rule) {
         $edit_rules_map[(int)$rule['secao_cardapio_id']] = $rule;
     }
+}
+if (!isset($edit_price_variations)) {
+    $edit_price_variations = [];
 }
 
 usort($secoes_for_edit, static function (array $a, array $b) use ($edit_rules_map): int {
@@ -413,6 +459,60 @@ includeSidebar('Pacotes de Evento');
         line-height: 1.35;
     }
 
+    .price-mode-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.8rem;
+        margin-top: 0.75rem;
+    }
+
+    .price-variation-card {
+        border: 1px solid #dbe6f3;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 0.9rem;
+        background: #f8fafc;
+    }
+
+    .price-variation-head {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) minmax(260px, 2fr);
+        gap: 0.85rem;
+        align-items: start;
+        margin-bottom: 0.8rem;
+    }
+
+    .days-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+    }
+
+    .day-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.25rem 0.45rem;
+        border-radius: 999px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .price-rows {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.7rem;
+    }
+
+    .price-row {
+        display: grid;
+        grid-template-columns: 0.7fr 1fr;
+        gap: 0.5rem;
+    }
+
     .sortable-table .table {
         table-layout: fixed;
     }
@@ -454,6 +554,12 @@ includeSidebar('Pacotes de Evento');
         font-size: 0.78rem;
         font-weight: 700;
     }
+
+    @media (max-width: 760px) {
+        .price-variation-head {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 
 <div class="page-container">
@@ -485,11 +591,54 @@ includeSidebar('Pacotes de Evento');
                     <input id="pacoteNome" class="form-input" name="nome" required maxlength="180"
                            value="<?= logistica_pacotes_evento_e((string)($edit_item['nome'] ?? '')) ?>">
                 </div>
+                <div class="form-field">
+                    <label for="pacoteTipoEvento">Tipo de evento</label>
+                    <select id="pacoteTipoEvento" class="form-input" name="tipo_evento_real">
+                        <option value="">Sem tipo definido</option>
+                        <?php foreach ($tipos_evento as $tipo_key => $tipo_label): ?>
+                            <option value="<?= logistica_pacotes_evento_e((string)$tipo_key) ?>" <?= (string)($edit_item['tipo_evento_real'] ?? '') === (string)$tipo_key ? 'selected' : '' ?>>
+                                <?= logistica_pacotes_evento_e((string)$tipo_label) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="pacoteCategoria">Categoria interna</label>
+                    <input id="pacoteCategoria" class="form-input" name="categoria" maxlength="40"
+                           value="<?= logistica_pacotes_evento_e((string)($edit_item['categoria'] ?? 'Pacote')) ?>">
+                </div>
             </div>
 
             <div class="form-field">
                 <label for="pacoteDescricao">Descrição (opcional)</label>
                 <textarea id="pacoteDescricao" class="form-textarea" name="descricao" maxlength="2000"><?= logistica_pacotes_evento_e((string)($edit_item['descricao'] ?? '')) ?></textarea>
+            </div>
+
+            <div class="price-mode-grid">
+                <div class="form-field">
+                    <label for="pacoteModeloPreco">Modelo de preço</label>
+                    <select id="pacoteModeloPreco" class="form-input" name="modelo_preco">
+                        <?php $modelo_preco_atual = (string)($edit_item['modelo_preco'] ?? 'simples'); ?>
+                        <option value="simples" <?= $modelo_preco_atual !== 'tabela' ? 'selected' : '' ?>>Simples</option>
+                        <option value="tabela" <?= $modelo_preco_atual === 'tabela' ? 'selected' : '' ?>>Tabela por dia/quantidade</option>
+                    </select>
+                    <p class="helper-text">Use "Tabela" para pacotes infantis com valores por dia da semana e número de pessoas.</p>
+                </div>
+                <div class="form-field">
+                    <label for="pacoteValorPacote">Valor base simples</label>
+                    <input id="pacoteValorPacote" class="form-input money-input" name="valor_pacote" inputmode="decimal"
+                           value="<?= logistica_pacotes_evento_e(pacotes_evento_format_money($edit_item['valor_pacote'] ?? 0)) ?>">
+                </div>
+                <div class="form-field">
+                    <label for="pacotePessoasBase">Pessoas base simples</label>
+                    <input id="pacotePessoasBase" class="form-input" name="pessoas_base" type="number" min="0"
+                           value="<?= logistica_pacotes_evento_e((string)($edit_item['pessoas_base'] ?? '')) ?>">
+                </div>
+                <div class="form-field">
+                    <label for="pacoteValorAdicional">Valor por convidado adicional</label>
+                    <input id="pacoteValorAdicional" class="form-input money-input" name="valor_convidado_adicional" inputmode="decimal"
+                           value="<?= logistica_pacotes_evento_e(pacotes_evento_format_money($edit_item['valor_convidado_adicional'] ?? 0)) ?>">
+                </div>
             </div>
 
             <label class="form-check">
@@ -505,6 +654,46 @@ includeSidebar('Pacotes de Evento');
             </div>
         </form>
     </div>
+
+    <?php
+    $dias_semana_labels = [
+        1 => 'Seg',
+        2 => 'Ter',
+        3 => 'Qua',
+        4 => 'Qui',
+        5 => 'Sex',
+        6 => 'Sáb',
+        7 => 'Dom',
+    ];
+    $default_price_variations = [
+        [
+            'nome' => 'Segunda a quinta',
+            'dias_semana' => '1,2,3,4',
+            'inclui_feriado' => false,
+            'inclui_vespera_feriado' => false,
+            'ativo' => true,
+            'faixas' => [],
+        ],
+        [
+            'nome' => 'Sexta, sábado, domingo e feriado',
+            'dias_semana' => '5,6,7',
+            'inclui_feriado' => true,
+            'inclui_vespera_feriado' => false,
+            'ativo' => true,
+            'faixas' => [],
+        ],
+        [
+            'nome' => 'Domingo e feriado',
+            'dias_semana' => '7',
+            'inclui_feriado' => true,
+            'inclui_vespera_feriado' => false,
+            'ativo' => false,
+            'faixas' => [],
+        ],
+    ];
+    $price_variations_for_form = !empty($edit_price_variations) ? $edit_price_variations : $default_price_variations;
+    $default_price_people = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
+    ?>
 
     <div class="card">
         <h2>Seções do Pacote</h2>
@@ -595,16 +784,88 @@ includeSidebar('Pacotes de Evento');
     </div>
 
     <div class="card">
+        <h2>Tabela de Valores</h2>
+        <?php if ((int)$edit_item['id'] <= 0): ?>
+            <p class="helper-text">Salve o pacote primeiro para configurar variações por dia da semana e quantidade de pessoas.</p>
+        <?php else: ?>
+            <p class="helper-text">Opcional. Só será usada quando o modelo do pacote estiver como "Tabela por dia/quantidade". Pacotes simples continuam usando o valor base.</p>
+            <form method="POST">
+                <input type="hidden" name="action" value="save_prices">
+                <input type="hidden" name="id" value="<?= (int)$edit_item['id'] ?>">
+                <?php foreach ($price_variations_for_form as $vIndex => $variation): ?>
+                    <?php
+                    $diasSelecionados = array_filter(array_map('intval', explode(',', (string)($variation['dias_semana'] ?? ''))));
+                    $faixasMap = [];
+                    foreach (($variation['faixas'] ?? []) as $faixa) {
+                        $faixasMap[(int)($faixa['pessoas'] ?? 0)] = $faixa;
+                    }
+                    $peopleForVariation = array_values(array_unique(array_merge($default_price_people, array_keys($faixasMap))));
+                    sort($peopleForVariation);
+                    ?>
+                    <div class="price-variation-card">
+                        <input type="hidden" name="variacoes[<?= $vIndex ?>][ordem]" value="<?= $vIndex + 1 ?>">
+                        <input type="hidden" name="variacoes[<?= $vIndex ?>][ativo]" value="0">
+                        <div class="price-variation-head">
+                            <div class="form-field">
+                                <label>Nome da variação</label>
+                                <input class="form-input" name="variacoes[<?= $vIndex ?>][nome]" maxlength="120"
+                                       value="<?= logistica_pacotes_evento_e((string)($variation['nome'] ?? '')) ?>">
+                                <label class="form-check">
+                                    <input type="checkbox" name="variacoes[<?= $vIndex ?>][ativo]" value="1" <?= !isset($variation['ativo']) || !empty($variation['ativo']) ? 'checked' : '' ?>>
+                                    <span>Ativa</span>
+                                </label>
+                            </div>
+                            <div>
+                                <label class="form-field" style="display:block;margin-bottom:.35rem;">Dias aplicáveis</label>
+                                <div class="days-grid">
+                                    <?php foreach ($dias_semana_labels as $diaNumero => $diaLabel): ?>
+                                        <label class="day-chip">
+                                            <input type="checkbox" name="variacoes[<?= $vIndex ?>][dias_semana][]" value="<?= $diaNumero ?>" <?= in_array($diaNumero, $diasSelecionados, true) ? 'checked' : '' ?>>
+                                            <?= logistica_pacotes_evento_e($diaLabel) ?>
+                                        </label>
+                                    <?php endforeach; ?>
+                                    <label class="day-chip">
+                                        <input type="checkbox" name="variacoes[<?= $vIndex ?>][inclui_feriado]" value="1" <?= !empty($variation['inclui_feriado']) ? 'checked' : '' ?>>
+                                        Feriado
+                                    </label>
+                                    <label class="day-chip">
+                                        <input type="checkbox" name="variacoes[<?= $vIndex ?>][inclui_vespera_feriado]" value="1" <?= !empty($variation['inclui_vespera_feriado']) ? 'checked' : '' ?>>
+                                        Véspera
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="price-rows">
+                            <?php foreach ($peopleForVariation as $fIndex => $pessoas): ?>
+                                <?php $faixa = $faixasMap[(int)$pessoas] ?? null; ?>
+                                <div class="price-row">
+                                    <input class="form-input" type="number" min="0" name="variacoes[<?= $vIndex ?>][faixas][<?= $fIndex ?>][pessoas]" value="<?= (int)$pessoas ?>" placeholder="Pessoas">
+                                    <input class="form-input money-input" inputmode="decimal" name="variacoes[<?= $vIndex ?>][faixas][<?= $fIndex ?>][valor]" value="<?= $faixa ? logistica_pacotes_evento_e(pacotes_evento_format_money($faixa['valor'] ?? 0)) : '' ?>" placeholder="R$ 0,00">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Salvar tabela de valores</button>
+                </div>
+            </form>
+        <?php endif; ?>
+    </div>
+
+    <div class="card">
         <h2>Pacotes Cadastrados</h2>
         <div class="table-wrap">
             <table class="table">
                 <thead>
                     <tr>
-                        <th>Nome</th>
-                        <th>Descrição</th>
-                        <th>Seções configuradas</th>
-                        <th>Status</th>
-                        <th>Atualizado</th>
+	                        <th>Nome</th>
+	                        <th>Descrição</th>
+	                        <th>Tipo</th>
+	                        <th>Preço</th>
+	                        <th>Seções configuradas</th>
+	                        <th>Status</th>
+	                        <th>Atualizado</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -617,10 +878,26 @@ includeSidebar('Pacotes de Evento');
                         $is_oculto = !empty($pacote['oculto']);
                         $pacote_rules = $regras_by_pacote[$pacote_id] ?? [];
                         ?>
-                        <tr>
-                            <td><?= logistica_pacotes_evento_e((string)($pacote['nome'] ?? '')) ?></td>
-                            <td><?= logistica_pacotes_evento_e((string)($pacote['descricao'] ?? '')) ?></td>
-                            <td>
+	                        <tr>
+	                            <td><?= logistica_pacotes_evento_e((string)($pacote['nome'] ?? '')) ?></td>
+	                            <td><?= logistica_pacotes_evento_e((string)($pacote['descricao'] ?? '')) ?></td>
+	                            <td>
+	                                <?php
+	                                $tipo_key = (string)($pacote['tipo_evento_real'] ?? '');
+	                                echo $tipo_key !== '' ? logistica_pacotes_evento_e((string)($tipos_evento[$tipo_key] ?? $tipo_key)) : '<span class="helper-text" style="margin:0;">-</span>';
+	                                ?>
+	                            </td>
+	                            <td>
+	                                <?php if ((string)($pacote['modelo_preco'] ?? 'simples') === 'tabela'): ?>
+	                                    <span class="rule-chip">Tabela por dia/quantidade</span>
+	                                <?php else: ?>
+	                                    <span class="rule-chip">Simples</span>
+	                                    <?php if ((float)($pacote['valor_pacote'] ?? 0) > 0): ?>
+	                                        <div class="helper-text" style="margin:.25rem 0 0;">R$ <?= logistica_pacotes_evento_e(pacotes_evento_format_money($pacote['valor_pacote'] ?? 0)) ?></div>
+	                                    <?php endif; ?>
+	                                <?php endif; ?>
+	                            </td>
+	                            <td>
                                 <?php if (!empty($pacote_rules)): ?>
                                     <div class="rules-summary">
                                         <?php foreach ($pacote_rules as $rule): ?>
@@ -661,10 +938,10 @@ includeSidebar('Pacotes de Evento');
                             </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (empty($pacotes)): ?>
-                        <tr>
-                            <td colspan="6">Nenhum pacote cadastrado.</td>
-                        </tr>
+	                    <?php if (empty($pacotes)): ?>
+	                        <tr>
+	                            <td colspan="8">Nenhum pacote cadastrado.</td>
+	                        </tr>
                     <?php endif; ?>
                 </tbody>
             </table>
