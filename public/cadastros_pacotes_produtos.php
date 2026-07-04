@@ -257,6 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tipoEventoReal = trim((string)($_POST['tipo_evento_real'] ?? ''));
         $modeloPreco = in_array(($_POST['modelo_preco'] ?? 'simples'), ['simples', 'tabela'], true) ? (string)$_POST['modelo_preco'] : 'simples';
         $receitaIds = is_array($_POST['receita_ids'] ?? null) ? $_POST['receita_ids'] : [];
+        $servicePriceVariations = $categoria === 'Serviço' && is_array($_POST['variacoes'] ?? null) ? $_POST['variacoes'] : [];
 
         if ($nome === '') {
             $errors[] = 'Informe o nome.';
@@ -329,6 +330,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['cadastros_pp_success'] = 'Cadastro criado com sucesso.';
                 }
                 $pdo->commit();
+                if ($categoria === 'Serviço') {
+                    $priceResult = pacotes_evento_preco_variacoes_salvar($pdo, $id, $servicePriceVariations);
+                    if (empty($priceResult['ok'])) {
+                        $_SESSION['cadastros_pp_success'] = 'Cadastro salvo, mas não foi possível salvar a tabela de valores.';
+                    }
+                }
                 $redirectTab = ['Pacote' => 'pacotes', 'Serviço' => 'servicos', 'Produto' => 'produtos'][$categoria] ?? 'pacotes';
                 header('Location: index.php?page=cadastros_pacotes_produtos&tab=' . $redirectTab . '#pp-listagem');
                 exit;
@@ -574,6 +581,12 @@ $priceVariationsForForm = !empty($editPriceVariations) ? $editPriceVariations : 
 $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 $defaultServicePricePeople = [50, 80, 100, 120, 150, 200];
 $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] : ['nome' => 'Preço por quantidade de pessoas', 'dias_semana' => '1,2,3,4,5,6,7', 'ativo' => true, 'faixas' => []];
+$serviceFaixasMap = [];
+foreach (($servicePriceVariation['faixas'] ?? []) as $faixa) {
+    $serviceFaixasMap[(int)($faixa['pessoas'] ?? 0)] = $faixa;
+}
+$servicePeople = array_values(array_unique(array_merge($defaultServicePricePeople, array_keys($serviceFaixasMap))));
+sort($servicePeople);
 ?>
 
 <style>
@@ -650,6 +663,8 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
 .pp-gallery-meta { color: #64748b; font-size: 0.76rem; }
 .pp-gallery-empty { padding: 1rem; color: #64748b; }
 .pp-section-box { border: 1px solid #dbe6f3; border-radius: 12px; padding: 0.9rem; background: #f8fafc; display: grid; gap: 0.75rem; }
+.pp-service-price-inline { grid-column: 1 / -1; }
+.pp-service-price-inline .pp-price-help { font-size: 0.78rem; }
 .pp-service-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; margin-top: 0.85rem; }
 .pp-service-tools .pp-section-box { align-content: start; }
 .pp-service-price-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.65rem; }
@@ -805,6 +820,27 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
                     <label for="pp-nome">Nome</label>
                     <input type="text" name="nome" id="pp-nome" maxlength="180" required value="<?= cadastros_pp_e((string)$modalItem['nome']) ?>">
                 </div>
+                <div class="pp-service-fields pp-section-box pp-service-price-inline <?= $modalIsServico ? '' : 'hidden' ?>">
+                    <div>
+                        <h3 class="pp-price-title">Valor por quantidade de pessoas</h3>
+                        <p class="pp-price-help">Informe o valor por pessoa para cada faixa. Exemplo: a partir de 80 pessoas, R$ 25,00 por pessoa.</p>
+                    </div>
+                    <input type="hidden" name="variacoes[0][nome]" value="Preço por quantidade de pessoas">
+                    <input type="hidden" name="variacoes[0][ativo]" value="1">
+                    <input type="hidden" name="variacoes[0][ordem]" value="1">
+                    <?php foreach ([1, 2, 3, 4, 5, 6, 7] as $diaServico): ?>
+                        <input type="hidden" name="variacoes[0][dias_semana][]" value="<?= $diaServico ?>">
+                    <?php endforeach; ?>
+                    <div class="pp-service-price-rows">
+                        <?php foreach ($servicePeople as $fIndex => $pessoas): ?>
+                            <?php $faixa = $serviceFaixasMap[(int)$pessoas] ?? null; ?>
+                            <div class="pp-service-price-row">
+                                <input type="number" min="0" name="variacoes[0][faixas][<?= $fIndex ?>][pessoas]" value="<?= (int)$pessoas ?>" placeholder="Pessoas">
+                                <input type="text" inputmode="decimal" class="pp-price-money" name="variacoes[0][faixas][<?= $fIndex ?>][valor]" value="<?= $faixa ? cadastros_pp_e(pacotes_evento_format_money($faixa['valor'] ?? 0)) : '' ?>" placeholder="R$ por pessoa">
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
                 <div class="pp-field pp-product-fields <?= $modalCategoria === 'Produto' ? '' : 'hidden' ?>">
                     <label for="pp-valor-venda">Valor de venda</label>
                     <input type="text" name="valor_venda" id="pp-valor-venda" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_venda']) ?>">
@@ -853,39 +889,6 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
                 <div class="pp-service-fields pp-service-tools <?= $modalIsServico ? '' : 'hidden' ?>">
                     <div class="pp-section-box">
                         <div>
-                            <h3 class="pp-price-title">Valor por quantidade de pessoas</h3>
-                            <p class="pp-price-help">Informe o valor por pessoa para cada faixa. Exemplo: a partir de 80 pessoas, R$ 25,00 por pessoa.</p>
-                        </div>
-                        <?php if ((int)$modalItem['id'] > 0): ?>
-                            <?php
-                            $serviceFaixasMap = [];
-                            foreach (($servicePriceVariation['faixas'] ?? []) as $faixa) {
-                                $serviceFaixasMap[(int)($faixa['pessoas'] ?? 0)] = $faixa;
-                            }
-                            $servicePeople = array_values(array_unique(array_merge($defaultServicePricePeople, array_keys($serviceFaixasMap))));
-                            sort($servicePeople);
-                            ?>
-                            <input type="hidden" name="variacoes[0][nome]" value="Preço por quantidade de pessoas" form="pp-service-price-form">
-                            <input type="hidden" name="variacoes[0][ativo]" value="1" form="pp-service-price-form">
-                            <input type="hidden" name="variacoes[0][ordem]" value="1" form="pp-service-price-form">
-                            <?php foreach ([1, 2, 3, 4, 5, 6, 7] as $diaServico): ?>
-                                <input type="hidden" name="variacoes[0][dias_semana][]" value="<?= $diaServico ?>" form="pp-service-price-form">
-                            <?php endforeach; ?>
-                            <div class="pp-service-price-rows">
-                                <?php foreach ($servicePeople as $fIndex => $pessoas): ?>
-                                    <?php $faixa = $serviceFaixasMap[(int)$pessoas] ?? null; ?>
-                                    <div class="pp-service-price-row">
-                                        <input type="number" min="0" name="variacoes[0][faixas][<?= $fIndex ?>][pessoas]" value="<?= (int)$pessoas ?>" placeholder="Pessoas" form="pp-service-price-form">
-                                        <input type="text" inputmode="decimal" class="pp-price-money" name="variacoes[0][faixas][<?= $fIndex ?>][valor]" value="<?= $faixa ? cadastros_pp_e(pacotes_evento_format_money($faixa['valor'] ?? 0)) : '' ?>" placeholder="R$ por pessoa" form="pp-service-price-form">
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php else: ?>
-                            <p class="pp-price-help">Salve o serviço primeiro para liberar a tabela por quantidade de pessoas.</p>
-                        <?php endif; ?>
-                    </div>
-                    <div class="pp-section-box">
-                        <div>
                             <h3 class="pp-price-title">Receitas do serviço</h3>
                             <p class="pp-price-help">Monte a lista de receitas que entram neste serviço.</p>
                         </div>
@@ -912,13 +915,6 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
                 </div>
             </div>
         </form>
-        <?php if ($modalIsServico && (int)$modalItem['id'] > 0): ?>
-            <form method="post" id="pp-service-price-form">
-                <input type="hidden" name="action" value="save_prices">
-                <input type="hidden" name="active_tab" value="<?= cadastros_pp_e($activeTab) ?>">
-                <input type="hidden" name="id" value="<?= (int)$modalItem['id'] ?>">
-            </form>
-        <?php endif; ?>
         <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
             <form method="post" class="pp-price-section pp-package-fields pp-tab-panel" data-pp-panel="precos" id="pp-price-form">
                 <input type="hidden" name="action" value="save_prices">
@@ -993,9 +989,6 @@ $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] 
             <a class="pp-btn secondary" href="index.php?page=cadastros_pacotes_produtos&tab=<?= cadastros_pp_e($activeTab) ?>" data-close-pp-modal>Cancelar</a>
             <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
                 <button class="pp-btn secondary" type="submit" form="pp-price-form" data-pp-table-submit <?= (string)($modalItem['modelo_preco'] ?? 'simples') === 'tabela' ? '' : 'hidden disabled' ?>>Salvar tabela</button>
-            <?php endif; ?>
-            <?php if ($modalIsServico && (int)$modalItem['id'] > 0): ?>
-                <button class="pp-btn secondary" type="submit" form="pp-service-price-form" data-pp-service-table-submit>Salvar tabela</button>
             <?php endif; ?>
             <button class="pp-btn" type="submit" form="pp-form">Salvar</button>
         </div>
