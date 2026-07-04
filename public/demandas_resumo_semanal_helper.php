@@ -93,7 +93,7 @@ function demandas_resumo_semanal_processar(PDO $pdo, array $options = []): array
     }
 
     if ($demandasJordao) {
-        $message = demandas_resumo_semanal_montar_mensagem(['nome' => 'Jordão'], $demandasJordao, $weekStart, $weekEnd);
+        $message = demandas_resumo_semanal_montar_mensagem(['nome' => 'Jordão', 'saudacao_jordao' => true], $demandasJordao, $weekStart, $weekEnd);
         $resultado['previews'][] = [
             'usuario_id' => null,
             'nome' => 'Jordão',
@@ -329,7 +329,9 @@ function demandas_resumo_semanal_montar_mensagem(array $usuario, array $demandas
 {
     $nome = trim((string)($usuario['nome'] ?? ''));
     $primeiroNome = $nome !== '' ? preg_split('/\s+/', $nome)[0] : '';
-    $saudacao = $primeiroNome !== '' ? "Bom dia, {$primeiroNome}." : 'Bom dia.';
+    $saudacao = !empty($usuario['saudacao_jordao'])
+        ? 'Bom dia Jordão.'
+        : ($primeiroNome !== '' ? "Bom dia, {$primeiroNome}." : 'Bom dia.');
 
     $linhas = [
         $saudacao,

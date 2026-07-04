@@ -824,6 +824,10 @@ async function openDetail(id) {
 
 function renderAdminControls(d) {
     if (!state.isAdmin) return '';
+    const showJordao = d.responsavel_tipo === 'usuario' && isGustavoUser({
+        nome: d.responsavel_nome || '',
+        login: d.responsavel_login || ''
+    });
     return `
         <details class="admin-controls">
             <summary>Alterar status, prazo e prioridade</summary>
@@ -840,6 +844,14 @@ function renderAdminControls(d) {
                     <label>Prazo</label>
                     <input type="date" name="prazo" value="${escapeHtml(String(d.prazo || '').slice(0, 10))}">
                 </div>
+                ${showJordao ? `
+                    <div class="field checkbox-field">
+                        <label>
+                            <input type="checkbox" name="enviar_jordao" value="1" ${d.enviar_jordao ? 'checked' : ''}>
+                            <span>Enviar cópia ao Jordão</span>
+                        </label>
+                    </div>
+                ` : ''}
                 <button class="btn btn-primary" type="submit">Salvar alterações</button>
             </form>
         </details>

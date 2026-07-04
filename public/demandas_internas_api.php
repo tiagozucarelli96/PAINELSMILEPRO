@@ -787,7 +787,9 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
     $prioridade = (string)($_POST['prioridade'] ?? 'normal');
     $requestKey = preg_replace('/[^a-zA-Z0-9._:-]/', '', (string)($_POST['request_key'] ?? '')) ?? '';
     $requestKey = substr($requestKey, 0, 120);
-    $enviarJordao = !empty($_POST['enviar_jordao']);
+    $enviarJordao = !empty($_POST['enviar_jordao'])
+        && $responsavelTipo === 'usuario'
+        && demandasInternasUsuarioEhGustavo($pdo, $responsavelId);
 
     if ($titulo === '' || $prazo === '') {
         demandasInternasJson(['success' => false, 'error' => 'Título e prazo são obrigatórios.'], 422);
@@ -913,6 +915,19 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
     $status = (string)($_POST['status'] ?? 'aberta');
     $prioridade = (string)($_POST['prioridade'] ?? 'normal');
     $prazo = trim((string)($_POST['prazo'] ?? ''));
+    $enviarJordao = !empty($_POST['enviar_jordao']);
+    if ($enviarJordao) {
+        $stmt = $pdo->prepare("
+            SELECT responsavel_tipo, responsavel_id
+            FROM demandas_internas
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $id]);
+        $demandaAtual = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $enviarJordao = ($demandaAtual['responsavel_tipo'] ?? '') === 'usuario'
+            && demandasInternasUsuarioEhGustavo($pdo, (int)($demandaAtual['responsavel_id'] ?? 0));
+    }
     $encerradaEm = in_array($status, ['encerrada', 'cancelada'], true) ? 'NOW()' : 'NULL';
 
     $stmt = $pdo->prepare("
@@ -920,6 +935,10 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
         SET status = :status,
             prioridade = :prioridade,
             prazo = :prazo,
+            enviar_jordao = CASE
+                WHEN responsavel_tipo = 'usuario' AND responsavel_id IS NOT NULL THEN :enviar_jordao
+                ELSE FALSE
+            END,
             encerrada_em = {$encerradaEm},
             atualizado_em = NOW()
         WHERE id = :id
@@ -929,9 +948,10 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
         ':status' => $status,
         ':prioridade' => $prioridade,
         ':prazo' => $prazo,
+        ':enviar_jordao' => $enviarJordao,
     ]);
 
-    demandasInternasLog($pdo, $id, $userId, 'demanda_alterada', 'Status, prazo ou prioridade alterado.');
+    demandasInternasLog($pdo, $id, $userId, 'demanda_alterada', 'Status, prazo, prioridade ou cópia ao Jordão alterado.');
     demandasInternasJson(['success' => true]);
 }
 
@@ -990,6 +1010,7 @@ function demandasInternasForward(PDO $pdo, int $userId, bool $isAdmin): void
         SET responsavel_tipo = :tipo,
             responsavel_id = :responsavel_id,
             responsavel_setor = :setor,
+            enviar_jordao = FALSE,
             atualizado_em = NOW()
         WHERE id = :id
     ");
