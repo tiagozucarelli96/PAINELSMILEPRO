@@ -1499,6 +1499,32 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
     }
 
     $resposta = logistica_cardapio_resposta_get($pdo, $meeting_id);
+    if ($resposta && !empty($resposta['items'])) {
+        foreach ($resposta['items'] as $selected_item_row) {
+            $secao_id = (int)($selected_item_row['secao_cardapio_id'] ?? 0);
+            $item_tipo = logistica_cardapio_validar_item_tipo((string)($selected_item_row['item_tipo'] ?? ''));
+            $item_id = (int)($selected_item_row['item_id'] ?? 0);
+            $key = logistica_cardapio_item_key($item_tipo, $item_id);
+            if ($secao_id <= 0 || $item_id <= 0 || $key === '' || !isset($secoes[$secao_id])) {
+                continue;
+            }
+            if (isset($secoes_index[$secao_id][$key])) {
+                continue;
+            }
+
+            $secoes_index[$secao_id][$key] = true;
+            $secoes[$secao_id]['itens'][] = [
+                'key' => $key,
+                'item_tipo' => $item_tipo,
+                'item_id' => $item_id,
+                'nome' => trim((string)($selected_item_row['item_nome'] ?? '')) ?: 'Item selecionado anteriormente',
+                'foto_url' => '',
+                'foto_chave_storage' => '',
+                'checked' => false,
+                'legacy_selected' => true,
+            ];
+        }
+    }
     $exclusive_groups = [];
     $exclusive_section_ids = [];
     if ($pacote && logistica_cardapio_slug_simples((string)($pacote['nome'] ?? '')) === 'estrela') {

@@ -135,10 +135,37 @@ ob_start();
         </a>
 
         <a href="index.php?page=logistica_pacotes_evento" class="funcionalidade-card">
-            <div class="funcionalidade-card-header">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #2563eb, #0ea5e9);">
                 <span class="funcionalidade-card-icon">📦</span>
-                <div class="funcionalidade-card-title">Regra do Pacote</div>
-                <div class="funcionalidade-card-subtitle">Criar pacotes e definir regras por seção</div>
+                <div class="funcionalidade-card-title">Pacotes de Evento</div>
+                <div class="funcionalidade-card-subtitle">Cadastrar, editar, ocultar e excluir</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
+        <a href="index.php?page=logistica_unidades_medida" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #14b8a6);">
+                <span class="funcionalidade-card-icon">📏</span>
+                <div class="funcionalidade-card-title">Unidades de Medida</div>
+                <div class="funcionalidade-card-subtitle">Cadastro de unidades</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
+        <a href="index.php?page=logistica_tipologias" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #38bdf8, #0ea5e9);">
+                <span class="funcionalidade-card-icon">🏷️</span>
+                <div class="funcionalidade-card-title">Tipologias</div>
+                <div class="funcionalidade-card-subtitle">Insumos e Receitas</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
+        <a href="index.php?page=logistica_catalogo" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #22c55e, #f97316);">
+                <span class="funcionalidade-card-icon">📚</span>
+                <div class="funcionalidade-card-title">Catálogo</div>
+                <div class="funcionalidade-card-subtitle">Insumos e Receitas</div>
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>

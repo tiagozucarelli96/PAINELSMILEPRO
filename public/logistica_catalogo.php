@@ -8,7 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 
-$can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
+$can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_cadastros']);
 $can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
 
 if (!$can_manage) {

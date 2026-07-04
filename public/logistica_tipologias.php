@@ -9,7 +9,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 
-if (empty($_SESSION['perm_superadmin']) && empty($_SESSION['perm_logistico'])) {
+if (empty($_SESSION['perm_superadmin']) && empty($_SESSION['perm_logistico']) && empty($_SESSION['perm_cadastros'])) {
     http_response_code(403);
     echo '<div class="alert-error">Acesso negado.</div>';
     exit;

@@ -108,12 +108,12 @@ return [
     // 'usuario_novo' => 'perm_configuracoes', // REMOVIDO: tela antiga de usuários
     // 'usuario_editar' => 'perm_configuracoes', // REMOVIDO: tela antiga de usuários
     'config_logistica' => 'perm_configuracoes',
-    'logistica_catalogo' => 'perm_logistico',
+    'logistica_catalogo' => ['perm_logistico', 'perm_cadastros'],
     'logistica_conexao' => 'perm_configuracoes',
-    'logistica_pacotes_evento' => 'perm_configuracoes',
+    'logistica_pacotes_evento' => ['perm_configuracoes', 'perm_logistico', 'perm_cadastros'],
     'logistica_diagnostico' => 'perm_superadmin',
-    'logistica_unidades_medida' => 'perm_configuracoes',
-    'logistica_tipologias' => 'perm_logistico',
+    'logistica_unidades_medida' => ['perm_configuracoes', 'perm_logistico', 'perm_cadastros'],
+    'logistica_tipologias' => ['perm_logistico', 'perm_cadastros'],
     'logistica_insumos' => 'perm_logistico',
     'logistica_receitas' => 'perm_logistico',
     'logistica_gerar_lista' => 'perm_logistico',
