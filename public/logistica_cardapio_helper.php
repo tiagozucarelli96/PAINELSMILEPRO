@@ -1836,6 +1836,157 @@ function logistica_cardapio_resposta_salvar_cliente(PDO $pdo, int $meeting_id, ?
     ];
 }
 
+function logistica_cardapio_pick_text(array $source, array $paths): string
+{
+    foreach ($paths as $path) {
+        $current = $source;
+        foreach (explode('.', $path) as $part) {
+            if (!is_array($current) || !array_key_exists($part, $current)) {
+                $current = null;
+                break;
+            }
+            $current = $current[$part];
+        }
+        if (is_scalar($current)) {
+            $value = trim((string)$current);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+    }
+
+    return '';
+}
+
+function logistica_cardapio_cliente_contato(PDO $pdo, int $meeting_id): array
+{
+    logistica_cardapio_require_eventos_reuniao_helper();
+
+    $contato = [
+        'nome' => 'Cliente',
+        'telefone' => '',
+        'portal_url' => '',
+    ];
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT r.me_event_id, r.me_event_snapshot, p.token AS portal_token
+            FROM eventos_reunioes r
+            LEFT JOIN eventos_cliente_portais p ON p.meeting_id = r.id
+            WHERE r.id = :meeting_id
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $snapshot = json_decode((string)($row['me_event_snapshot'] ?? '{}'), true);
+        $snapshot = is_array($snapshot) ? $snapshot : [];
+
+        $nome = logistica_cardapio_pick_text($snapshot, ['cliente.nome', 'nomecliente', 'nomeCliente', 'cliente_nome']);
+        if ($nome !== '') {
+            $contato['nome'] = $nome;
+        }
+
+        $telefone = logistica_cardapio_pick_text($snapshot, [
+            'cliente.telefone',
+            'cliente.whatsapp',
+            'cliente.celular',
+            'telefonecliente',
+            'telefoneCliente',
+            'whatsappcliente',
+            'whatsappCliente',
+            'telefone',
+            'whatsapp',
+        ]);
+        if ($telefone !== '') {
+            $contato['telefone'] = $telefone;
+        }
+
+        $token = trim((string)($row['portal_token'] ?? ''));
+        if ($token !== '') {
+            $contato['portal_url'] = eventos_cliente_portal_base_url() . '/index.php?page=eventos_cliente_cardapio&token=' . urlencode($token);
+        }
+
+        $meEventId = (int)($row['me_event_id'] ?? 0);
+        if ($meEventId > 0 && logistica_cardapio_has_table($pdo, 'logistica_eventos_espelho')) {
+            $phoneParts = [];
+            $joinClientes = '';
+            if (logistica_cardapio_has_column($pdo, 'logistica_eventos_espelho', 'whatsapp_cliente') || logistica_cardapio_has_column($pdo, 'logistica_eventos_espelho', 'telefone_cliente')) {
+                if (logistica_cardapio_has_column($pdo, 'logistica_eventos_espelho', 'whatsapp_cliente')) {
+                    $phoneParts[] = "NULLIF(TRIM(e.whatsapp_cliente), '')";
+                }
+                if (logistica_cardapio_has_column($pdo, 'logistica_eventos_espelho', 'telefone_cliente')) {
+                    $phoneParts[] = "NULLIF(TRIM(e.telefone_cliente), '')";
+                }
+            }
+            if (
+                logistica_cardapio_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id')
+                && logistica_cardapio_has_table($pdo, 'comercial_cadastro_clientes')
+                && logistica_cardapio_has_column($pdo, 'comercial_cadastro_clientes', 'telefone_whatsapp')
+            ) {
+                $joinClientes = 'LEFT JOIN comercial_cadastro_clientes cc ON cc.id = e.cliente_cadastro_id';
+                $phoneParts[] = "NULLIF(TRIM(cc.telefone_whatsapp), '')";
+            }
+            $phoneExpr = !empty($phoneParts) ? 'COALESCE(' . implode(', ', $phoneParts) . ", '')" : "''";
+
+            $nomeExpr = logistica_cardapio_has_column($pdo, 'logistica_eventos_espelho', 'nome_evento')
+                ? "COALESCE(NULLIF(TRIM(e.nome_evento), ''), '')"
+                : "''";
+            $stmtEvento = $pdo->prepare("
+                SELECT {$phoneExpr} AS telefone_cliente, {$nomeExpr} AS nome_evento
+                FROM logistica_eventos_espelho e
+                {$joinClientes}
+                WHERE e.me_event_id = :me_event_id
+                ORDER BY e.id DESC
+                LIMIT 1
+            ");
+            $stmtEvento->execute([':me_event_id' => $meEventId]);
+            $evento = $stmtEvento->fetch(PDO::FETCH_ASSOC) ?: [];
+            if ($contato['telefone'] === '' && trim((string)($evento['telefone_cliente'] ?? '')) !== '') {
+                $contato['telefone'] = trim((string)$evento['telefone_cliente']);
+            }
+            if ($contato['nome'] === 'Cliente' && trim((string)($evento['nome_evento'] ?? '')) !== '') {
+                $contato['nome'] = trim((string)$evento['nome_evento']);
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_cliente_contato: ' . $e->getMessage());
+    }
+
+    return $contato;
+}
+
+function logistica_cardapio_notificar_desbloqueio_whatsapp(PDO $pdo, int $meeting_id): array
+{
+    $contato = logistica_cardapio_cliente_contato($pdo, $meeting_id);
+    $telefone = trim((string)($contato['telefone'] ?? ''));
+    if ($telefone === '') {
+        return ['ok' => false, 'error' => 'Telefone do cliente não encontrado.'];
+    }
+
+    $nome = trim((string)($contato['nome'] ?? 'Cliente')) ?: 'Cliente';
+    $portalUrl = trim((string)($contato['portal_url'] ?? ''));
+    $mensagem = "Olá, {$nome}. Tudo bem?\n\n"
+        . "Liberamos novamente o cardápio do seu evento para edição. Você já pode acessar o portal e ajustar suas escolhas.\n\n";
+    if ($portalUrl !== '') {
+        $mensagem .= "Acesse o cardápio por aqui:\n{$portalUrl}\n\n";
+    }
+    $mensagem .= "Depois de ajustar, lembre-se de enviar novamente para nossa equipe.";
+
+    try {
+        require_once __DIR__ . '/core/notification_dispatcher.php';
+        $dispatcher = new NotificationDispatcher($pdo);
+        $ok = $dispatcher->sendWhatsappDirect($telefone, $mensagem, $nome, ['whatsapp_provider' => 'smclick']);
+        return [
+            'ok' => (bool)$ok,
+            'telefone' => $telefone,
+            'error' => $ok ? null : 'Falha ao enviar WhatsApp pela SMClick.',
+        ];
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_notificar_desbloqueio_whatsapp: ' . $e->getMessage());
+        return ['ok' => false, 'telefone' => $telefone, 'error' => 'Erro ao enviar WhatsApp.'];
+    }
+}
+
 function logistica_cardapio_resposta_desbloquear_cliente(PDO $pdo, int $meeting_id): array
 {
     logistica_cardapio_ensure_schema($pdo);
@@ -1880,10 +2031,12 @@ function logistica_cardapio_resposta_desbloquear_cliente(PDO $pdo, int $meeting_
         }
 
         $pdo->commit();
+        $whatsapp = logistica_cardapio_notificar_desbloqueio_whatsapp($pdo, $meeting_id);
         return [
             'ok' => true,
             'resposta_id' => $resposta_id,
             'resposta' => logistica_cardapio_resposta_get($pdo, $meeting_id),
+            'whatsapp' => $whatsapp,
         ];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
