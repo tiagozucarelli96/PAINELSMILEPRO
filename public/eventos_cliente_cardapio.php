@@ -24,6 +24,7 @@ $snapshot = [];
 $contexto_cardapio = ['ok' => false];
 $usuario_interno_logado = !empty($_SESSION['logado']) && (int)($_SESSION['logado'] ?? 0) === 1;
 $usuario_interno_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+$admin_error = '';
 $adicional_morango = [
     'ok' => true,
     'adicional_morango_bolo' => false,
@@ -61,7 +62,7 @@ if ($token === '') {
                 $post_action = (string)($_POST['action'] ?? '');
                 if ($post_action === 'save_adicional_morango') {
                     if (!$usuario_interno_logado) {
-                        $error = 'Apenas usuários internos podem alterar o adicional de morango.';
+                        $admin_error = 'Apenas usuários internos podem alterar o adicional de morango.';
                     } else {
                         $result = logistica_cardapio_adicional_morango_salvar(
                             $pdo,
@@ -75,7 +76,7 @@ if ($token === '') {
                                 : 'Adicional de morango removido deste bolo.';
                             $adicional_morango = $result;
                         } else {
-                            $error = (string)($result['error'] ?? 'Não foi possível salvar o adicional de morango.');
+                            $admin_error = (string)($result['error'] ?? 'Não foi possível salvar o adicional de morango.');
                         }
                     }
                 } elseif ($post_action === 'save_cardapio') {
@@ -568,6 +569,10 @@ $adicional_morango_updated_fmt = $adicional_morango_updated_at !== '' ? date('d/
 
         <?php if ($success !== ''): ?>
             <div class="alert alert-success"><?= eventos_cliente_cardapio_e($success) ?></div>
+        <?php endif; ?>
+
+        <?php if ($admin_error !== ''): ?>
+            <div class="alert alert-error"><?= eventos_cliente_cardapio_e($admin_error) ?></div>
         <?php endif; ?>
 
         <?php if ($error === ''): ?>

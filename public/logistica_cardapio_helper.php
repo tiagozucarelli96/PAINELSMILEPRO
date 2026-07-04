@@ -299,7 +299,7 @@ function logistica_cardapio_schema_marker_path(bool $withMeetingSchema): string
 function logistica_cardapio_ensure_adicional_morango_schema(PDO $pdo): void
 {
     static $done = false;
-    if ($done || !painel_runtime_schema_setup_enabled()) {
+    if ($done) {
         return;
     }
 
@@ -1931,26 +1931,49 @@ function logistica_cardapio_adicional_morango_salvar(PDO $pdo, int $meeting_id, 
     }
 
     try {
+        $ativoSql = $ativo ? 'TRUE' : 'FALSE';
+
         $stmt = $pdo->prepare("
-            INSERT INTO eventos_cardapio_respostas
-                (meeting_id, adicional_morango_bolo, adicional_morango_updated_by, adicional_morango_updated_at, created_at, updated_at)
-            VALUES
-                (:meeting_id, :adicional_morango_bolo, :usuario_id, NOW(), NOW(), NOW())
-            ON CONFLICT (meeting_id)
-            DO UPDATE SET
-                adicional_morango_bolo = EXCLUDED.adicional_morango_bolo,
-                adicional_morango_updated_by = EXCLUDED.adicional_morango_updated_by,
-                adicional_morango_updated_at = NOW(),
-                updated_at = NOW()
-            RETURNING adicional_morango_bolo,
-                      adicional_morango_updated_by,
-                      adicional_morango_updated_at
+            SELECT id
+            FROM eventos_cardapio_respostas
+            WHERE meeting_id = :meeting_id
+            ORDER BY id DESC
+            LIMIT 1
         ");
-        $stmt->execute([
-            ':meeting_id' => $meeting_id,
-            ':adicional_morango_bolo' => $ativo ? 1 : 0,
-            ':usuario_id' => $usuario_id && $usuario_id > 0 ? $usuario_id : null,
-        ]);
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $respostaId = (int)($stmt->fetchColumn() ?: 0);
+
+        if ($respostaId > 0) {
+            $stmt = $pdo->prepare("
+                UPDATE eventos_cardapio_respostas
+                SET adicional_morango_bolo = {$ativoSql},
+                    adicional_morango_updated_by = :usuario_id,
+                    adicional_morango_updated_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = :resposta_id
+                RETURNING adicional_morango_bolo,
+                          adicional_morango_updated_by,
+                          adicional_morango_updated_at
+            ");
+            $stmt->execute([
+                ':resposta_id' => $respostaId,
+                ':usuario_id' => $usuario_id && $usuario_id > 0 ? $usuario_id : null,
+            ]);
+        } else {
+            $stmt = $pdo->prepare("
+                INSERT INTO eventos_cardapio_respostas
+                    (meeting_id, adicional_morango_bolo, adicional_morango_updated_by, adicional_morango_updated_at, created_at, updated_at)
+                VALUES
+                    (:meeting_id, {$ativoSql}, :usuario_id, NOW(), NOW(), NOW())
+                RETURNING adicional_morango_bolo,
+                          adicional_morango_updated_by,
+                          adicional_morango_updated_at
+            ");
+            $stmt->execute([
+                ':meeting_id' => $meeting_id,
+                ':usuario_id' => $usuario_id && $usuario_id > 0 ? $usuario_id : null,
+            ]);
+        }
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
         return [
