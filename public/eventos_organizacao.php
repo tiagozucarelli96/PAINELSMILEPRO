@@ -265,6 +265,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     }
                     if (empty($padrao_portal['ok'])) {
                         error_log('eventos_organizacao atualizar_tipo_evento_real padrao portal: ' . ($padrao_portal['error'] ?? 'erro desconhecido'));
+                    } elseif (!empty($padrao_portal['portal']) && is_array($padrao_portal['portal'])) {
+                        $updated['portal'] = $padrao_portal['portal'];
                     }
                 }
                 echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -1683,6 +1685,27 @@ function mostrarStatusConfig(texto, isError = false) {
     el.style.display = 'block';
 }
 
+function aplicarPortalConfigNaTela(portal) {
+    if (!portal || typeof portal !== 'object') return;
+
+    const map = {
+        cfgVisivelReuniao: 'visivel_reuniao',
+        cfgVisivelConvidados: 'visivel_convidados',
+        cfgEditavelConvidados: 'editavel_convidados',
+        cfgVisivelArquivos: 'visivel_arquivos',
+        cfgEditavelArquivos: 'editavel_arquivos',
+        cfgVisivelCardapio: 'visivel_cardapio',
+        cfgEditavelCardapio: 'editavel_cardapio',
+    };
+
+    Object.entries(map).forEach(([id, key]) => {
+        if (!Object.prototype.hasOwnProperty.call(portal, key)) return;
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.checked = !!portal[key];
+    });
+}
+
 async function salvarTipoEventoReal(tipoEventoReal) {
     if (!meetingId) return;
     const select = document.getElementById('tipoEventoRealSelect');
@@ -1721,6 +1744,7 @@ async function salvarTipoEventoReal(tipoEventoReal) {
             return;
         }
         select.dataset.lastValue = nextValue;
+        aplicarPortalConfigNaTela(data.portal);
         mostrarStatusConfig('Tipo do evento salvo automaticamente.');
     } catch (err) {
         select.value = lastValue;

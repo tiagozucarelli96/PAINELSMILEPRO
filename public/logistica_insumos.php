@@ -659,6 +659,67 @@ body {
 .calc-panel[hidden] {
     display: none;
 }
+.calc-rule-block {
+    border: 1px solid #dbe6f3;
+    border-radius: 10px;
+    background: #f8fafc;
+    overflow: hidden;
+}
+.calc-rule-block + .calc-rule-block {
+    margin-top: 0.75rem;
+}
+.calc-rule-block summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.95rem 1rem;
+    cursor: pointer;
+    list-style: none;
+    color: var(--text-strong);
+    font-weight: 800;
+}
+.calc-rule-block summary::-webkit-details-marker {
+    display: none;
+}
+.calc-rule-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+}
+.calc-rule-title input {
+    margin: 0;
+}
+.calc-rule-context {
+    display: block;
+    margin-top: 0.15rem;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+.calc-rule-arrow {
+    width: 1.75rem;
+    height: 1.75rem;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    background: #eaf1fb;
+    color: #1e3a8a;
+    font-size: 1rem;
+    line-height: 1;
+    transition: transform 0.16s ease;
+    flex: 0 0 auto;
+}
+.calc-rule-block[open] .calc-rule-arrow {
+    transform: rotate(180deg);
+}
+.calc-rule-block .calc-panel {
+    border: 0;
+    border-top: 1px solid #e2e8f0;
+    border-radius: 0;
+    background: #f8fafc;
+}
 .section-card h2 {
     margin: 0 0 1.15rem;
     font-size: 1.22rem;
@@ -1181,62 +1242,82 @@ body {
                 ?>
                 <div class="span-4">
                     <label class="field-label">Método de cálculo na lista</label>
-                    <select class="form-input" name="calculo_lista_metodo" id="calculo_lista_metodo">
-                        <option value="rendimento" <?= $metodo_calculo_lista === 'rendimento' ? 'selected' : '' ?>>Rendimento base do item</option>
-                        <option value="grupo" <?= $metodo_calculo_lista === 'grupo' ? 'selected' : '' ?>>Quantidade total por grupo</option>
-                    </select>
-                </div>
-                <div class="span-4 calc-panel" data-calc-panel="rendimento">
-                    <div>
-                        <label class="field-label">Rendimento base (pessoas)</label>
-                        <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
-                    </div>
-                    <div>
-                        <label class="field-label">Quantidade do item</label>
-                        <input class="form-input" name="rendimento_quantidade_base" inputmode="decimal" value="<?= isset($form_item['rendimento_quantidade_base']) && $form_item['rendimento_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['rendimento_quantidade_base'], 3)) : '1' ?>" placeholder="Ex.: 120">
-                        <div class="helper-inline">Quantidade comprada para o rendimento base. Ex.: 120 unidades para 100 pessoas.</div>
-                    </div>
-                    <div>
-                        <label class="field-label">Arredondamento</label>
-                        <label class="check-item">
-                            <input type="checkbox" name="arredondar_rendimento_lista" <?= !empty($form_item['arredondar_rendimento_lista']) ? 'checked' : '' ?>>
-                            Arredondar para cima na lista
-                        </label>
-                    </div>
-                </div>
-                <div class="span-4 calc-panel" data-calc-panel="grupo">
-                    <div>
-                        <label class="field-label">Pessoas base do grupo</label>
-                        <input class="form-input" name="grupo_pessoas_base" inputmode="decimal" value="<?= isset($form_item['grupo_pessoas_base']) && $form_item['grupo_pessoas_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_pessoas_base'], 3)) : '' ?>" placeholder="Ex.: 100">
-                    </div>
-                    <div>
-                        <label class="field-label">Quantidade total do grupo</label>
-                        <input class="form-input" name="grupo_quantidade_base" inputmode="decimal" value="<?= isset($form_item['grupo_quantidade_base']) && $form_item['grupo_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_quantidade_base'], 3)) : '' ?>" placeholder="Ex.: 1500">
-                    </div>
-                    <div>
-                        <label class="field-label">Unidade do grupo</label>
-                        <select class="form-input" name="grupo_unidade_medida_id">
-                            <option value="">Selecione...</option>
-                            <?php foreach ($unidades_medida as $un): ?>
-                                <option value="<?= (int)$un['id'] ?>" <?= (int)($form_item['grupo_unidade_medida_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
-                                    <?= h($un['nome']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="field-label">Ajustes</label>
-                        <div class="check-grid">
-                            <label class="check-item">
-                                <input type="checkbox" name="grupo_arredondar_inteiro" <?= !isset($form_item) || !isset($form_item['grupo_arredondar_inteiro']) || !empty($form_item['grupo_arredondar_inteiro']) ? 'checked' : '' ?>>
-                                Arredondar para cima
-                            </label>
-                            <label class="check-item">
-                                <input type="checkbox" name="grupo_aplicar_margem" <?= !isset($form_item) || !isset($form_item['grupo_aplicar_margem']) || !empty($form_item['grupo_aplicar_margem']) ? 'checked' : '' ?>>
-                                Acrescentar 5%
-                            </label>
+                    <details class="calc-rule-block" data-calc-rule="rendimento" <?= $metodo_calculo_lista === 'rendimento' ? 'open' : '' ?>>
+                        <summary>
+                            <span class="calc-rule-title">
+                                <input type="radio" name="calculo_lista_metodo" value="rendimento" <?= $metodo_calculo_lista === 'rendimento' ? 'checked' : '' ?>>
+                                <span>
+                                    Casamento, 15 anos e formatura
+                                    <span class="calc-rule-context">Rendimento base do item</span>
+                                </span>
+                            </span>
+                            <span class="calc-rule-arrow">⌄</span>
+                        </summary>
+                        <div class="calc-panel" data-calc-panel="rendimento">
+                            <div>
+                                <label class="field-label">Rendimento base (pessoas)</label>
+                                <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
+                            </div>
+                            <div>
+                                <label class="field-label">Quantidade do item</label>
+                                <input class="form-input" name="rendimento_quantidade_base" inputmode="decimal" value="<?= isset($form_item['rendimento_quantidade_base']) && $form_item['rendimento_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['rendimento_quantidade_base'], 3)) : '1' ?>" placeholder="Ex.: 120">
+                                <div class="helper-inline">Quantidade comprada para o rendimento base. Ex.: 120 unidades para 100 pessoas.</div>
+                            </div>
+                            <div>
+                                <label class="field-label">Arredondamento</label>
+                                <label class="check-item">
+                                    <input type="checkbox" name="arredondar_rendimento_lista" <?= !empty($form_item['arredondar_rendimento_lista']) ? 'checked' : '' ?>>
+                                    Arredondar para cima na lista
+                                </label>
+                            </div>
                         </div>
-                    </div>
+                    </details>
+                    <details class="calc-rule-block" data-calc-rule="grupo" <?= $metodo_calculo_lista === 'grupo' ? 'open' : '' ?>>
+                        <summary>
+                            <span class="calc-rule-title">
+                                <input type="radio" name="calculo_lista_metodo" value="grupo" <?= $metodo_calculo_lista === 'grupo' ? 'checked' : '' ?>>
+                                <span>
+                                    Infantil
+                                    <span class="calc-rule-context">Quantidade total por grupo</span>
+                                </span>
+                            </span>
+                            <span class="calc-rule-arrow">⌄</span>
+                        </summary>
+                        <div class="calc-panel" data-calc-panel="grupo">
+                            <div>
+                                <label class="field-label">Pessoas base do grupo</label>
+                                <input class="form-input" name="grupo_pessoas_base" inputmode="decimal" value="<?= isset($form_item['grupo_pessoas_base']) && $form_item['grupo_pessoas_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_pessoas_base'], 3)) : '' ?>" placeholder="Ex.: 100">
+                            </div>
+                            <div>
+                                <label class="field-label">Quantidade total do grupo</label>
+                                <input class="form-input" name="grupo_quantidade_base" inputmode="decimal" value="<?= isset($form_item['grupo_quantidade_base']) && $form_item['grupo_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['grupo_quantidade_base'], 3)) : '' ?>" placeholder="Ex.: 1500">
+                            </div>
+                            <div>
+                                <label class="field-label">Unidade do grupo</label>
+                                <select class="form-input" name="grupo_unidade_medida_id">
+                                    <option value="">Selecione...</option>
+                                    <?php foreach ($unidades_medida as $un): ?>
+                                        <option value="<?= (int)$un['id'] ?>" <?= (int)($form_item['grupo_unidade_medida_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
+                                            <?= h($un['nome']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="field-label">Ajustes</label>
+                                <div class="check-grid">
+                                    <label class="check-item">
+                                        <input type="checkbox" name="grupo_arredondar_inteiro" <?= !isset($form_item) || !isset($form_item['grupo_arredondar_inteiro']) || !empty($form_item['grupo_arredondar_inteiro']) ? 'checked' : '' ?>>
+                                        Arredondar para cima
+                                    </label>
+                                    <label class="check-item">
+                                        <input type="checkbox" name="grupo_aplicar_margem" <?= !isset($form_item) || !isset($form_item['grupo_aplicar_margem']) || !empty($form_item['grupo_aplicar_margem']) ? 'checked' : '' ?>>
+                                        Acrescentar 5%
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                 </div>
                 <?php else: ?>
                 <input type="hidden" name="calculo_lista_metodo" value="<?= h($form_item['calculo_lista_metodo'] ?? 'rendimento') ?>">
@@ -1695,15 +1776,25 @@ document.querySelectorAll('[name="rendimento_quantidade_base"], [name="grupo_pes
 });
 
 function updateCalcMethodPanels() {
-    const select = document.getElementById('calculo_lista_metodo');
-    if (!select) return;
-    const method = select.value || 'rendimento';
-    document.querySelectorAll('[data-calc-panel]').forEach((panel) => {
-        panel.hidden = panel.getAttribute('data-calc-panel') !== method;
-    });
+    const checked = document.querySelector('[name="calculo_lista_metodo"]:checked');
+    if (!checked) return;
+    checked.closest('[data-calc-rule]')?.setAttribute('open', '');
 }
 
-document.getElementById('calculo_lista_metodo')?.addEventListener('change', updateCalcMethodPanels);
+document.querySelectorAll('[name="calculo_lista_metodo"]').forEach((input) => {
+    input.addEventListener('change', () => {
+        if (input.checked) {
+            input.closest('[data-calc-rule]')?.setAttribute('open', '');
+        }
+    });
+});
+document.querySelectorAll('[data-calc-rule] summary').forEach((summary) => {
+    summary.addEventListener('click', () => {
+        const radio = summary.querySelector('[name="calculo_lista_metodo"]');
+        if (!radio) return;
+        radio.checked = true;
+    });
+});
 updateCalcMethodPanels();
 
 </script>
