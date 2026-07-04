@@ -136,6 +136,8 @@ function logistica_insumos_ensure_rendimento_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_quantidade_base NUMERIC(12,3)");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS grupo_unidade_medida_id INTEGER REFERENCES logistica_unidades_medida(id)");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS calculo_lista_metodo VARCHAR(20) DEFAULT 'rendimento'");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS calculo_lista_metodo_adulto VARCHAR(20)");
+        $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS calculo_lista_metodo_infantil VARCHAR(20)");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS arredondar_rendimento_lista BOOLEAN DEFAULT FALSE");
         $pdo->exec("ALTER TABLE logistica_insumos ADD COLUMN IF NOT EXISTS rendimento_quantidade_base NUMERIC(12,3) NOT NULL DEFAULT 1");
         $pdo->exec("
@@ -170,6 +172,15 @@ function logistica_insumos_ensure_rendimento_schema(PDO $pdo): void {
               AND i.calculo_lista_metodo IS NULL
         ");
         $pdo->exec("UPDATE logistica_insumos SET calculo_lista_metodo = 'rendimento' WHERE calculo_lista_metodo IS NULL OR calculo_lista_metodo NOT IN ('rendimento', 'grupo')");
+        $pdo->exec("
+            UPDATE logistica_insumos
+            SET calculo_lista_metodo_adulto = COALESCE(NULLIF(calculo_lista_metodo_adulto, ''), calculo_lista_metodo, 'rendimento'),
+                calculo_lista_metodo_infantil = COALESCE(NULLIF(calculo_lista_metodo_infantil, ''), calculo_lista_metodo, 'rendimento')
+            WHERE calculo_lista_metodo_adulto IS NULL
+               OR calculo_lista_metodo_adulto NOT IN ('rendimento', 'grupo')
+               OR calculo_lista_metodo_infantil IS NULL
+               OR calculo_lista_metodo_infantil NOT IN ('rendimento', 'grupo')
+        ");
         $pdo->exec("UPDATE logistica_insumos SET rendimento_base_pessoas = 100 WHERE rendimento_base_pessoas IS NULL OR rendimento_base_pessoas <= 0");
         $pdo->exec("UPDATE logistica_insumos SET rendimento_quantidade_base = 1 WHERE rendimento_quantidade_base IS NULL OR rendimento_quantidade_base <= 0");
     } catch (Throwable $e) {
@@ -322,7 +333,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
                 ':rendimento_quantidade_base' => max(0.001, (float)(parse_decimal_input((string)($_POST['rendimento_quantidade_base'] ?? '1'), 3) ?? 1)),
-                ':calculo_lista_metodo' => in_array(($_POST['calculo_lista_metodo'] ?? 'rendimento'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo'] : 'rendimento',
+                ':calculo_lista_metodo' => in_array(($_POST['calculo_lista_metodo_adulto'] ?? ($_POST['calculo_lista_metodo'] ?? 'rendimento')), ['rendimento', 'grupo'], true) ? ($_POST['calculo_lista_metodo_adulto'] ?? ($_POST['calculo_lista_metodo'] ?? 'rendimento')) : 'rendimento',
+                ':calculo_lista_metodo_adulto' => in_array(($_POST['calculo_lista_metodo_adulto'] ?? 'rendimento'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo_adulto'] : 'rendimento',
+                ':calculo_lista_metodo_infantil' => in_array(($_POST['calculo_lista_metodo_infantil'] ?? 'grupo'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo_infantil'] : 'grupo',
                 ':arredondar_rendimento_lista' => pg_bool_param($no_checks ? !empty($edit_item['arredondar_rendimento_lista']) : !empty($_POST['arredondar_rendimento_lista'])),
                 ':grupo_pessoas_base' => parse_decimal_input((string)($_POST['grupo_pessoas_base'] ?? ''), 3),
                 ':grupo_quantidade_base' => parse_decimal_input((string)($_POST['grupo_quantidade_base'] ?? ''), 3),
@@ -356,6 +369,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             rendimento_base_pessoas = :rendimento_base_pessoas,
                             rendimento_quantidade_base = :rendimento_quantidade_base,
                             calculo_lista_metodo = :calculo_lista_metodo,
+                            calculo_lista_metodo_adulto = :calculo_lista_metodo_adulto,
+                            calculo_lista_metodo_infantil = :calculo_lista_metodo_infantil,
                             arredondar_rendimento_lista = :arredondar_rendimento_lista,
                             grupo_pessoas_base = :grupo_pessoas_base,
                             grupo_quantidade_base = :grupo_quantidade_base,
@@ -378,6 +393,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $cols = [
                         'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
                         'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'rendimento_base_pessoas', 'rendimento_quantidade_base', 'calculo_lista_metodo',
+                        'calculo_lista_metodo_adulto', 'calculo_lista_metodo_infantil',
                         'arredondar_rendimento_lista',
                         'grupo_pessoas_base', 'grupo_quantidade_base', 'grupo_unidade_medida_id',
                         'grupo_arredondar_inteiro', 'grupo_aplicar_margem', 'observacoes'
@@ -385,6 +401,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $vals = [
                         ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
                         ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':rendimento_base_pessoas', ':rendimento_quantidade_base', ':calculo_lista_metodo',
+                        ':calculo_lista_metodo_adulto', ':calculo_lista_metodo_infantil',
                         ':arredondar_rendimento_lista',
                         ':grupo_pessoas_base', ':grupo_quantidade_base', ':grupo_unidade_medida_id',
                         ':grupo_arredondar_inteiro', ':grupo_aplicar_margem', ':observacoes'
@@ -528,6 +545,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'rendimento_base_pessoas' => max(1, (int)($_POST['rendimento_base_pessoas'] ?? 100)),
         'calculo_lista_metodo' => in_array(($_POST['calculo_lista_metodo'] ?? 'rendimento'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo'] : 'rendimento',
+        'calculo_lista_metodo_adulto' => in_array(($_POST['calculo_lista_metodo_adulto'] ?? 'rendimento'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo_adulto'] : 'rendimento',
+        'calculo_lista_metodo_infantil' => in_array(($_POST['calculo_lista_metodo_infantil'] ?? 'grupo'), ['rendimento', 'grupo'], true) ? $_POST['calculo_lista_metodo_infantil'] : 'grupo',
         'arredondar_rendimento_lista' => $no_checks ? !empty($edit_item['arredondar_rendimento_lista']) : !empty($_POST['arredondar_rendimento_lista']),
         'grupo_pessoas_base' => parse_decimal_input((string)($_POST['grupo_pessoas_base'] ?? ''), 3),
         'grupo_quantidade_base' => parse_decimal_input((string)($_POST['grupo_quantidade_base'] ?? ''), 3),
@@ -659,6 +678,18 @@ body {
 .calc-panel[hidden] {
     display: none;
 }
+.calc-category-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 0.85rem;
+}
+.calc-category-card {
+    padding: 0.95rem;
+    border: 1px solid #dbe6f3;
+    border-radius: 10px;
+    background: #f8fafc;
+}
 .calc-rule-block {
     border: 1px solid #dbe6f3;
     border-radius: 10px;
@@ -687,9 +718,6 @@ body {
     align-items: center;
     gap: 0.55rem;
     min-width: 0;
-}
-.calc-rule-title input {
-    margin: 0;
 }
 .calc-rule-context {
     display: block;
@@ -1090,6 +1118,10 @@ body {
     .form-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    .calc-category-grid,
+    .calc-panel {
+        grid-template-columns: 1fr;
+    }
     .span-2,
     .span-3 {
         grid-column: span 2;
@@ -1235,20 +1267,44 @@ body {
                 </div>
                 <?php if (!$no_checks): ?>
                 <?php
-                $metodo_calculo_lista = (string)($form_item['calculo_lista_metodo'] ?? '');
+                $metodo_calculo_lista = (string)($form_item['calculo_lista_metodo'] ?? 'rendimento');
                 if (!in_array($metodo_calculo_lista, ['rendimento', 'grupo'], true)) {
-                    $metodo_calculo_lista = !empty($form_item['grupo_pessoas_base']) && !empty($form_item['grupo_quantidade_base']) ? 'grupo' : 'rendimento';
+                    $metodo_calculo_lista = 'rendimento';
+                }
+                $metodo_calculo_adulto = (string)($form_item['calculo_lista_metodo_adulto'] ?? $metodo_calculo_lista);
+                if (!in_array($metodo_calculo_adulto, ['rendimento', 'grupo'], true)) {
+                    $metodo_calculo_adulto = $metodo_calculo_lista;
+                }
+                $metodo_calculo_infantil = (string)($form_item['calculo_lista_metodo_infantil'] ?? $metodo_calculo_lista);
+                if (!in_array($metodo_calculo_infantil, ['rendimento', 'grupo'], true)) {
+                    $metodo_calculo_infantil = $metodo_calculo_lista;
                 }
                 ?>
                 <div class="span-4">
                     <label class="field-label">Método de cálculo na lista</label>
-                    <details class="calc-rule-block" data-calc-rule="rendimento" <?= $metodo_calculo_lista === 'rendimento' ? 'open' : '' ?>>
+                    <div class="calc-category-grid">
+                        <div class="calc-category-card">
+                            <label class="field-label">Casamento, 15 anos e formatura</label>
+                            <select class="form-input" name="calculo_lista_metodo_adulto">
+                                <option value="rendimento" <?= $metodo_calculo_adulto === 'rendimento' ? 'selected' : '' ?>>Rendimento base do item</option>
+                                <option value="grupo" <?= $metodo_calculo_adulto === 'grupo' ? 'selected' : '' ?>>Quantidade total por grupo</option>
+                            </select>
+                        </div>
+                        <div class="calc-category-card">
+                            <label class="field-label">Infantil</label>
+                            <select class="form-input" name="calculo_lista_metodo_infantil">
+                                <option value="rendimento" <?= $metodo_calculo_infantil === 'rendimento' ? 'selected' : '' ?>>Rendimento base do item</option>
+                                <option value="grupo" <?= $metodo_calculo_infantil === 'grupo' ? 'selected' : '' ?>>Quantidade total por grupo</option>
+                            </select>
+                        </div>
+                    </div>
+                    <input type="hidden" name="calculo_lista_metodo" value="<?= h($metodo_calculo_adulto) ?>">
+                    <details class="calc-rule-block" data-calc-rule="rendimento" open>
                         <summary>
                             <span class="calc-rule-title">
-                                <input type="radio" name="calculo_lista_metodo" value="rendimento" <?= $metodo_calculo_lista === 'rendimento' ? 'checked' : '' ?>>
                                 <span>
-                                    Casamento, 15 anos e formatura
-                                    <span class="calc-rule-context">Rendimento base do item</span>
+                                    Rendimento base do item
+                                    <span class="calc-rule-context">Usado pelas categorias cujo select estiver neste método.</span>
                                 </span>
                             </span>
                             <span class="calc-rule-arrow">⌄</span>
@@ -1272,13 +1328,12 @@ body {
                             </div>
                         </div>
                     </details>
-                    <details class="calc-rule-block" data-calc-rule="grupo" <?= $metodo_calculo_lista === 'grupo' ? 'open' : '' ?>>
+                    <details class="calc-rule-block" data-calc-rule="grupo" open>
                         <summary>
                             <span class="calc-rule-title">
-                                <input type="radio" name="calculo_lista_metodo" value="grupo" <?= $metodo_calculo_lista === 'grupo' ? 'checked' : '' ?>>
                                 <span>
-                                    Infantil
-                                    <span class="calc-rule-context">Quantidade total por grupo</span>
+                                    Quantidade total por grupo
+                                    <span class="calc-rule-context">Usado pelas categorias cujo select estiver neste método.</span>
                                 </span>
                             </span>
                             <span class="calc-rule-arrow">⌄</span>
@@ -1321,6 +1376,8 @@ body {
                 </div>
                 <?php else: ?>
                 <input type="hidden" name="calculo_lista_metodo" value="<?= h($form_item['calculo_lista_metodo'] ?? 'rendimento') ?>">
+                <input type="hidden" name="calculo_lista_metodo_adulto" value="<?= h($form_item['calculo_lista_metodo_adulto'] ?? ($form_item['calculo_lista_metodo'] ?? 'rendimento')) ?>">
+                <input type="hidden" name="calculo_lista_metodo_infantil" value="<?= h($form_item['calculo_lista_metodo_infantil'] ?? ($form_item['calculo_lista_metodo'] ?? 'rendimento')) ?>">
                 <input type="hidden" name="rendimento_base_pessoas" value="<?= h($form_item['rendimento_base_pessoas'] ?? 100) ?>">
                 <input type="hidden" name="rendimento_quantidade_base" value="<?= isset($form_item['rendimento_quantidade_base']) && $form_item['rendimento_quantidade_base'] !== null ? h(format_decimal_input((float)$form_item['rendimento_quantidade_base'], 3)) : '1' ?>">
                 <input type="hidden" name="arredondar_rendimento_lista" value="<?= !empty($form_item['arredondar_rendimento_lista']) ? '1' : '' ?>">
@@ -1775,27 +1832,16 @@ document.querySelectorAll('[name="rendimento_quantidade_base"], [name="grupo_pes
     });
 });
 
-function updateCalcMethodPanels() {
-    const checked = document.querySelector('[name="calculo_lista_metodo"]:checked');
-    if (!checked) return;
-    checked.closest('[data-calc-rule]')?.setAttribute('open', '');
+function syncLegacyCalcMethod() {
+    const adulto = document.querySelector('[name="calculo_lista_metodo_adulto"]');
+    const legacy = document.querySelector('[name="calculo_lista_metodo"]');
+    if (adulto && legacy) {
+        legacy.value = adulto.value;
+    }
 }
 
-document.querySelectorAll('[name="calculo_lista_metodo"]').forEach((input) => {
-    input.addEventListener('change', () => {
-        if (input.checked) {
-            input.closest('[data-calc-rule]')?.setAttribute('open', '');
-        }
-    });
-});
-document.querySelectorAll('[data-calc-rule] summary').forEach((summary) => {
-    summary.addEventListener('click', () => {
-        const radio = summary.querySelector('[name="calculo_lista_metodo"]');
-        if (!radio) return;
-        radio.checked = true;
-    });
-});
-updateCalcMethodPanels();
+document.querySelector('[name="calculo_lista_metodo_adulto"]')?.addEventListener('change', syncLegacyCalcMethod);
+syncLegacyCalcMethod();
 
 </script>
 

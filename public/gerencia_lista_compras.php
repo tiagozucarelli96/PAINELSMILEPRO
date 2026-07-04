@@ -112,6 +112,8 @@ function glc_ensure_schema(PDO $pdo): void
     $pdo->exec("
         ALTER TABLE logistica_insumos
             ADD COLUMN IF NOT EXISTS calculo_lista_metodo VARCHAR(20) DEFAULT 'rendimento',
+            ADD COLUMN IF NOT EXISTS calculo_lista_metodo_adulto VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS calculo_lista_metodo_infantil VARCHAR(20),
             ADD COLUMN IF NOT EXISTS arredondar_rendimento_lista BOOLEAN DEFAULT FALSE,
             ADD COLUMN IF NOT EXISTS rendimento_quantidade_base NUMERIC(12,3) NOT NULL DEFAULT 1,
             ADD COLUMN IF NOT EXISTS grupo_pessoas_base NUMERIC(12,3),
@@ -152,6 +154,15 @@ function glc_ensure_schema(PDO $pdo): void
           AND i.calculo_lista_metodo IS NULL
     ");
     $pdo->exec("UPDATE logistica_insumos SET calculo_lista_metodo = 'rendimento' WHERE calculo_lista_metodo IS NULL OR calculo_lista_metodo NOT IN ('rendimento', 'grupo')");
+    $pdo->exec("
+        UPDATE logistica_insumos
+        SET calculo_lista_metodo_adulto = COALESCE(NULLIF(calculo_lista_metodo_adulto, ''), calculo_lista_metodo, 'rendimento'),
+            calculo_lista_metodo_infantil = COALESCE(NULLIF(calculo_lista_metodo_infantil, ''), calculo_lista_metodo, 'rendimento')
+        WHERE calculo_lista_metodo_adulto IS NULL
+           OR calculo_lista_metodo_adulto NOT IN ('rendimento', 'grupo')
+           OR calculo_lista_metodo_infantil IS NULL
+           OR calculo_lista_metodo_infantil NOT IN ('rendimento', 'grupo')
+    ");
     $pdo->exec("UPDATE logistica_insumos SET rendimento_quantidade_base = 1 WHERE rendimento_quantidade_base IS NULL OR rendimento_quantidade_base <= 0");
 
     @touch($marker);
@@ -540,6 +551,8 @@ function glc_fetch_catalogo(PDO $pdo): array
                                    ELSE 'rendimento'
                                END
                            ) AS calculo_lista_metodo,
+                           COALESCE(NULLIF(i.calculo_lista_metodo_adulto, ''), NULLIF(i.calculo_lista_metodo, ''), 'rendimento') AS calculo_lista_metodo_adulto,
+                           COALESCE(NULLIF(i.calculo_lista_metodo_infantil, ''), NULLIF(i.calculo_lista_metodo, ''), 'rendimento') AS calculo_lista_metodo_infantil,
                            COALESCE(i.arredondar_rendimento_lista, FALSE) AS arredondar_rendimento_lista,
                            t.nome AS tipologia_nome,
                            COALESCE(t.visivel_na_lista, TRUE) AS tipologia_visivel_na_lista,
@@ -710,9 +723,16 @@ function glc_normalizar_totais_cento(array $totals, array $unidades): array
     return $normalized;
 }
 
-function glc_insumo_usa_calculo_grupo(array $insumo): bool
+function glc_insumo_metodo_calculo_evento(array $insumo, array $event): string
 {
-    return ($insumo['calculo_lista_metodo'] ?? 'rendimento') === 'grupo'
+    $field = glc_evento_eh_infantil($event) ? 'calculo_lista_metodo_infantil' : 'calculo_lista_metodo_adulto';
+    $method = (string)($insumo[$field] ?? ($insumo['calculo_lista_metodo'] ?? 'rendimento'));
+    return in_array($method, ['rendimento', 'grupo'], true) ? $method : 'rendimento';
+}
+
+function glc_insumo_usa_calculo_grupo(array $insumo, array $event): bool
+{
+    return glc_insumo_metodo_calculo_evento($insumo, $event) === 'grupo'
         && (float)($insumo['grupo_pessoas_base'] ?? 0) > 0
         && (float)($insumo['grupo_quantidade_base'] ?? 0) > 0;
 }
@@ -773,7 +793,7 @@ function glc_add_totais_grupo_tipologia(
         }
 
         $itemId = (int)($item['item_id'] ?? 0);
-        if ($itemId <= 0 || empty($insumos[$itemId]) || !glc_insumo_usa_calculo_grupo($insumos[$itemId])) {
+        if ($itemId <= 0 || empty($insumos[$itemId]) || !glc_insumo_usa_calculo_grupo($insumos[$itemId], $event)) {
             continue;
         }
 
@@ -975,7 +995,7 @@ function glc_calcular_lista(PDO $pdo, array $events): array
                 if (!glc_insumo_permite_lista($insumos[$itemId])) {
                     continue;
                 }
-                if (glc_insumo_usa_calculo_grupo($insumos[$itemId])) {
+                if (glc_insumo_usa_calculo_grupo($insumos[$itemId], $event)) {
                     continue;
                 }
                 $yield = max(1, (int)($insumos[$itemId]['rendimento_base_pessoas'] ?? 100));
