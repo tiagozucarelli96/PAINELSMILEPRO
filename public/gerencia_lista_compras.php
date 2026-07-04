@@ -1157,6 +1157,189 @@ function glc_salvar_lista(PDO $pdo, array $events, array $calculo): int
     }
 }
 
+function glc_pdf_filename(array $events): string
+{
+    $dates = [];
+    foreach ($events as $event) {
+        $date = trim((string)($event['data_evento'] ?? ''));
+        if ($date !== '') {
+            $dates[] = date('Y-m-d', strtotime($date));
+        }
+    }
+    $suffix = !empty($dates) ? min($dates) : date('Y-m-d');
+    return 'Lista_Compras_' . $suffix . '.pdf';
+}
+
+function glc_render_pdf_html(array $events, array $calculo): string
+{
+    $totalsByType = [];
+    foreach ($calculo['totals'] as $total) {
+        $insumo = $calculo['insumos'][(int)$total['insumo_id']] ?? [];
+        $typeName = trim((string)($insumo['tipologia_nome'] ?? 'Sem tipo')) ?: 'Sem tipo';
+        if (!isset($totalsByType[$typeName])) {
+            $totalsByType[$typeName] = [];
+        }
+        $totalsByType[$typeName][] = $total;
+    }
+
+    $totalGuests = 0;
+    $unitNames = [];
+    foreach ($events as $event) {
+        $totalGuests += (int)($event['convidados'] ?? 0);
+        $unitName = trim((string)($event['unidade_nome'] ?? $event['space_visivel'] ?? ''));
+        if ($unitName !== '') {
+            $unitNames[$unitName] = true;
+        }
+    }
+    $unitSummary = count($unitNames) === 1 ? array_key_first($unitNames) : 'Múltiplas unidades';
+
+    ob_start();
+    ?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Lista de Compras</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:22px;color:#111827;font-size:12px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111827;padding-bottom:12px;margin-bottom:14px}
+h1{font-size:22px;margin:0 0 6px;color:#111827}
+h2{font-size:15px;margin:16px 0 6px;color:#1f2937}
+.meta{color:#4b5563;line-height:1.45}
+.summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.pill{border:1px solid #cbd5e1;border-radius:999px;padding:3px 8px;font-size:11px;color:#334155}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th,td{border-bottom:1px solid #e5e7eb;padding:7px;text-align:left;vertical-align:top}
+th{background:#f3f4f6;color:#374151;font-size:10px;text-transform:uppercase}
+.right{text-align:right}
+.group td{background:#eef2ff;color:#1e3a8a;font-weight:bold;text-transform:uppercase;border-top:1px solid #c7d2fe}
+.warn{border:1px solid #fcd34d;background:#fffbeb;color:#92400e;padding:8px;border-radius:6px;margin:6px 0}
+.no-print{margin-bottom:12px}
+button{padding:7px 12px;border:0;border-radius:6px;background:#1e3a8a;color:#fff;font-weight:bold;cursor:pointer}
+@media print{.no-print{display:none}body{padding:0}.header{margin-top:0}}
+</style>
+</head>
+<body>
+<div class="no-print"><button onclick="window.print()">Imprimir / salvar PDF</button></div>
+<div class="header">
+  <div>
+    <h1>Lista de Compras</h1>
+    <div class="meta">
+      Gerado em <?= h(date('d/m/Y H:i')) ?> · Margem automática de 5%<br>
+      <?= h($unitSummary) ?> · <?= count($events) ?> evento(s) · <?= $totalGuests ?> convidados
+    </div>
+  </div>
+</div>
+
+<?php if (!empty($calculo['warnings'])): ?>
+  <h2>Avisos</h2>
+  <?php foreach ($calculo['warnings'] as $warning): ?>
+    <div class="warn"><?= h($warning) ?></div>
+  <?php endforeach; ?>
+<?php endif; ?>
+
+<h2>Eventos usados no cálculo</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Evento</th>
+      <th>Data</th>
+      <th>Hora</th>
+      <th>Local</th>
+      <th>Unidade</th>
+      <th class="right">Convidados</th>
+      <th class="right">Cardápio</th>
+    </tr>
+  </thead>
+  <tbody>
+    <?php foreach ($calculo['events_summary'] as $summary): ?>
+      <?php $event = $summary['event']; ?>
+      <tr>
+        <td><?= h($event['nome_evento'] ?? 'Evento') ?></td>
+        <td><?= h(brDateOnly((string)($event['data_evento'] ?? ''))) ?></td>
+        <td><?= h(substr((string)($event['hora_inicio'] ?? ''), 0, 5)) ?></td>
+        <td><?= h($event['localevento'] ?? '') ?></td>
+        <td><?= h($event['unidade_nome'] ?? $event['space_visivel'] ?? '') ?></td>
+        <td class="right"><?= (int)($event['convidados'] ?? 0) ?></td>
+        <td class="right"><?= count($summary['items'] ?? []) ?></td>
+      </tr>
+    <?php endforeach; ?>
+  </tbody>
+</table>
+
+<h2>Necessidade bruta consolidada</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Insumo</th>
+      <th>Unidade</th>
+      <th class="right">Quantidade total</th>
+    </tr>
+  </thead>
+  <tbody>
+    <?php foreach ($totalsByType as $typeName => $typeTotals): ?>
+      <tr class="group">
+        <td colspan="3"><?= h($typeName) ?> · <?= count($typeTotals) ?> item(ns)</td>
+      </tr>
+      <?php foreach ($typeTotals as $total): ?>
+        <?php
+        $insumo = $calculo['insumos'][(int)$total['insumo_id']] ?? [];
+        $unidadeNome = !empty($total['unidade_medida_id'])
+            ? (string)($calculo['unidades'][(int)$total['unidade_medida_id']] ?? '')
+            : (string)($insumo['unidade_nome'] ?? '');
+        ?>
+        <tr>
+          <td><?= h($insumo['nome_oficial'] ?? ('Insumo #' . (int)$total['insumo_id'])) ?></td>
+          <td><?= h($unidadeNome) ?></td>
+          <td class="right"><strong><?= glc_format_quantidade((float)$total['quantidade'], $unidadeNome) ?></strong></td>
+        </tr>
+      <?php endforeach; ?>
+    <?php endforeach; ?>
+  </tbody>
+</table>
+</body>
+</html>
+    <?php
+    return ob_get_clean();
+}
+
+function glc_output_pdf(array $events, array $calculo): void
+{
+    $html = glc_render_pdf_html($events, $calculo);
+    $autoloads = [
+        dirname(__DIR__) . '/vendor/autoload.php',
+        __DIR__ . '/vendor/autoload.php',
+    ];
+    foreach ($autoloads as $autoload) {
+        if (file_exists($autoload)) {
+            require_once $autoload;
+            break;
+        }
+    }
+
+    if (class_exists('\\Dompdf\\Dompdf')) {
+        try {
+            $dompdf = new \Dompdf\Dompdf([
+                'isRemoteEnabled' => true,
+                'defaultPaperSize' => 'a4',
+                'isHtml5ParserEnabled' => true,
+            ]);
+            $dompdf->loadHtml($html, 'UTF-8');
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+            $dompdf->stream(glc_pdf_filename($events), ['Attachment' => false]);
+            exit;
+        } catch (Throwable $e) {
+            error_log('glc_output_pdf dompdf: ' . $e->getMessage());
+        }
+    }
+
+    header('Content-Type: text/html; charset=utf-8');
+    echo $html;
+    exit;
+}
+
 glc_ensure_schema($pdo);
 
 $scope = glc_fetch_user_scope($pdo);
@@ -1195,6 +1378,8 @@ if ($isFormRequest) {
             $calculo = glc_calcular_lista($pdo, $selectedEvents);
             if (empty($calculo['totals'])) {
                 $errors[] = 'Nenhum insumo foi calculado a partir do cardápio selecionado.';
+            } elseif ($action === 'pdf') {
+                glc_output_pdf($selectedEvents, $calculo);
             } elseif ($action === 'save') {
                 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                     $errors[] = 'Use o botão Salvar lista para gravar a lista.';
@@ -1337,6 +1522,7 @@ ob_start();
         <div class="glc-toolbar">
             <button class="glc-btn" type="submit" id="glcPreviewBtn" onclick="return glcSubmit('preview', this)">Gerar prévia</button>
             <?php if ($calculo && !empty($calculo['totals'])): ?>
+                <button class="glc-btn secondary" type="submit" formtarget="_blank" id="glcPdfBtn" onclick="return glcSubmit('pdf', this)">Exportar PDF</button>
                 <button class="glc-btn" type="submit" formmethod="POST" formaction="index.php?page=gerencia_lista_compras" id="glcSaveBtn" onclick="return glcSubmit('save', this)">Salvar lista</button>
             <?php endif; ?>
         </div>
