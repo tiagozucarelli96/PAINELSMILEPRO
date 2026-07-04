@@ -468,6 +468,8 @@ function glc_fetch_itens_fixos_infantil(PDO $pdo, array $events): array
                ps.pacote_evento_id,
                ps.secao_cardapio_id,
                s.nome AS secao_nome,
+               s.ordem AS secao_ordem,
+               lower(s.nome) AS secao_nome_ordem,
                ip.item_tipo,
                ip.item_id,
                CASE
@@ -499,7 +501,7 @@ function glc_fetch_itens_fixos_infantil(PDO $pdo, array $events): array
               OR
               (ip.item_tipo = 'receita' AND r.ativo = TRUE AND COALESCE(r.visivel_na_lista, TRUE) = TRUE)
           )
-        ORDER BY ps.pacote_evento_id ASC, s.ordem ASC, lower(s.nome) ASC, item_nome ASC
+        ORDER BY ps.pacote_evento_id ASC, secao_ordem ASC, secao_nome_ordem ASC, item_nome ASC
     ");
     $stmt->execute($params);
 
