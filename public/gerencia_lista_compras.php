@@ -28,6 +28,10 @@ if (!$canAccess) {
 }
 
 const GLC_MARGEM_SEGURANCA = 1.05;
+const GLC_BEBIDA_INFANTIL_LITROS_POR_PESSOA = 1.0;
+const GLC_BEBIDA_INFANTIL_COCA_RATIO = 0.6;
+const GLC_BEBIDA_INFANTIL_GUARANA_RATIO = 0.4;
+const GLC_BEBIDA_INFANTIL_GARRAFA_LITROS = 2.0;
 
 function glc_unidade_usa_decimal(string $unidadeNome): bool
 {
@@ -656,6 +660,56 @@ function glc_add_total(array &$totals, int $eventId, int $insumoId, ?int $unidad
     $totals[$key]['origens'][] = $origin + ['quantidade' => $quantity];
 }
 
+function glc_secao_bebida_fixa_infantil(string $secaoNome): bool
+{
+    $normalized = glc_normalize_unit_name($secaoNome);
+    return in_array($normalized, ['agua', 'refrigerantes', 'refrigerante'], true);
+}
+
+function glc_find_insumo_id_por_nome(array $insumos, string $nome): ?int
+{
+    $needle = glc_normalize_unit_name($nome);
+    foreach ($insumos as $id => $insumo) {
+        if (glc_normalize_unit_name((string)($insumo['nome_oficial'] ?? '')) === $needle) {
+            return (int)$id;
+        }
+    }
+    return null;
+}
+
+function glc_add_bebidas_fixas_infantil(array $event, array $insumos, array &$totals, array &$warnings): void
+{
+    if (!glc_evento_eh_infantil($event)) {
+        return;
+    }
+
+    $eventId = (int)($event['id'] ?? 0);
+    $convidados = max(0, (int)($event['convidados'] ?? 0));
+    if ($eventId <= 0 || $convidados <= 0) {
+        return;
+    }
+
+    $cocaId = glc_find_insumo_id_por_nome($insumos, 'Coca Cola Original 2l');
+    $guaranaId = glc_find_insumo_id_por_nome($insumos, 'Guaraná Antártica 2l');
+    if (!$cocaId || !$guaranaId) {
+        $warnings[] = 'Bebidas infantis 2L não configuradas: Coca Cola Original 2l ou Guaraná Antártica 2l.';
+        return;
+    }
+
+    $totalLitros = $convidados * GLC_BEBIDA_INFANTIL_LITROS_POR_PESSOA * GLC_MARGEM_SEGURANCA;
+    $quantidadeCoca = ceil(($totalLitros * GLC_BEBIDA_INFANTIL_COCA_RATIO) / GLC_BEBIDA_INFANTIL_GARRAFA_LITROS);
+    $quantidadeGuarana = ceil(($totalLitros * GLC_BEBIDA_INFANTIL_GUARANA_RATIO) / GLC_BEBIDA_INFANTIL_GARRAFA_LITROS);
+
+    glc_add_total($totals, $eventId, $cocaId, !empty($insumos[$cocaId]['unidade_medida_padrao_id']) ? (int)$insumos[$cocaId]['unidade_medida_padrao_id'] : null, $quantidadeCoca, [
+        'tipo' => 'bebida infantil fixa',
+        'origem' => 'Refrigerantes infantis: 600ml de Coca por pessoa',
+    ]);
+    glc_add_total($totals, $eventId, $guaranaId, !empty($insumos[$guaranaId]['unidade_medida_padrao_id']) ? (int)$insumos[$guaranaId]['unidade_medida_padrao_id'] : null, $quantidadeGuarana, [
+        'tipo' => 'bebida infantil fixa',
+        'origem' => 'Refrigerantes infantis: 400ml de Guaraná por pessoa',
+    ]);
+}
+
 function glc_normalize_unit_name(string $value): string
 {
     $normalized = strtolower(trim($value));
@@ -953,7 +1007,15 @@ function glc_calcular_lista(PDO $pdo, array $events): array
     foreach ($events as $eventId => $event) {
         $convidados = max(0, (int)($event['convidados'] ?? 0));
         $eventItems = $itemsByResposta[(int)$event['resposta_id']] ?? [];
+        if (glc_evento_eh_infantil($event)) {
+            $eventItems = array_values(array_filter($eventItems, static function (array $item): bool {
+                return !glc_secao_bebida_fixa_infantil((string)($item['secao_nome'] ?? ''));
+            }));
+        }
         foreach (($fixedItemsByEvent[(int)$eventId] ?? []) as $fixedItem) {
+            if (glc_secao_bebida_fixa_infantil((string)($fixedItem['secao_nome'] ?? ''))) {
+                continue;
+            }
             $duplicateKey = (string)($fixedItem['item_tipo'] ?? '') . ':' . (int)($fixedItem['item_id'] ?? 0) . ':' . (int)($fixedItem['secao_cardapio_id'] ?? 0);
             $hasDuplicate = false;
             foreach ($eventItems as $currentItem) {
@@ -977,6 +1039,8 @@ function glc_calcular_lista(PDO $pdo, array $events): array
             $warnings[] = 'Evento sem convidados contratados: ' . (string)($event['nome_evento'] ?? ('#' . $eventId));
             continue;
         }
+
+        glc_add_bebidas_fixas_infantil($event, $insumos, $totals, $warnings);
 
         if (empty($eventItems)) {
             $warnings[] = 'Evento sem itens de cardápio: ' . (string)($event['nome_evento'] ?? ('#' . $eventId));

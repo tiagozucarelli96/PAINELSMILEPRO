@@ -126,8 +126,89 @@ function cadastros_pp_ensure_schema(PDO $pdo): void
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS pessoas_base INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NULL");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_categoria ON logistica_pacotes_evento(categoria, deleted_at)");
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS logistica_servico_receitas (
+                id BIGSERIAL PRIMARY KEY,
+                servico_id BIGINT NOT NULL REFERENCES logistica_pacotes_evento(id) ON DELETE CASCADE,
+                receita_id BIGINT NOT NULL REFERENCES logistica_receitas(id) ON DELETE CASCADE,
+                ordem INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                UNIQUE (servico_id, receita_id)
+            )
+        ");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_servico_receitas_servico ON logistica_servico_receitas(servico_id, ordem, receita_id)");
     } catch (Throwable $e) {
         error_log('cadastros_pp_ensure_schema: ' . $e->getMessage());
+    }
+}
+
+function cadastros_pp_receitas_listar(PDO $pdo): array
+{
+    try {
+        $stmt = $pdo->query("
+            SELECT r.id,
+                   r.nome,
+                   r.rendimento_base_pessoas,
+                   t.nome AS tipologia
+            FROM logistica_receitas r
+            LEFT JOIN logistica_tipologias_receita t ON t.id = r.tipologia_receita_id
+            WHERE COALESCE(r.ativo, TRUE) IS TRUE
+            ORDER BY LOWER(r.nome) ASC, r.id ASC
+        ");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        error_log('cadastros_pp_receitas_listar: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function cadastros_pp_servico_receitas_ids(PDO $pdo, int $servicoId): array
+{
+    if ($servicoId <= 0) {
+        return [];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT receita_id
+            FROM logistica_servico_receitas
+            WHERE servico_id = :servico_id
+            ORDER BY ordem ASC, receita_id ASC
+        ");
+        $stmt->execute([':servico_id' => $servicoId]);
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+    } catch (Throwable $e) {
+        error_log('cadastros_pp_servico_receitas_ids: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function cadastros_pp_servico_receitas_salvar(PDO $pdo, int $servicoId, array $receitaIds): void
+{
+    if ($servicoId <= 0) {
+        return;
+    }
+
+    $receitaIds = array_values(array_unique(array_filter(array_map('intval', $receitaIds), static fn($id) => $id > 0)));
+    $pdo->prepare("DELETE FROM logistica_servico_receitas WHERE servico_id = :servico_id")->execute([':servico_id' => $servicoId]);
+    if (empty($receitaIds)) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO logistica_servico_receitas (servico_id, receita_id, ordem, created_at, updated_at)
+        VALUES (:servico_id, :receita_id, :ordem, NOW(), NOW())
+        ON CONFLICT (servico_id, receita_id) DO UPDATE
+        SET ordem = EXCLUDED.ordem,
+            updated_at = NOW()
+    ");
+    foreach ($receitaIds as $index => $receitaId) {
+        $stmt->execute([
+            ':servico_id' => $servicoId,
+            ':receita_id' => $receitaId,
+            ':ordem' => $index + 1,
+        ]);
     }
 }
 
@@ -150,6 +231,7 @@ $modalItem = [
     'pessoas_base' => '',
     'valor_convidado_adicional' => '',
     'descricao' => '',
+    'receita_ids' => [],
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -174,6 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $valorConvidadoAdicional = cadastros_pp_money_to_float((string)($_POST['valor_convidado_adicional'] ?? '0'));
         $tipoEventoReal = trim((string)($_POST['tipo_evento_real'] ?? ''));
         $modeloPreco = in_array(($_POST['modelo_preco'] ?? 'simples'), ['simples', 'tabela'], true) ? (string)$_POST['modelo_preco'] : 'simples';
+        $receitaIds = is_array($_POST['receita_ids'] ?? null) ? $_POST['receita_ids'] : [];
 
         if ($nome === '') {
             $errors[] = 'Informe o nome.';
@@ -181,6 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($errors)) {
             try {
+                $pdo->beginTransaction();
                 if ($id > 0) {
                     $stmt = $pdo->prepare("
                         UPDATE logistica_pacotes_evento
@@ -203,12 +287,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':nome' => $nome,
                         ':descricao' => $descricao !== '' ? $descricao : null,
                         ':tipo_evento_real' => $categoria === 'Pacote' && $tipoEventoReal !== '' ? $tipoEventoReal : null,
-                        ':modelo_preco' => $categoria === 'Pacote' ? $modeloPreco : 'simples',
-                        ':valor_venda' => $categoria === 'Pacote' ? null : $valorVenda,
+                        ':modelo_preco' => $categoria === 'Pacote' ? $modeloPreco : ($categoria === 'Serviço' ? 'tabela' : 'simples'),
+                        ':valor_venda' => $categoria === 'Produto' ? $valorVenda : null,
                         ':valor_pacote' => $categoria === 'Pacote' ? $valorPacote : null,
                         ':pessoas_base' => $categoria === 'Pacote' && $pessoasBase > 0 ? $pessoasBase : null,
                         ':valor_convidado_adicional' => $categoria === 'Pacote' ? $valorConvidadoAdicional : null,
                     ]);
+                    if ($categoria === 'Serviço') {
+                        cadastros_pp_servico_receitas_salvar($pdo, $id, $receitaIds);
+                    } else {
+                        cadastros_pp_servico_receitas_salvar($pdo, $id, []);
+                    }
                     $_SESSION['cadastros_pp_success'] = 'Cadastro atualizado com sucesso.';
                 } else {
                     $stmt = $pdo->prepare("
@@ -219,25 +308,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             :categoria, :nome, :descricao, :tipo_evento_real, :modelo_preco, :valor_venda, :valor_pacote, :pessoas_base,
                             :valor_convidado_adicional, FALSE, :created_by_user_id, NOW(), NOW()
                         )
+                        RETURNING id
                     ");
                     $stmt->execute([
                         ':categoria' => $categoria,
                         ':nome' => $nome,
                         ':descricao' => $descricao !== '' ? $descricao : null,
                         ':tipo_evento_real' => $categoria === 'Pacote' && $tipoEventoReal !== '' ? $tipoEventoReal : null,
-                        ':modelo_preco' => $categoria === 'Pacote' ? $modeloPreco : 'simples',
-                        ':valor_venda' => $categoria === 'Pacote' ? null : $valorVenda,
+                        ':modelo_preco' => $categoria === 'Pacote' ? $modeloPreco : ($categoria === 'Serviço' ? 'tabela' : 'simples'),
+                        ':valor_venda' => $categoria === 'Produto' ? $valorVenda : null,
                         ':valor_pacote' => $categoria === 'Pacote' ? $valorPacote : null,
                         ':pessoas_base' => $categoria === 'Pacote' && $pessoasBase > 0 ? $pessoasBase : null,
                         ':valor_convidado_adicional' => $categoria === 'Pacote' ? $valorConvidadoAdicional : null,
                         ':created_by_user_id' => $userId > 0 ? $userId : null,
                     ]);
+                    $id = (int)$stmt->fetchColumn();
+                    if ($categoria === 'Serviço') {
+                        cadastros_pp_servico_receitas_salvar($pdo, $id, $receitaIds);
+                    }
                     $_SESSION['cadastros_pp_success'] = 'Cadastro criado com sucesso.';
                 }
+                $pdo->commit();
                 $redirectTab = ['Pacote' => 'pacotes', 'Serviço' => 'servicos', 'Produto' => 'produtos'][$categoria] ?? 'pacotes';
                 header('Location: index.php?page=cadastros_pacotes_produtos&tab=' . $redirectTab . '#pp-listagem');
                 exit;
             } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 error_log('cadastros_pp save: ' . $e->getMessage());
                 $errors[] = 'Não foi possível salvar.';
             }
@@ -250,7 +348,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = pacotes_evento_preco_variacoes_salvar($pdo, $id, $_POST['variacoes'] ?? []);
             if (!empty($result['ok'])) {
                 $_SESSION['cadastros_pp_success'] = 'Tabela de valores salva com sucesso.';
-                header('Location: index.php?page=cadastros_pacotes_produtos&tab=pacotes&edit_id=' . $id . '#pp-modal');
+                header('Location: index.php?page=cadastros_pacotes_produtos&tab=' . $postActiveTab . '&edit_id=' . $id . '#pp-modal');
                 exit;
             }
             $errors[] = (string)($result['error'] ?? 'Não foi possível salvar a tabela de valores.');
@@ -287,6 +385,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if (!empty($variacoesCopia)) {
                     pacotes_evento_preco_variacoes_salvar($pdo, $novoId, $variacoesCopia);
+                }
+                $receitasCopia = cadastros_pp_servico_receitas_ids($pdo, $id);
+                if (!empty($receitasCopia)) {
+                    cadastros_pp_servico_receitas_salvar($pdo, $novoId, $receitasCopia);
                 }
             }
             $_SESSION['cadastros_pp_success'] = 'Cadastro duplicado com sucesso.';
@@ -341,6 +443,7 @@ if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['acti
         'pessoas_base' => trim((string)($_POST['pessoas_base'] ?? '')),
         'valor_convidado_adicional' => trim((string)($_POST['valor_convidado_adicional'] ?? '')),
         'descricao' => trim((string)($_POST['descricao'] ?? '')),
+        'receita_ids' => is_array($_POST['receita_ids'] ?? null) ? array_map('intval', $_POST['receita_ids']) : [],
     ];
 } elseif ($editId > 0) {
     try {
@@ -366,6 +469,7 @@ if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['acti
                 'pessoas_base' => (string)($itemEdicao['pessoas_base'] ?? ''),
                 'valor_convidado_adicional' => (string)($itemEdicao['valor_convidado_adicional'] ?? ''),
                 'descricao' => (string)($itemEdicao['descricao'] ?? ''),
+                'receita_ids' => cadastros_pp_servico_receitas_ids($pdo, (int)$itemEdicao['id']),
             ];
         } else {
             $errors[] = 'Cadastro não encontrado para edição.';
@@ -452,9 +556,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' && (int)$modalItem['id'] === 0 && $mod
 }
 $modalCategoria = in_array((string)$modalItem['categoria'], ['Pacote', 'Serviço', 'Produto'], true) ? (string)$modalItem['categoria'] : 'Pacote';
 $modalIsPacote = $modalCategoria === 'Pacote';
+$modalIsServico = $modalCategoria === 'Serviço';
 $tiposEvento = pacotes_evento_tipos_evento_listar($pdo);
+$receitasCatalogo = cadastros_pp_receitas_listar($pdo);
+$modalReceitaIds = array_map('intval', is_array($modalItem['receita_ids'] ?? null) ? $modalItem['receita_ids'] : []);
 $editPriceVariations = [];
-if ($modalIsPacote && (int)$modalItem['id'] > 0) {
+if (($modalIsPacote || $modalIsServico) && (int)$modalItem['id'] > 0) {
     $editPriceVariations = pacotes_evento_preco_variacoes_listar($pdo, (int)$modalItem['id']);
 }
 $diasSemanaLabels = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom'];
@@ -465,6 +572,8 @@ $defaultPriceVariations = [
 ];
 $priceVariationsForForm = !empty($editPriceVariations) ? $editPriceVariations : $defaultPriceVariations;
 $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
+$defaultServicePricePeople = [50, 80, 100, 120, 150, 200];
+$servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] : ['nome' => 'Preço por quantidade de pessoas', 'dias_semana' => '1,2,3,4,5,6,7', 'ativo' => true, 'faixas' => []];
 ?>
 
 <style>
@@ -514,7 +623,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 .pp-field label { color: #334155; font-size: 0.82rem; font-weight: 800; }
 .pp-field input, .pp-field select, .pp-field textarea { width: 100%; border: 1px solid #d1d9e6; border-radius: 10px; padding: 0.68rem 0.78rem; color: #1e293b; background: #fff; }
 .pp-modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; border-top: 1px solid #e2e8f0; padding: 1rem; flex-shrink: 0; background: #fff; }
-.pp-service-fields.hidden, .pp-package-fields.hidden { display: none; }
+.pp-service-fields.hidden, .pp-package-fields.hidden, .pp-product-fields.hidden { display: none; }
 .pp-tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid #e2e8f0; margin-top: 0.25rem; }
 .pp-tab-button { border: none; border-radius: 9px 9px 0 0; background: transparent; color: #475569; cursor: pointer; font-weight: 900; padding: 0.65rem 0.9rem; }
 .pp-tab-button.active { background: #eff6ff; color: #1d4ed8; }
@@ -540,6 +649,16 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 .pp-gallery-name { font-weight: 900; color: #1e293b; font-size: 0.86rem; }
 .pp-gallery-meta { color: #64748b; font-size: 0.76rem; }
 .pp-gallery-empty { padding: 1rem; color: #64748b; }
+.pp-section-box { border: 1px solid #dbe6f3; border-radius: 12px; padding: 0.9rem; background: #f8fafc; display: grid; gap: 0.75rem; }
+.pp-service-price-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.65rem; }
+.pp-service-price-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 0.45rem; align-items: center; }
+.pp-service-price-row input { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #d1d9e6; border-radius: 8px; padding: 0.48rem 0.58rem; color: #1e293b; background: #fff; }
+.pp-recipe-search { max-width: 420px; }
+.pp-recipes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.55rem; max-height: 280px; overflow: auto; padding-right: 0.25rem; }
+.pp-recipe-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.55rem; align-items: start; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; padding: 0.65rem; color: #1e293b; }
+.pp-recipe-option input { margin-top: 0.15rem; }
+.pp-recipe-name { font-weight: 900; font-size: 0.88rem; }
+.pp-recipe-meta { color: #64748b; font-size: 0.76rem; margin-top: 0.15rem; }
 @media (max-width: 900px) { .pp-grid, .pp-price-head { grid-template-columns: 1fr; } }
 @media (max-width: 768px) {
     .pp-modal-backdrop { padding: 0.75rem; }
@@ -602,18 +721,28 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                         <tr>
                             <td><span class="pp-name"><?= cadastros_pp_e((string)$item['nome']) ?></span></td>
                             <td><span class="pp-pill"><?= cadastros_pp_e($categoria) ?></span></td>
-                            <td><?= $categoria === 'Pacote' ? (int)($item['pessoas_base'] ?? 0) . ' pessoas' : '-' ?></td>
+                            <td>
+                                <?php if ($categoria === 'Pacote'): ?>
+                                    <?= (int)($item['pessoas_base'] ?? 0) . ' pessoas' ?>
+                                <?php elseif ($categoria === 'Serviço'): ?>
+                                    Por quantidade
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <?php if ($categoria === 'Pacote'): ?>
                                     <span class="pp-pill"><?= $modeloPrecoItem === 'tabela' ? 'Tabela' : 'Simples' ?></span>
                                     <?php if (trim((string)($item['tipo_evento_real'] ?? '')) !== ''): ?>
                                         <div class="pp-muted"><?= cadastros_pp_e((string)($tiposEvento[(string)$item['tipo_evento_real']] ?? $item['tipo_evento_real'])) ?></div>
                                     <?php endif; ?>
+                                <?php elseif ($categoria === 'Serviço'): ?>
+                                    <span class="pp-pill">Por pessoa</span>
                                 <?php else: ?>
                                     <span class="pp-muted">-</span>
                                 <?php endif; ?>
                             </td>
-                            <td><?= cadastros_pp_money($valorVenda) ?></td>
+                            <td><?= $categoria === 'Serviço' ? '<span class="pp-muted">Tabela</span>' : cadastros_pp_money($valorVenda) ?></td>
                             <td>
                                 <div class="pp-row-actions">
                                     <form method="post">
@@ -671,7 +800,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                     <label for="pp-nome">Nome</label>
                     <input type="text" name="nome" id="pp-nome" maxlength="180" required value="<?= cadastros_pp_e((string)$modalItem['nome']) ?>">
                 </div>
-                <div class="pp-field pp-service-fields <?= $modalIsPacote ? 'hidden' : '' ?>">
+                <div class="pp-field pp-product-fields <?= $modalCategoria === 'Produto' ? '' : 'hidden' ?>">
                     <label for="pp-valor-venda">Valor de venda</label>
                     <input type="text" name="valor_venda" id="pp-valor-venda" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_venda']) ?>">
                 </div>
@@ -716,8 +845,85 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                     <label for="pp-descricao">Descrição</label>
                     <textarea name="descricao" id="pp-descricao" rows="14"><?= cadastros_pp_e((string)$modalItem['descricao']) ?></textarea>
                 </div>
+                <div class="pp-service-fields <?= $modalIsServico ? '' : 'hidden' ?>">
+                    <div class="pp-section-box">
+                        <div>
+                            <h3 class="pp-price-title">Valor por quantidade de pessoas</h3>
+                            <p class="pp-price-help">Informe o valor por pessoa para cada faixa. Exemplo: a partir de 80 pessoas, R$ 25,00 por pessoa.</p>
+                        </div>
+                        <?php if ((int)$modalItem['id'] > 0): ?>
+                            <?php
+                            $serviceFaixasMap = [];
+                            foreach (($servicePriceVariation['faixas'] ?? []) as $faixa) {
+                                $serviceFaixasMap[(int)($faixa['pessoas'] ?? 0)] = $faixa;
+                            }
+                            $servicePeople = array_values(array_unique(array_merge($defaultServicePricePeople, array_keys($serviceFaixasMap))));
+                            sort($servicePeople);
+                            ?>
+                            <input type="hidden" name="variacoes[0][nome]" value="Preço por quantidade de pessoas" form="pp-service-price-form">
+                            <input type="hidden" name="variacoes[0][ativo]" value="1" form="pp-service-price-form">
+                            <input type="hidden" name="variacoes[0][ordem]" value="1" form="pp-service-price-form">
+                            <?php foreach ([1, 2, 3, 4, 5, 6, 7] as $diaServico): ?>
+                                <input type="hidden" name="variacoes[0][dias_semana][]" value="<?= $diaServico ?>" form="pp-service-price-form">
+                            <?php endforeach; ?>
+                            <div class="pp-service-price-rows">
+                                <?php foreach ($servicePeople as $fIndex => $pessoas): ?>
+                                    <?php $faixa = $serviceFaixasMap[(int)$pessoas] ?? null; ?>
+                                    <div class="pp-service-price-row">
+                                        <input type="number" min="0" name="variacoes[0][faixas][<?= $fIndex ?>][pessoas]" value="<?= (int)$pessoas ?>" placeholder="Pessoas" form="pp-service-price-form">
+                                        <input type="text" inputmode="decimal" class="pp-price-money" name="variacoes[0][faixas][<?= $fIndex ?>][valor]" value="<?= $faixa ? cadastros_pp_e(pacotes_evento_format_money($faixa['valor'] ?? 0)) : '' ?>" placeholder="R$ por pessoa" form="pp-service-price-form">
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <p class="pp-price-help">Salve o serviço primeiro para liberar a tabela por quantidade de pessoas.</p>
+                        <?php endif; ?>
+                    </div>
+                    <div class="pp-section-box">
+                        <div>
+                            <h3 class="pp-price-title">Receitas do serviço</h3>
+                            <p class="pp-price-help">Selecione as receitas que fazem parte deste serviço.</p>
+                        </div>
+                        <div>
+                            <a class="pp-btn secondary" href="index.php?page=logistica_receitas">Cadastrar receita</a>
+                        </div>
+                        <input type="search" class="pp-recipe-search" id="pp-recipe-search" placeholder="Buscar receita">
+                        <?php if (!empty($receitasCatalogo)): ?>
+                            <div class="pp-recipes-grid" id="pp-recipes-grid">
+                                <?php foreach ($receitasCatalogo as $receita): ?>
+                                    <?php
+                                    $receitaId = (int)($receita['id'] ?? 0);
+                                    $receitaNome = (string)($receita['nome'] ?? '');
+                                    $receitaMeta = array_values(array_filter([
+                                        (string)($receita['tipologia'] ?? ''),
+                                        (int)($receita['rendimento_base_pessoas'] ?? 0) > 0 ? 'Rendimento: ' . (int)$receita['rendimento_base_pessoas'] : '',
+                                    ]));
+                                    ?>
+                                    <label class="pp-recipe-option" data-recipe-option data-search="<?= cadastros_pp_e(mb_strtolower($receitaNome . ' ' . implode(' ', $receitaMeta), 'UTF-8')) ?>">
+                                        <input type="checkbox" name="receita_ids[]" value="<?= $receitaId ?>" <?= in_array($receitaId, $modalReceitaIds, true) ? 'checked' : '' ?>>
+                                        <span>
+                                            <span class="pp-recipe-name"><?= cadastros_pp_e($receitaNome) ?></span>
+                                            <?php if (!empty($receitaMeta)): ?>
+                                                <span class="pp-recipe-meta"><?= cadastros_pp_e(implode(' | ', $receitaMeta)) ?></span>
+                                            <?php endif; ?>
+                                        </span>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <p class="pp-price-help">Nenhuma receita ativa encontrada no catálogo logístico.</p>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
         </form>
+        <?php if ($modalIsServico && (int)$modalItem['id'] > 0): ?>
+            <form method="post" id="pp-service-price-form">
+                <input type="hidden" name="action" value="save_prices">
+                <input type="hidden" name="active_tab" value="<?= cadastros_pp_e($activeTab) ?>">
+                <input type="hidden" name="id" value="<?= (int)$modalItem['id'] ?>">
+            </form>
+        <?php endif; ?>
         <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
             <form method="post" class="pp-price-section pp-package-fields pp-tab-panel" data-pp-panel="precos" id="pp-price-form">
                 <input type="hidden" name="action" value="save_prices">
@@ -793,6 +999,9 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
             <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
                 <button class="pp-btn secondary" type="submit" form="pp-price-form" data-pp-table-submit <?= (string)($modalItem['modelo_preco'] ?? 'simples') === 'tabela' ? '' : 'hidden disabled' ?>>Salvar tabela</button>
             <?php endif; ?>
+            <?php if ($modalIsServico && (int)$modalItem['id'] > 0): ?>
+                <button class="pp-btn secondary" type="submit" form="pp-service-price-form" data-pp-service-table-submit>Salvar tabela</button>
+            <?php endif; ?>
             <button class="pp-btn" type="submit" form="pp-form">Salvar</button>
         </div>
     </div>
@@ -840,6 +1049,7 @@ const ppCategoria = document.getElementById('pp-categoria');
 const ppModeloPreco = document.getElementById('pp-modelo-preco');
 const ppDescricao = document.getElementById('pp-descricao');
 const ppPackageMoneyFieldIds = ['pp-valor-pacote', 'pp-valor-convidado-adicional'];
+const ppMoneyFieldIds = ['pp-valor-venda', 'pp-valor-pacote', 'pp-valor-convidado-adicional'];
 let ppItems = {};
 try {
     ppItems = JSON.parse(document.getElementById('pp-items-json')?.textContent || '{}');
@@ -865,7 +1075,7 @@ function ppFormatMoneyField(field) {
 }
 
 function ppFormatPackageMoneyFields() {
-    ppPackageMoneyFieldIds.forEach((id) => ppFormatMoneyField(document.getElementById(id)));
+    ppMoneyFieldIds.forEach((id) => ppFormatMoneyField(document.getElementById(id)));
 }
 
 function initPpTiny() {
@@ -928,8 +1138,11 @@ function setTinyContent(html) {
 
 function updateCategoriaFields() {
     const isPacote = ppCategoria.value === 'Pacote';
+    const isServico = ppCategoria.value === 'Serviço';
+    const isProduto = ppCategoria.value === 'Produto';
     document.querySelectorAll('.pp-package-fields').forEach((el) => el.classList.toggle('hidden', !isPacote));
-    document.querySelectorAll('.pp-service-fields').forEach((el) => el.classList.toggle('hidden', isPacote));
+    document.querySelectorAll('.pp-service-fields').forEach((el) => el.classList.toggle('hidden', !isServico));
+    document.querySelectorAll('.pp-product-fields').forEach((el) => el.classList.toggle('hidden', !isProduto));
     updatePrecoTabState();
 }
 
@@ -1077,7 +1290,7 @@ ppForm?.addEventListener('submit', () => {
     ppFormatPackageMoneyFields();
 });
 
-ppPackageMoneyFieldIds.forEach((id) => {
+ppMoneyFieldIds.forEach((id) => {
     const field = document.getElementById(id);
     field?.addEventListener('input', () => ppFormatMoneyField(field));
     field?.addEventListener('blur', () => ppFormatMoneyField(field));
@@ -1097,6 +1310,14 @@ document.querySelectorAll('[data-gallery-image]').forEach((button) => {
             editor.insertContent(`<p><img src="${src}" alt="${name}" style="max-width:100%;height:auto;"></p>`);
         }
         closePpGalleryModal();
+    });
+});
+
+document.getElementById('pp-recipe-search')?.addEventListener('input', (event) => {
+    const term = String(event.target.value || '').trim().toLocaleLowerCase('pt-BR');
+    document.querySelectorAll('[data-recipe-option]').forEach((option) => {
+        const text = String(option.dataset.search || '').toLocaleLowerCase('pt-BR');
+        option.hidden = term !== '' && !text.includes(term);
     });
 });
 
