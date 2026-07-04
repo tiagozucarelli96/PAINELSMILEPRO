@@ -44,7 +44,6 @@ function eventos_cliente_pendencias_whatsapp_data(?string $refDate = null): stri
 
 function eventos_cliente_pendencias_whatsapp_eventos(PDO $pdo, string $eventDate, int $limit): array
 {
-    eventos_reuniao_ensure_schema($pdo);
     $limit = max(1, min(500, $limit));
 
     $stmt = $pdo->prepare("
@@ -68,6 +67,42 @@ function eventos_cliente_pendencias_whatsapp_eventos(PDO $pdo, string $eventDate
     ");
     $stmt->execute([':event_date' => $eventDate]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function eventos_cliente_pendencias_whatsapp_listar_links(PDO $pdo, int $meetingId, string $linkType): array
+{
+    $stmt = $pdo->prepare("
+        SELECT
+            id,
+            is_active,
+            portal_visible,
+            portal_editable,
+            portal_configured,
+            form_schema_json,
+            submitted_at,
+            draft_saved_at
+        FROM eventos_links_publicos
+        WHERE meeting_id = :meeting_id
+          AND link_type = :link_type
+          AND is_active = TRUE
+        ORDER BY COALESCE(slot_index, 1) ASC, id DESC
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meetingId,
+        ':link_type' => $linkType,
+    ]);
+
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($rows as &$row) {
+        $decoded = json_decode((string)($row['form_schema_json'] ?? '[]'), true);
+        $row['form_schema'] = is_array($decoded) ? $decoded : [];
+        $row['portal_visible'] = !empty($row['portal_visible']);
+        $row['portal_editable'] = !empty($row['portal_editable']);
+        $row['submitted_at'] = array_key_exists('submitted_at', $row) && $row['submitted_at'] !== null ? (string)$row['submitted_at'] : null;
+    }
+    unset($row);
+
+    return $rows;
 }
 
 function eventos_cliente_pendencias_whatsapp_snapshot(array $evento): array
@@ -113,7 +148,7 @@ function eventos_cliente_pendencias_whatsapp_tem_form_fields($schema): bool
 function eventos_cliente_pendencias_whatsapp_formulario_pendente(PDO $pdo, int $meetingId): bool
 {
     foreach (['cliente_dj', 'cliente_formulario'] as $linkType) {
-        foreach (eventos_reuniao_listar_links_cliente($pdo, $meetingId, $linkType) as $link) {
+        foreach (eventos_cliente_pendencias_whatsapp_listar_links($pdo, $meetingId, $linkType) as $link) {
             if (empty($link['is_active']) || empty($link['portal_visible']) || empty($link['portal_editable'])) {
                 continue;
             }
@@ -129,19 +164,116 @@ function eventos_cliente_pendencias_whatsapp_formulario_pendente(PDO $pdo, int $
     return false;
 }
 
+function eventos_cliente_pendencias_whatsapp_cardapio_resumo(PDO $pdo, int $meetingId): array
+{
+    $emptySummary = [
+        'has_pacote' => false,
+        'secoes_total' => 0,
+        'itens_total' => 0,
+        'submitted_at' => '',
+    ];
+
+    $stmt = $pdo->prepare("
+        SELECT pacote_evento_id
+        FROM eventos_reunioes
+        WHERE id = :meeting_id
+        LIMIT 1
+    ");
+    $stmt->execute([':meeting_id' => $meetingId]);
+    $pacoteId = (int)($stmt->fetchColumn() ?: 0);
+    if ($pacoteId <= 0) {
+        return $emptySummary;
+    }
+
+    $summary = $emptySummary;
+    $summary['has_pacote'] = true;
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)::int AS secoes_total
+        FROM logistica_pacotes_evento_secoes ps
+        JOIN logistica_cardapio_secoes s ON s.id = ps.secao_cardapio_id
+        WHERE ps.pacote_evento_id = :pacote_id
+          AND s.deleted_at IS NULL
+          AND s.ativo = TRUE
+    ");
+    $stmt->execute([':pacote_id' => $pacoteId]);
+    $summary['secoes_total'] = (int)($stmt->fetchColumn() ?: 0);
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)::int
+        FROM (
+            SELECT DISTINCT ps.secao_cardapio_id, ip.item_tipo, ip.item_id
+            FROM logistica_pacotes_evento_secoes ps
+            JOIN logistica_cardapio_item_pacotes ip
+                ON ip.pacote_evento_id = ps.pacote_evento_id
+            JOIN logistica_cardapio_item_secoes isec
+                ON isec.item_tipo = ip.item_tipo
+               AND isec.item_id = ip.item_id
+               AND isec.secao_cardapio_id = ps.secao_cardapio_id
+            LEFT JOIN logistica_insumos i
+                ON ip.item_tipo = 'insumo'
+               AND i.id = ip.item_id
+            LEFT JOIN logistica_receitas r
+                ON ip.item_tipo = 'receita'
+               AND r.id = ip.item_id
+            WHERE ps.pacote_evento_id = :pacote_id
+              AND (
+                  (ip.item_tipo = 'insumo' AND i.ativo = TRUE)
+                  OR
+                  (ip.item_tipo = 'receita' AND r.ativo = TRUE)
+              )
+        ) itens_validos
+    ");
+    $stmt->execute([':pacote_id' => $pacoteId]);
+    $summary['itens_total'] = (int)($stmt->fetchColumn() ?: 0);
+
+    $stmt = $pdo->prepare("
+        SELECT submitted_at
+        FROM eventos_cardapio_respostas
+        WHERE meeting_id = :meeting_id
+        LIMIT 1
+    ");
+    $stmt->execute([':meeting_id' => $meetingId]);
+    $submittedAt = $stmt->fetchColumn();
+    $summary['submitted_at'] = is_string($submittedAt) ? $submittedAt : '';
+
+    return $summary;
+}
+
 function eventos_cliente_pendencias_whatsapp_cardapio_pendente(PDO $pdo, array $evento): bool
 {
     if (empty($evento['visivel_cardapio']) || empty($evento['editavel_cardapio'])) {
         return false;
     }
 
-    $summary = logistica_cardapio_evento_resumo($pdo, (int)$evento['id']);
-    $data = $summary['summary'] ?? [];
+    $data = eventos_cliente_pendencias_whatsapp_cardapio_resumo($pdo, (int)$evento['id']);
     if (empty($data['has_pacote']) || (int)($data['secoes_total'] ?? 0) <= 0 || (int)($data['itens_total'] ?? 0) <= 0) {
         return false;
     }
 
     return trim((string)($data['submitted_at'] ?? '')) === '';
+}
+
+function eventos_cliente_pendencias_whatsapp_convidados_resumo(PDO $pdo, int $meetingId): array
+{
+    $stmt = $pdo->prepare("
+        SELECT
+            COUNT(*)::int AS total,
+            COALESCE(SUM(CASE WHEN COALESCE(is_draft, FALSE) THEN 1 ELSE 0 END), 0)::int AS rascunho
+        FROM eventos_convidados
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+    ");
+    $stmt->execute([':meeting_id' => $meetingId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['total' => 0, 'rascunho' => 0];
+    $total = (int)($row['total'] ?? 0);
+    $rascunho = (int)($row['rascunho'] ?? 0);
+
+    return [
+        'total' => $total,
+        'rascunho' => $rascunho,
+        'publicados' => max(0, $total - $rascunho),
+    ];
 }
 
 function eventos_cliente_pendencias_whatsapp_convidados_pendente(PDO $pdo, array $evento): bool
@@ -150,7 +282,7 @@ function eventos_cliente_pendencias_whatsapp_convidados_pendente(PDO $pdo, array
         return false;
     }
 
-    $resumo = eventos_convidados_resumo($pdo, (int)$evento['id']);
+    $resumo = eventos_cliente_pendencias_whatsapp_convidados_resumo($pdo, (int)$evento['id']);
     return (int)($resumo['publicados'] ?? 0) <= 0;
 }
 
@@ -289,8 +421,6 @@ function eventos_cliente_pendencias_whatsapp_datas_excluidas($dates): array
 function eventos_cliente_pendencias_whatsapp_processar(PDO $pdo, array $options = []): array
 {
     eventos_cliente_pendencias_whatsapp_ensure_schema($pdo);
-    logistica_cardapio_ensure_schema($pdo);
-    eventos_reuniao_ensure_schema($pdo);
 
     $dryRun = !empty($options['dry_run']);
     $refDate = eventos_cliente_pendencias_whatsapp_data($options['ref_date'] ?? null);

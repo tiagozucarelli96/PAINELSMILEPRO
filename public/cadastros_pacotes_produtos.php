@@ -154,6 +154,10 @@ $modalItem = [
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim((string)($_POST['action'] ?? ''));
+    $postActiveTab = trim((string)($_POST['active_tab'] ?? 'pacotes'));
+    if (!in_array($postActiveTab, ['pacotes', 'servicos', 'produtos'], true)) {
+        $postActiveTab = 'pacotes';
+    }
 
     if ($action === 'save') {
         $id = (int)($_POST['id'] ?? 0);
@@ -230,7 +234,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                     $_SESSION['cadastros_pp_success'] = 'Cadastro criado com sucesso.';
                 }
-                header('Location: index.php?page=cadastros_pacotes_produtos#pp-listagem');
+                $redirectTab = ['Pacote' => 'pacotes', 'Serviço' => 'servicos', 'Produto' => 'produtos'][$categoria] ?? 'pacotes';
+                header('Location: index.php?page=cadastros_pacotes_produtos&tab=' . $redirectTab . '#pp-listagem');
                 exit;
             } catch (Throwable $e) {
                 error_log('cadastros_pp save: ' . $e->getMessage());
@@ -245,7 +250,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = pacotes_evento_preco_variacoes_salvar($pdo, $id, $_POST['variacoes'] ?? []);
             if (!empty($result['ok'])) {
                 $_SESSION['cadastros_pp_success'] = 'Tabela de valores salva com sucesso.';
-                header('Location: index.php?page=cadastros_pacotes_produtos&edit_id=' . $id . '#pp-modal');
+                header('Location: index.php?page=cadastros_pacotes_produtos&tab=pacotes&edit_id=' . $id . '#pp-modal');
                 exit;
             }
             $errors[] = (string)($result['error'] ?? 'Não foi possível salvar a tabela de valores.');
@@ -285,7 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             $_SESSION['cadastros_pp_success'] = 'Cadastro duplicado com sucesso.';
-            header('Location: index.php?page=cadastros_pacotes_produtos');
+            header('Location: index.php?page=cadastros_pacotes_produtos&tab=' . $postActiveTab);
             exit;
         } catch (Throwable $e) {
             error_log('cadastros_pp duplicate: ' . $e->getMessage());
@@ -309,7 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':user_id' => $userId > 0 ? $userId : null,
             ]);
             $_SESSION['cadastros_pp_success'] = 'Cadastro arquivado com sucesso.';
-            header('Location: index.php?page=cadastros_pacotes_produtos');
+            header('Location: index.php?page=cadastros_pacotes_produtos&tab=' . $postActiveTab);
             exit;
         } catch (Throwable $e) {
             error_log('cadastros_pp archive: ' . $e->getMessage());
@@ -385,6 +390,29 @@ try {
     $errors[] = 'Não foi possível carregar a listagem.';
 }
 
+$categoriaTabs = [
+    'pacotes' => ['label' => 'Pacotes', 'categoria' => 'Pacote'],
+    'servicos' => ['label' => 'Serviços', 'categoria' => 'Serviço'],
+    'produtos' => ['label' => 'Produtos', 'categoria' => 'Produto'],
+];
+$activeTab = trim((string)($queryParams['tab'] ?? 'pacotes'));
+if (!isset($categoriaTabs[$activeTab])) {
+    $activeTab = 'pacotes';
+}
+$itensPorCategoria = [];
+foreach ($categoriaTabs as $tabKey => $tabConfig) {
+    $itensPorCategoria[(string)$tabConfig['categoria']] = [];
+}
+foreach ($itens as $item) {
+    $categoriaItem = trim((string)($item['categoria'] ?? 'Pacote'));
+    if (!isset($itensPorCategoria[$categoriaItem])) {
+        $categoriaItem = 'Pacote';
+    }
+    $itensPorCategoria[$categoriaItem][] = $item;
+}
+$activeCategoria = (string)$categoriaTabs[$activeTab]['categoria'];
+$itensListagem = $itensPorCategoria[$activeCategoria] ?? [];
+
 $galeriaItens = [];
 try {
     $table = $pdo->query("SELECT to_regclass('eventos_galeria')")->fetchColumn();
@@ -419,6 +447,9 @@ try {
 
 includeSidebar('Pacotes, Serviços e Produtos');
 
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && (int)$modalItem['id'] === 0 && $modalOpen) {
+    $modalItem['categoria'] = $activeCategoria;
+}
 $modalCategoria = in_array((string)$modalItem['categoria'], ['Pacote', 'Serviço', 'Produto'], true) ? (string)$modalItem['categoria'] : 'Pacote';
 $modalIsPacote = $modalCategoria === 'Pacote';
 $tiposEvento = pacotes_evento_tipos_evento_listar($pdo);
@@ -450,6 +481,11 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 .pp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07); overflow: hidden; }
 .pp-card-header { padding: 1rem 1.1rem; border-bottom: 1px solid #e2e8f0; background: #f8fbff; }
 .pp-card-title { margin: 0; color: #1e293b; font-weight: 800; font-size: 1.05rem; }
+.pp-list-tabs { display: flex; gap: 0.45rem; flex-wrap: wrap; padding: 0.8rem 1.1rem 0; background: #f8fbff; }
+.pp-list-tab { border: 1px solid #dbe3ef; border-bottom-color: #cbd5e1; border-radius: 10px 10px 0 0; background: #fff; color: #475569; font-weight: 900; padding: 0.62rem 0.9rem; text-decoration: none; display: inline-flex; gap: 0.45rem; align-items: center; }
+.pp-list-tab.active { background: #1e3a8a; border-color: #1e3a8a; color: #fff; }
+.pp-list-count { border-radius: 999px; background: rgba(15, 23, 42, 0.08); padding: 0.12rem 0.45rem; font-size: 0.76rem; }
+.pp-list-tab.active .pp-list-count { background: rgba(255, 255, 255, 0.18); }
 .pp-table-wrap { overflow: auto; }
 .pp-table { width: 100%; border-collapse: collapse; min-width: 980px; }
 .pp-table th, .pp-table td { padding: 0.85rem; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: middle; }
@@ -519,7 +555,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
         </div>
         <div class="pp-actions">
             <a class="pp-btn secondary" href="index.php?page=cadastros">← Cadastros</a>
-            <a class="pp-btn" href="index.php?page=cadastros_pacotes_produtos&novo=1#pp-modal" data-open-pp-modal>+ Adicionar</a>
+            <a class="pp-btn" href="index.php?page=cadastros_pacotes_produtos&tab=<?= cadastros_pp_e($activeTab) ?>&novo=1#pp-modal" data-open-pp-modal>+ Adicionar</a>
         </div>
     </div>
 
@@ -528,6 +564,22 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 
     <section class="pp-card" id="pp-listagem">
         <div class="pp-card-header"><h2 class="pp-card-title">Listagem</h2></div>
+        <nav class="pp-list-tabs" aria-label="Categorias da listagem">
+            <?php foreach ($categoriaTabs as $tabKey => $tabConfig): ?>
+                <?php
+                $tabCategoria = (string)$tabConfig['categoria'];
+                $tabCount = count($itensPorCategoria[$tabCategoria] ?? []);
+                ?>
+                <a
+                    class="pp-list-tab <?= $activeTab === $tabKey ? 'active' : '' ?>"
+                    href="index.php?page=cadastros_pacotes_produtos&tab=<?= cadastros_pp_e((string)$tabKey) ?>#pp-listagem"
+                    <?= $activeTab === $tabKey ? 'aria-current="page"' : '' ?>
+                >
+                    <span><?= cadastros_pp_e((string)$tabConfig['label']) ?></span>
+                    <span class="pp-list-count"><?= (int)$tabCount ?></span>
+                </a>
+            <?php endforeach; ?>
+        </nav>
         <div class="pp-table-wrap">
             <table class="pp-table">
                 <thead>
@@ -541,7 +593,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($itens as $item): ?>
+                    <?php foreach ($itensListagem as $item): ?>
                         <?php
                         $categoria = trim((string)($item['categoria'] ?? 'Pacote'));
                         $valorVenda = $categoria === 'Pacote' ? ($item['valor_pacote'] ?? 0) : ($item['valor_venda'] ?? 0);
@@ -566,17 +618,19 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                                 <div class="pp-row-actions">
                                     <form method="post">
                                         <input type="hidden" name="action" value="duplicate">
+                                        <input type="hidden" name="active_tab" value="<?= cadastros_pp_e($activeTab) ?>">
                                         <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
                                         <button class="pp-icon-btn copy" type="submit" title="Duplicar">⧉</button>
                                     </form>
                                     <a
                                         class="pp-icon-btn edit"
-                                        href="index.php?page=cadastros_pacotes_produtos&edit_id=<?= (int)$item['id'] ?>#pp-modal"
+                                        href="index.php?page=cadastros_pacotes_produtos&tab=<?= cadastros_pp_e($activeTab) ?>&edit_id=<?= (int)$item['id'] ?>#pp-modal"
                                         title="Editar"
                                         data-id="<?= (int)$item['id'] ?>"
                                     >✎</a>
                                     <form method="post" onsubmit="return confirm('Arquivar este cadastro?');">
                                         <input type="hidden" name="action" value="archive">
+                                        <input type="hidden" name="active_tab" value="<?= cadastros_pp_e($activeTab) ?>">
                                         <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
                                         <button class="pp-icon-btn delete" type="submit" title="Arquivar">🗑</button>
                                     </form>
@@ -584,8 +638,8 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
                             </td>
                         </tr>
                     <?php endforeach; ?>
-                    <?php if (empty($itens)): ?>
-                        <tr><td colspan="6">Nenhum cadastro encontrado.</td></tr>
+                    <?php if (empty($itensListagem)): ?>
+                        <tr><td colspan="6">Nenhum cadastro encontrado em <?= cadastros_pp_e((string)$categoriaTabs[$activeTab]['label']) ?>.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
@@ -602,6 +656,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
         <div class="pp-modal-scroll">
         <form method="post" class="pp-form" id="pp-form">
             <input type="hidden" name="action" value="save">
+            <input type="hidden" name="active_tab" value="<?= cadastros_pp_e($activeTab) ?>">
             <input type="hidden" name="id" id="pp-id" value="<?= (int)$modalItem['id'] ?>">
             <div class="pp-grid">
                 <div class="pp-field">
@@ -666,6 +721,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
         <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
             <form method="post" class="pp-price-section pp-package-fields pp-tab-panel" data-pp-panel="precos" id="pp-price-form">
                 <input type="hidden" name="action" value="save_prices">
+                <input type="hidden" name="active_tab" value="<?= cadastros_pp_e($activeTab) ?>">
                 <input type="hidden" name="id" value="<?= (int)$modalItem['id'] ?>">
                 <div>
                     <h3 class="pp-price-title">Tabela de valores</h3>
@@ -733,7 +789,7 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
         <?php endif; ?>
         </div>
         <div class="pp-modal-actions">
-            <a class="pp-btn secondary" href="index.php?page=cadastros_pacotes_produtos" data-close-pp-modal>Cancelar</a>
+            <a class="pp-btn secondary" href="index.php?page=cadastros_pacotes_produtos&tab=<?= cadastros_pp_e($activeTab) ?>" data-close-pp-modal>Cancelar</a>
             <?php if ($modalIsPacote && (int)$modalItem['id'] > 0): ?>
                 <button class="pp-btn secondary" type="submit" form="pp-price-form" data-pp-table-submit <?= (string)($modalItem['modelo_preco'] ?? 'simples') === 'tabela' ? '' : 'hidden disabled' ?>>Salvar tabela</button>
             <?php endif; ?>
@@ -775,6 +831,8 @@ $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
 <script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js"></script>
 <script type="application/json" id="pp-items-json"><?= json_encode(array_column($itens, null, 'id'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?></script>
 <script>
+const ppActiveTab = <?= json_encode($activeTab, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const ppDefaultCategoria = <?= json_encode($activeCategoria, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const ppModal = document.getElementById('pp-modal');
 const ppGalleryModal = document.getElementById('pp-gallery-modal');
 const ppForm = document.getElementById('pp-form');
@@ -907,7 +965,7 @@ function updatePrecoTabState() {
 function openPpModal(data = null) {
     document.getElementById('pp-modal-title').textContent = data ? 'Editar cadastro' : 'Adicionar cadastro';
     document.getElementById('pp-id').value = data?.id || '0';
-    ppCategoria.value = data?.categoria || 'Pacote';
+    ppCategoria.value = data?.categoria || ppDefaultCategoria || 'Pacote';
     document.getElementById('pp-nome').value = data?.nome || '';
     document.getElementById('pp-tipo-evento-real').value = data?.tipoEventoReal || '';
     document.getElementById('pp-modelo-preco').value = data?.modeloPreco || 'simples';
@@ -928,7 +986,7 @@ function closePpModal() {
     if (!ppModal) return;
     ppModal.classList.remove('open');
     ppModal.style.display = 'none';
-    history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos');
+    history.replaceState(null, '', `index.php?page=cadastros_pacotes_produtos&tab=${ppActiveTab}`);
 }
 
 function getPpItemModalData(id) {
@@ -975,7 +1033,7 @@ function openPpModalFromUrl() {
 
 document.querySelector('[data-open-pp-modal]')?.addEventListener('click', (event) => {
     event.preventDefault();
-    history.replaceState(null, '', 'index.php?page=cadastros_pacotes_produtos&novo=1#pp-modal');
+    history.replaceState(null, '', `index.php?page=cadastros_pacotes_produtos&tab=${ppActiveTab}&novo=1#pp-modal`);
     openPpModal();
 });
 document.querySelectorAll('[data-close-pp-modal]').forEach((button) => button.addEventListener('click', (event) => {
@@ -999,7 +1057,7 @@ document.querySelectorAll('[data-pp-tab]').forEach((button) => {
 document.querySelectorAll('[data-edit-pp]').forEach((button) => {
     button.addEventListener('click', (event) => {
         event.preventDefault();
-        history.replaceState(null, '', `index.php?page=cadastros_pacotes_produtos&edit_id=${button.dataset.id || ''}#pp-modal`);
+        history.replaceState(null, '', `index.php?page=cadastros_pacotes_produtos&tab=${ppActiveTab}&edit_id=${button.dataset.id || ''}#pp-modal`);
         openPpModal(getPpItemModalData(button.dataset.id || ''));
     });
 });
