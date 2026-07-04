@@ -48,6 +48,7 @@ $edit_item = [
     'descricao' => '',
     'ordem' => 0,
     'ativo' => true,
+    'visivel_portal_infantil' => false,
 ];
 
 if ($edit_id > 0) {
@@ -68,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $descricao = trim((string)($_POST['descricao'] ?? ''));
         $ordem = (int)($_POST['ordem'] ?? 0);
         $ativo = ((string)($_POST['ativo'] ?? '0') === '1');
+        $visivel_portal_infantil = ((string)($_POST['visivel_portal_infantil'] ?? '0') === '1');
 
         $edit_item = [
             'id' => $secao_id,
@@ -75,9 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'descricao' => $descricao,
             'ordem' => $ordem,
             'ativo' => $ativo,
+            'visivel_portal_infantil' => $visivel_portal_infantil,
         ];
 
-        $result = logistica_cardapio_secao_salvar($pdo, $secao_id, $nome, $descricao, $ordem, $ativo, $user_id);
+        $result = logistica_cardapio_secao_salvar($pdo, $secao_id, $nome, $descricao, $ordem, $ativo, $user_id, $visivel_portal_infantil);
         if (!empty($result['ok'])) {
             $_SESSION[$flash_key] = [
                 'messages' => [
@@ -123,6 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'descricao' => '',
                     'ordem' => 0,
                     'ativo' => true,
+                    'visivel_portal_infantil' => false,
                 ];
             }
         } else {
@@ -383,6 +387,11 @@ includeSidebar('Seções de Cardápio');
                 <span>Seção ativa</span>
             </label>
 
+            <label class="form-check">
+                <input type="checkbox" name="visivel_portal_infantil" value="1" <?= !empty($edit_item['visivel_portal_infantil']) ? 'checked' : '' ?>>
+                <span>Visível no portal infantil</span>
+            </label>
+
             <div class="form-actions">
                 <button type="submit" class="btn-primary">Salvar seção</button>
                 <?php if ((int)$edit_item['id'] > 0): ?>
@@ -401,6 +410,7 @@ includeSidebar('Seções de Cardápio');
                         <th>Nome</th>
                         <th>Descrição</th>
                         <th>Ordem</th>
+                        <th>Portal infantil</th>
                         <th>Status</th>
                         <th>Atualizado</th>
                         <th>Ações</th>
@@ -418,6 +428,7 @@ includeSidebar('Seções de Cardápio');
                             <td><?= logistica_cardapio_secoes_e((string)($secao['nome'] ?? '')) ?></td>
                             <td><?= logistica_cardapio_secoes_e((string)($secao['descricao'] ?? '')) ?></td>
                             <td><?= (int)($secao['ordem'] ?? 0) ?></td>
+                            <td><?= !empty($secao['visivel_portal_infantil']) ? 'Sim' : 'Não' ?></td>
                             <td>
                                 <span class="status-pill <?= $is_ativo ? 'status-ativo' : 'status-inativo' ?>">
                                     <?= $is_ativo ? 'Ativa' : 'Inativa' ?>
@@ -447,7 +458,7 @@ includeSidebar('Seções de Cardápio');
                     <?php endforeach; ?>
                     <?php if (empty($secoes)): ?>
                         <tr>
-                            <td colspan="6">Nenhuma seção cadastrada.</td>
+                            <td colspan="7">Nenhuma seção cadastrada.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>

@@ -42,6 +42,8 @@ if ($token === '') {
             $contexto_cardapio = logistica_cardapio_evento_contexto($pdo, (int)$reuniao['id']);
             if (empty($contexto_cardapio['ok'])) {
                 $error = (string)($contexto_cardapio['error'] ?? 'Não foi possível carregar o cardápio.');
+            } else {
+                $contexto_cardapio = logistica_cardapio_contexto_filtrar_portal_cliente($contexto_cardapio);
             }
 
             if ($error === '' && empty($portal['visivel_cardapio'])) {
@@ -66,6 +68,7 @@ if ($token === '') {
                         if (!empty($result['ok'])) {
                             $success = 'Escolhas salvas com sucesso. O cardápio foi bloqueado para nova edição.';
                             $contexto_cardapio = logistica_cardapio_evento_contexto($pdo, (int)$reuniao['id']);
+                            $contexto_cardapio = logistica_cardapio_contexto_filtrar_portal_cliente($contexto_cardapio);
                         } else {
                             $error = (string)($result['error'] ?? 'Não foi possível salvar as escolhas do cardápio.');
                         }

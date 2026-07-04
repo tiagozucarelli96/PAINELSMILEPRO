@@ -140,6 +140,7 @@ function logistica_cardapio_normalizar_secao_row(array $row): array
     $row['descricao'] = trim((string)($row['descricao'] ?? ''));
     $row['ordem'] = (int)($row['ordem'] ?? 0);
     $row['ativo'] = !empty($row['ativo']);
+    $row['visivel_portal_infantil'] = !empty($row['visivel_portal_infantil']);
     return $row;
 }
 
@@ -155,6 +156,7 @@ function logistica_cardapio_normalizar_pacote_secao_row(array $row): array
     $row['secao_nome'] = trim((string)($row['secao_nome'] ?? $row['nome'] ?? ''));
     $row['secao_descricao'] = trim((string)($row['secao_descricao'] ?? ''));
     $row['secao_ativo'] = !array_key_exists('secao_ativo', $row) || !empty($row['secao_ativo']);
+    $row['secao_visivel_portal_infantil'] = !empty($row['secao_visivel_portal_infantil']);
     return $row;
 }
 
@@ -173,6 +175,61 @@ function logistica_cardapio_slug_simples(string $value): string
     ];
     $value = strtr($value, $map);
     return preg_replace('/[^a-z0-9]+/', ' ', $value) ?: '';
+}
+
+function logistica_cardapio_tipo_evento_eh_infantil(?string $tipo_evento_real, ?string $pacote_nome = null): bool
+{
+    $tipo_slug = trim(logistica_cardapio_slug_simples((string)$tipo_evento_real));
+    if (in_array($tipo_slug, ['infantil', 'festa infantil', 'aniversario infantil'], true)) {
+        return true;
+    }
+
+    $pacote_slug = trim(logistica_cardapio_slug_simples((string)$pacote_nome));
+    return in_array($pacote_slug, ['diver', 'diverkids', 'diver kids'], true);
+}
+
+function logistica_cardapio_recalcular_summary(array &$contexto): void
+{
+    $secoes = $contexto['secoes'] ?? [];
+    $contexto['summary']['secoes_total'] = count($secoes);
+    $contexto['summary']['itens_total'] = array_sum(array_map(static fn($secao) => count($secao['itens'] ?? []), $secoes));
+    $contexto['summary']['selecionados_total'] = array_sum(array_map(static fn($secao) => (int)($secao['selected_count'] ?? 0), $secoes));
+}
+
+function logistica_cardapio_contexto_filtrar_portal_cliente(array $contexto): array
+{
+    if (empty($contexto['ok'])) {
+        return $contexto;
+    }
+
+    $visibleSectionIds = [];
+    $secoes = [];
+    foreach (($contexto['secoes'] ?? []) as $secao) {
+        if (!empty($secao['visivel_portal_cliente'])) {
+            $visibleSectionIds[(int)($secao['id'] ?? 0)] = true;
+            $secoes[] = $secao;
+        }
+    }
+
+    $exclusiveGroups = [];
+    foreach (($contexto['exclusive_groups'] ?? []) as $group) {
+        $options = [];
+        foreach (($group['options'] ?? []) as $option) {
+            $secaoId = (int)($option['secao_id'] ?? 0);
+            if ($secaoId > 0 && !empty($visibleSectionIds[$secaoId])) {
+                $options[] = $option;
+            }
+        }
+        if (!empty($options)) {
+            $group['options'] = $options;
+            $exclusiveGroups[] = $group;
+        }
+    }
+
+    $contexto['secoes'] = $secoes;
+    $contexto['exclusive_groups'] = $exclusiveGroups;
+    logistica_cardapio_recalcular_summary($contexto);
+    return $contexto;
 }
 
 function logistica_cardapio_resposta_normalizar(?array $row): ?array
@@ -194,6 +251,81 @@ function logistica_cardapio_schema_marker_path(bool $withMeetingSchema): string
     return $withMeetingSchema
         ? '/tmp/logistica_cardapio_schema_full_ready_v3'
         : '/tmp/logistica_cardapio_schema_basic_ready_v3';
+}
+
+function logistica_cardapio_ensure_secao_infantil_schema(PDO $pdo): void
+{
+    static $done = false;
+    if ($done || !painel_runtime_schema_setup_enabled()) {
+        return;
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS visivel_portal_infantil BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("
+            UPDATE logistica_cardapio_secoes
+            SET visivel_portal_infantil = TRUE,
+                updated_at = NOW()
+            WHERE deleted_at IS NULL
+              AND (
+                  lower(trim(nome)) IN ('massa do bolo', 'recheio do bolo', 'sabor do bolo')
+                  OR lower(nome) LIKE '%sabor%bolo%'
+              )
+        ");
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_ensure_secao_infantil_schema: ' . $e->getMessage());
+    }
+
+    $done = true;
+}
+
+function logistica_cardapio_schema_basico_pronto(PDO $pdo, bool $withMeetingSchema): bool
+{
+    try {
+        $requiredTables = [
+            'logistica_cardapio_secoes',
+            'logistica_pacotes_evento_secoes',
+            'logistica_cardapio_item_pacotes',
+            'logistica_cardapio_item_secoes',
+        ];
+        if ($withMeetingSchema) {
+            $requiredTables[] = 'eventos_cardapio_respostas';
+            $requiredTables[] = 'eventos_cardapio_resposta_itens';
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($requiredTables as $index => $table) {
+            $key = ':table_' . $index;
+            $placeholders[] = $key;
+            $params[$key] = $table;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)::int
+            FROM information_schema.tables
+            WHERE table_schema = CURRENT_SCHEMA()
+              AND table_name IN (" . implode(', ', $placeholders) . ")
+        ");
+        $stmt->execute($params);
+        if ((int)$stmt->fetchColumn() !== count($requiredTables)) {
+            return false;
+        }
+
+        $stmt = $pdo->query("
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = CURRENT_SCHEMA()
+                  AND table_name = 'logistica_cardapio_secoes'
+                  AND column_name = 'visivel_portal_infantil'
+            )
+        ");
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_schema_basico_pronto: ' . $e->getMessage());
+        return false;
+    }
 }
 
 function logistica_cardapio_ensure_pacote_secao_regras_schema(PDO $pdo): void
@@ -242,8 +374,16 @@ function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = tr
         return;
     }
 
+    logistica_cardapio_ensure_secao_infantil_schema($pdo);
+
     if (logistica_cardapio_schema_marker_is_fresh($withMeetingSchema)) {
         $done[$cacheKey] = true;
+        return;
+    }
+
+    if (logistica_cardapio_schema_basico_pronto($pdo, $withMeetingSchema)) {
+        $done[$cacheKey] = true;
+        logistica_cardapio_touch_schema_marker($withMeetingSchema);
         return;
     }
 
@@ -264,6 +404,7 @@ function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = tr
                 descricao TEXT NULL,
                 ordem INTEGER NOT NULL DEFAULT 0,
                 ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                visivel_portal_infantil BOOLEAN NOT NULL DEFAULT FALSE,
                 created_by_user_id INTEGER NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -275,11 +416,22 @@ function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = tr
         $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS descricao TEXT NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS ordem INTEGER NOT NULL DEFAULT 0");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS visivel_portal_infantil BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS deleted_by_user_id INTEGER NULL");
+        $pdo->exec("
+            UPDATE logistica_cardapio_secoes
+            SET visivel_portal_infantil = TRUE,
+                updated_at = NOW()
+            WHERE deleted_at IS NULL
+              AND (
+                  lower(trim(nome)) IN ('massa do bolo', 'recheio do bolo', 'sabor do bolo')
+                  OR lower(nome) LIKE '%sabor%bolo%'
+              )
+        ");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_cardapio_secoes_nome ON logistica_cardapio_secoes(lower(nome))");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_cardapio_secoes_status ON logistica_cardapio_secoes(ativo, deleted_at, ordem)");
     } catch (Throwable $e) {
@@ -471,7 +623,8 @@ function logistica_cardapio_secao_salvar(
     ?string $descricao = null,
     int $ordem = 0,
     bool $ativo = true,
-    int $user_id = 0
+    int $user_id = 0,
+    bool $visivel_portal_infantil = false
 ): array {
     logistica_cardapio_ensure_schema($pdo, false);
 
@@ -497,6 +650,7 @@ function logistica_cardapio_secao_salvar(
                     descricao = :descricao,
                     ordem = :ordem,
                     ativo = :ativo,
+                    visivel_portal_infantil = :visivel_portal_infantil,
                     updated_at = NOW()
                 WHERE id = :id
                   AND deleted_at IS NULL
@@ -507,6 +661,7 @@ function logistica_cardapio_secao_salvar(
                 ':descricao' => $descricao !== '' ? $descricao : null,
                 ':ordem' => max(0, $ordem),
                 ':ativo' => $ativo ? 1 : 0,
+                ':visivel_portal_infantil' => $visivel_portal_infantil ? 1 : 0,
                 ':id' => $secao_id,
             ]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -518,9 +673,9 @@ function logistica_cardapio_secao_salvar(
 
         $stmt = $pdo->prepare("
             INSERT INTO logistica_cardapio_secoes
-                (nome, descricao, ordem, ativo, created_by_user_id, created_at, updated_at)
+                (nome, descricao, ordem, ativo, visivel_portal_infantil, created_by_user_id, created_at, updated_at)
             VALUES
-                (:nome, :descricao, :ordem, :ativo, :created_by_user_id, NOW(), NOW())
+                (:nome, :descricao, :ordem, :ativo, :visivel_portal_infantil, :created_by_user_id, NOW(), NOW())
             RETURNING *
         ");
         $stmt->execute([
@@ -528,6 +683,7 @@ function logistica_cardapio_secao_salvar(
             ':descricao' => $descricao !== '' ? $descricao : null,
             ':ordem' => max(0, $ordem),
             ':ativo' => $ativo ? 1 : 0,
+            ':visivel_portal_infantil' => $visivel_portal_infantil ? 1 : 0,
             ':created_by_user_id' => $user_id > 0 ? $user_id : null,
         ]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -767,7 +923,8 @@ function logistica_cardapio_pacote_regras_listar(PDO $pdo, int $pacote_id): arra
             SELECT ps.*,
                    s.nome AS secao_nome,
                    s.descricao AS secao_descricao,
-                   s.ativo AS secao_ativo
+                   s.ativo AS secao_ativo,
+                   COALESCE(s.visivel_portal_infantil, FALSE) AS secao_visivel_portal_infantil
             FROM logistica_pacotes_evento_secoes ps
             JOIN logistica_cardapio_secoes s ON s.id = ps.secao_cardapio_id
             WHERE ps.pacote_evento_id = :pacote_id
@@ -1056,9 +1213,9 @@ function logistica_cardapio_evento_resumo(PDO $pdo, int $meeting_id): array
                        AND r.id = ip.item_id
                     WHERE ps.pacote_evento_id = :pacote_id
                       AND (
-                          (ip.item_tipo = 'insumo' AND i.ativo = TRUE AND COALESCE(i.visivel_na_lista, TRUE) = TRUE)
+                          (ip.item_tipo = 'insumo' AND i.ativo = TRUE)
                           OR
-                          (ip.item_tipo = 'receita' AND r.ativo = TRUE AND COALESCE(r.visivel_na_lista, TRUE) = TRUE)
+                          (ip.item_tipo = 'receita' AND r.ativo = TRUE)
                       )
                 ) itens_validos
             ");
@@ -1107,6 +1264,7 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
         $stmt = $pdo->prepare("
             SELECT r.id,
                    r.pacote_evento_id,
+                   r.tipo_evento_real,
                    p.nome AS pacote_nome,
                    p.descricao AS pacote_descricao
             FROM eventos_reunioes r
@@ -1128,6 +1286,7 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
     }
 
     $pacote_id = (int)($meeting['pacote_evento_id'] ?? 0);
+    $tipo_evento_real = trim((string)($meeting['tipo_evento_real'] ?? ''));
     $pacote = null;
     if ($pacote_id > 0) {
         $pacote = [
@@ -1136,6 +1295,7 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
             'descricao' => trim((string)($meeting['pacote_descricao'] ?? '')),
         ];
     }
+    $is_infantil = logistica_cardapio_tipo_evento_eh_infantil($tipo_evento_real, (string)($pacote['nome'] ?? ''));
 
     $regras = [];
     if ($pacote_id > 0) {
@@ -1145,7 +1305,8 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
                        s.nome AS secao_nome,
                        s.descricao AS secao_descricao,
                        s.ordem AS secao_ordem,
-                       s.ativo AS secao_ativo
+                       s.ativo AS secao_ativo,
+                       COALESCE(s.visivel_portal_infantil, FALSE) AS secao_visivel_portal_infantil
                 FROM logistica_pacotes_evento_secoes ps
                 JOIN logistica_cardapio_secoes s ON s.id = ps.secao_cardapio_id
                 WHERE ps.pacote_evento_id = :pacote_id
@@ -1175,6 +1336,8 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
             'quantidade_maxima' => (int)$regra['quantidade_maxima'],
             'exigir_quantidade_exata' => !empty($regra['exigir_quantidade_exata']),
             'selecionar_todos_itens' => !empty($regra['selecionar_todos_itens']),
+            'visivel_portal_infantil' => !empty($regra['secao_visivel_portal_infantil']),
+            'visivel_portal_cliente' => !$is_infantil || !empty($regra['secao_visivel_portal_infantil']),
             'itens' => [],
             'selected_keys' => [],
             'selected_count' => 0,
@@ -1202,7 +1365,6 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
                     ON i.id = ip.item_id
                 WHERE ps.pacote_evento_id = :pacote_id
                   AND i.ativo = TRUE
-                  AND COALESCE(i.visivel_na_lista, TRUE) = TRUE
                 ORDER BY lower(i.nome_oficial) ASC, i.id ASC
             ",
             'receita' => "
@@ -1223,7 +1385,6 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
                     ON r.id = ip.item_id
                 WHERE ps.pacote_evento_id = :pacote_id
                   AND r.ativo = TRUE
-                  AND COALESCE(r.visivel_na_lista, TRUE) = TRUE
                 ORDER BY lower(r.nome) ASC, r.id ASC
             ",
         ];
@@ -1390,6 +1551,8 @@ function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
         'ok' => true,
         'meeting_id' => $meeting_id,
         'pacote' => $pacote,
+        'tipo_evento_real' => $tipo_evento_real,
+        'is_infantil' => $is_infantil,
         'secoes' => array_values($secoes),
         'exclusive_groups' => $exclusive_groups,
         'resposta' => $resposta,
@@ -1412,6 +1575,7 @@ function logistica_cardapio_resposta_salvar_cliente(PDO $pdo, int $meeting_id, ?
     if (empty($contexto['ok'])) {
         return $contexto;
     }
+    $contexto = logistica_cardapio_contexto_filtrar_portal_cliente($contexto);
 
     if (empty($contexto['pacote']['id'])) {
         return ['ok' => false, 'error' => 'O evento ainda não possui pacote configurado para o cardápio.'];

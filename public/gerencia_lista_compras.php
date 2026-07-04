@@ -8,6 +8,7 @@ $_GET['page'] = $_GET['page'] ?? 'gerencia_lista_compras';
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 if (empty($_SESSION['logado'])) {
     header('Location: login.php');
@@ -270,6 +271,9 @@ function glc_fetch_eventos_disponiveis(PDO $pdo, array $scope): array
                e.unidade_interna_id,
                u.nome AS unidade_nome,
                MAX(r.id) AS meeting_id,
+               MAX(r.pacote_evento_id) AS pacote_evento_id,
+               MAX(p.nome) AS pacote_nome,
+               MAX(r.tipo_evento_real) AS tipo_evento_real,
                MAX(cr.id) AS resposta_id,
                MAX(cr.submitted_at) AS submitted_at,
                COUNT(DISTINCT ri.id)::int AS cardapio_itens,
@@ -287,6 +291,7 @@ function glc_fetch_eventos_disponiveis(PDO $pdo, array $scope): array
                END AS motivo_indisponivel
         FROM logistica_eventos_espelho e
         LEFT JOIN eventos_reunioes r ON r.me_event_id = e.me_event_id
+        LEFT JOIN logistica_pacotes_evento p ON p.id = r.pacote_evento_id AND p.deleted_at IS NULL
         LEFT JOIN eventos_cardapio_respostas cr ON cr.meeting_id = r.id
         LEFT JOIN eventos_cardapio_resposta_itens ri ON ri.resposta_id = cr.id
         LEFT JOIN logistica_unidades u ON u.id = e.unidade_interna_id
@@ -329,11 +334,15 @@ function glc_fetch_eventos_by_ids(PDO $pdo, array $scope, array $eventIds): arra
                e.unidade_interna_id,
                u.nome AS unidade_nome,
                r.id AS meeting_id,
+               r.pacote_evento_id,
+               p.nome AS pacote_nome,
+               r.tipo_evento_real,
                r.me_event_snapshot,
                cr.id AS resposta_id,
                cr.submitted_at
         FROM logistica_eventos_espelho e
         JOIN eventos_reunioes r ON r.me_event_id = e.me_event_id
+        LEFT JOIN logistica_pacotes_evento p ON p.id = r.pacote_evento_id AND p.deleted_at IS NULL
         JOIN eventos_cardapio_respostas cr ON cr.meeting_id = r.id
         LEFT JOIN logistica_unidades u ON u.id = e.unidade_interna_id
         WHERE e.id IN (" . implode(', ', $placeholders) . ")
@@ -397,6 +406,116 @@ function glc_fetch_cardapio_items(PDO $pdo, array $respostaIds): array
     return $itemsByResposta;
 }
 
+function glc_evento_eh_infantil(array $event): bool
+{
+    return logistica_cardapio_tipo_evento_eh_infantil(
+        isset($event['tipo_evento_real']) ? (string)$event['tipo_evento_real'] : '',
+        isset($event['pacote_nome']) ? (string)$event['pacote_nome'] : ''
+    );
+}
+
+function glc_ensure_cardapio_infantil_schema(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+
+    $pdo->exec("ALTER TABLE IF EXISTS logistica_cardapio_secoes ADD COLUMN IF NOT EXISTS visivel_portal_infantil BOOLEAN NOT NULL DEFAULT FALSE");
+    $done = true;
+}
+
+function glc_fetch_itens_fixos_infantil(PDO $pdo, array $events): array
+{
+    glc_ensure_cardapio_infantil_schema($pdo);
+
+    $pacoteIds = [];
+    foreach ($events as $event) {
+        if (!glc_evento_eh_infantil($event)) {
+            continue;
+        }
+        $pacoteId = (int)($event['pacote_evento_id'] ?? 0);
+        if ($pacoteId > 0) {
+            $pacoteIds[$pacoteId] = $pacoteId;
+        }
+    }
+
+    if (empty($pacoteIds)) {
+        return [];
+    }
+
+    $params = [];
+    $placeholders = [];
+    foreach (array_values($pacoteIds) as $index => $pacoteId) {
+        $key = ':pacote_' . $index;
+        $placeholders[] = $key;
+        $params[$key] = $pacoteId;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT
+               ps.pacote_evento_id,
+               ps.secao_cardapio_id,
+               s.nome AS secao_nome,
+               ip.item_tipo,
+               ip.item_id,
+               CASE
+                   WHEN ip.item_tipo = 'insumo' THEN i.nome_oficial
+                   WHEN ip.item_tipo = 'receita' THEN r.nome
+                   ELSE ''
+               END AS item_nome
+        FROM logistica_pacotes_evento_secoes ps
+        JOIN logistica_cardapio_secoes s
+            ON s.id = ps.secao_cardapio_id
+           AND s.deleted_at IS NULL
+           AND s.ativo = TRUE
+           AND COALESCE(s.visivel_portal_infantil, FALSE) = FALSE
+        JOIN logistica_cardapio_item_pacotes ip
+            ON ip.pacote_evento_id = ps.pacote_evento_id
+        JOIN logistica_cardapio_item_secoes isec
+            ON isec.item_tipo = ip.item_tipo
+           AND isec.item_id = ip.item_id
+           AND isec.secao_cardapio_id = ps.secao_cardapio_id
+        LEFT JOIN logistica_insumos i
+            ON ip.item_tipo = 'insumo'
+           AND i.id = ip.item_id
+        LEFT JOIN logistica_receitas r
+            ON ip.item_tipo = 'receita'
+           AND r.id = ip.item_id
+        WHERE ps.pacote_evento_id IN (" . implode(', ', $placeholders) . ")
+          AND (
+              (ip.item_tipo = 'insumo' AND i.ativo = TRUE AND COALESCE(i.visivel_na_lista, TRUE) = TRUE)
+              OR
+              (ip.item_tipo = 'receita' AND r.ativo = TRUE AND COALESCE(r.visivel_na_lista, TRUE) = TRUE)
+          )
+        ORDER BY ps.pacote_evento_id ASC, s.ordem ASC, lower(s.nome) ASC, item_nome ASC
+    ");
+    $stmt->execute($params);
+
+    $itemsByPacote = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        $pacoteId = (int)($row['pacote_evento_id'] ?? 0);
+        if ($pacoteId <= 0) {
+            continue;
+        }
+        if (!isset($itemsByPacote[$pacoteId])) {
+            $itemsByPacote[$pacoteId] = [];
+        }
+        $itemsByPacote[$pacoteId][] = $row;
+    }
+
+    $itemsByEvent = [];
+    foreach ($events as $eventId => $event) {
+        if (!glc_evento_eh_infantil($event)) {
+            continue;
+        }
+        $pacoteId = (int)($event['pacote_evento_id'] ?? 0);
+        $itemsByEvent[(int)$eventId] = $itemsByPacote[$pacoteId] ?? [];
+    }
+
+    return $itemsByEvent;
+}
+
 function glc_fetch_catalogo(PDO $pdo): array
 {
     $stmt = $pdo->query("
@@ -408,6 +527,7 @@ function glc_fetch_catalogo(PDO $pdo): array
                            i.nome_oficial,
                            i.tipologia_insumo_id,
                            i.unidade_medida_padrao_id,
+                           COALESCE(i.visivel_na_lista, TRUE) AS visivel_na_lista,
                            COALESCE(i.rendimento_base_pessoas, 100) AS rendimento_base_pessoas,
                            COALESCE(i.rendimento_quantidade_base, 1) AS rendimento_quantidade_base,
                            COALESCE(
@@ -439,7 +559,10 @@ function glc_fetch_catalogo(PDO $pdo): array
             COALESCE((
                 SELECT json_agg(row_to_json(x))
                 FROM (
-                    SELECT id, nome, COALESCE(rendimento_base_pessoas, 100) AS rendimento_base_pessoas
+                    SELECT id,
+                           nome,
+                           COALESCE(visivel_na_lista, TRUE) AS visivel_na_lista,
+                           COALESCE(rendimento_base_pessoas, 100) AS rendimento_base_pessoas
                     FROM logistica_receitas
                 ) x
             ), '[]'::json) AS receitas_json,
@@ -609,6 +732,27 @@ function glc_tipologia_permite_lista(array $insumo): bool
     return !in_array($normalized, ['', '0', 'f', 'false'], true);
 }
 
+function glc_bool_config_ativa($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    $normalized = strtolower(trim((string)$value));
+    return !in_array($normalized, ['', '0', 'f', 'false'], true);
+}
+
+function glc_insumo_permite_lista(array $insumo): bool
+{
+    return glc_bool_config_ativa($insumo['visivel_na_lista'] ?? true)
+        && glc_tipologia_permite_lista($insumo);
+}
+
+function glc_receita_permite_lista(array $receita): bool
+{
+    return glc_bool_config_ativa($receita['visivel_na_lista'] ?? true);
+}
+
 function glc_add_totais_grupo_tipologia(
     array $event,
     array $eventItems,
@@ -634,7 +778,7 @@ function glc_add_totais_grupo_tipologia(
         }
 
         $insumo = $insumos[$itemId];
-        if (!glc_tipologia_permite_lista($insumo)) {
+        if (!glc_insumo_permite_lista($insumo)) {
             continue;
         }
 
@@ -751,7 +895,7 @@ function glc_expand_receita(
             $warnings[] = 'Componente com insumo não encontrado: #' . $itemId . '.';
             continue;
         }
-        if (!glc_tipologia_permite_lista($insumos[$itemId])) {
+        if (!glc_insumo_permite_lista($insumos[$itemId])) {
             continue;
         }
         if (!empty($insumos[$itemId]['arredondar_rendimento_lista'])) {
@@ -778,6 +922,7 @@ function glc_calcular_lista(PDO $pdo, array $events): array
         $respostaIds[] = (int)$event['resposta_id'];
     }
     $itemsByResposta = glc_fetch_cardapio_items($pdo, $respostaIds);
+    $fixedItemsByEvent = glc_fetch_itens_fixos_infantil($pdo, $events);
 
     $totals = [];
     $warnings = [];
@@ -786,6 +931,21 @@ function glc_calcular_lista(PDO $pdo, array $events): array
     foreach ($events as $eventId => $event) {
         $convidados = max(0, (int)($event['convidados'] ?? 0));
         $eventItems = $itemsByResposta[(int)$event['resposta_id']] ?? [];
+        foreach (($fixedItemsByEvent[(int)$eventId] ?? []) as $fixedItem) {
+            $duplicateKey = (string)($fixedItem['item_tipo'] ?? '') . ':' . (int)($fixedItem['item_id'] ?? 0) . ':' . (int)($fixedItem['secao_cardapio_id'] ?? 0);
+            $hasDuplicate = false;
+            foreach ($eventItems as $currentItem) {
+                $currentKey = (string)($currentItem['item_tipo'] ?? '') . ':' . (int)($currentItem['item_id'] ?? 0) . ':' . (int)($currentItem['secao_cardapio_id'] ?? 0);
+                if ($currentKey === $duplicateKey) {
+                    $hasDuplicate = true;
+                    break;
+                }
+            }
+            if (!$hasDuplicate) {
+                $fixedItem['origem_fixa_infantil'] = true;
+                $eventItems[] = $fixedItem;
+            }
+        }
         $eventsSummary[$eventId] = [
             'event' => $event,
             'items' => $eventItems,
@@ -812,7 +972,7 @@ function glc_calcular_lista(PDO $pdo, array $events): array
                     $warnings[] = 'Insumo do cardápio não encontrado: ' . ($itemName ?: ('#' . $itemId));
                     continue;
                 }
-                if (!glc_tipologia_permite_lista($insumos[$itemId])) {
+                if (!glc_insumo_permite_lista($insumos[$itemId])) {
                     continue;
                 }
                 if (glc_insumo_usa_calculo_grupo($insumos[$itemId])) {
@@ -835,6 +995,9 @@ function glc_calcular_lista(PDO $pdo, array $events): array
             if ($tipo === 'receita') {
                 if (!isset($receitas[$itemId])) {
                     $warnings[] = 'Receita do cardápio não encontrada: ' . ($itemName ?: ('#' . $itemId));
+                    continue;
+                }
+                if (!glc_receita_permite_lista($receitas[$itemId])) {
                     continue;
                 }
                 $yield = max(1, (int)($receitas[$itemId]['rendimento_base_pessoas'] ?? 100));
