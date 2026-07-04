@@ -226,7 +226,7 @@ function calcular_custo_receita_total(int $receita_id, array $componentes_by_rec
 
 function logistica_receitas_item_options_payload(PDO $pdo): array {
     $insumos_all = $pdo->query("
-        SELECT id, nome_oficial, custo_padrao, ativo, unidade_medida_padrao_id, sinonimos
+        SELECT id, nome_oficial, custo_padrao, ativo, unidade_medida, unidade_medida_padrao_id, sinonimos
         FROM logistica_insumos
         ORDER BY nome_oficial
     ")->fetchAll(PDO::FETCH_ASSOC);
@@ -274,6 +274,7 @@ function logistica_receitas_item_options_payload(PDO $pdo): array {
             'id' => (int)$i['id'],
             'nome' => (string)$i['nome_oficial'],
             'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0),
+            'unidade_padrao_texto' => (string)($i['unidade_medida'] ?? ''),
             'sinonimos' => (string)($i['sinonimos'] ?? ''),
         ], $insumos_select),
         'receitas' => array_map(static fn($r) => [
@@ -570,11 +571,13 @@ $unidades_medida = ensure_unidades_medida($pdo);
 $pacotes_cardapio = pacotes_evento_listar($pdo, true);
 $secoes_cardapio = logistica_cardapio_listar_secoes($pdo, true);
 $unidades_medida_map = [];
+$unidades_medida_nome_id = [];
 foreach ($unidades_medida as $un) {
     $unidades_medida_map[(int)$un['id']] = $un['nome'];
+    $unidades_medida_nome_id[mb_strtolower(trim((string)$un['nome']))] = (int)$un['id'];
 }
 
-$insumos_all = $pdo->query("SELECT id, nome_oficial, custo_padrao, ativo, unidade_medida_padrao_id, sinonimos FROM logistica_insumos ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
+$insumos_all = $pdo->query("SELECT id, nome_oficial, custo_padrao, ativo, unidade_medida, unidade_medida_padrao_id, sinonimos FROM logistica_insumos ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
 $receitas_all = $pdo->query("SELECT id, nome, rendimento_base_pessoas, ativo, unidade_medida_padrao_id FROM logistica_receitas ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $componentes_all = $pdo->query("SELECT * FROM logistica_receita_componentes ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -583,18 +586,28 @@ $receitas_select = array_values(array_filter($receitas_all, static fn($r) => !is
 
 $insumo_nome = [];
 $insumo_cost = [];
+$insumo_unidade_padrao = [];
 foreach ($insumos_all as $ins) {
-    $insumo_nome[(int)$ins['id']] = $ins['nome_oficial'];
+    $insumo_id = (int)$ins['id'];
+    $insumo_nome[$insumo_id] = $ins['nome_oficial'];
+    $unidade_padrao_id = (int)($ins['unidade_medida_padrao_id'] ?? 0);
+    if ($unidade_padrao_id <= 0) {
+        $unidade_padrao_id = $unidades_medida_nome_id[mb_strtolower(trim((string)($ins['unidade_medida'] ?? '')))] ?? 0;
+    }
+    $insumo_unidade_padrao[$insumo_id] = $unidade_padrao_id;
     if ($ins['custo_padrao'] !== null) {
-        $insumo_cost[(int)$ins['id']] = (float)$ins['custo_padrao'];
+        $insumo_cost[$insumo_id] = (float)$ins['custo_padrao'];
     }
 }
 
 $receita_nome = [];
 $receita_yield = [];
+$receita_unidade_padrao = [];
 foreach ($receitas_all as $rec) {
-    $receita_nome[(int)$rec['id']] = $rec['nome'];
-    $receita_yield[(int)$rec['id']] = (int)($rec['rendimento_base_pessoas'] ?? 100);
+    $receita_id = (int)$rec['id'];
+    $receita_nome[$receita_id] = $rec['nome'];
+    $receita_yield[$receita_id] = (int)($rec['rendimento_base_pessoas'] ?? 100);
+    $receita_unidade_padrao[$receita_id] = (int)($rec['unidade_medida_padrao_id'] ?? 0);
 }
 
 $componentes_by_receita = [];
@@ -1118,6 +1131,11 @@ body {
                                 ? ($receita_nome[$item_id] ?? '')
                                 : ($insumo_nome[$item_id] ?? '');
                             $unidade_id = (int)($comp['unidade_medida_id'] ?? 0);
+                            if ($unidade_id <= 0) {
+                                $unidade_id = $tipo === 'receita'
+                                    ? (int)($receita_unidade_padrao[$item_id] ?? 0)
+                                    : (int)($insumo_unidade_padrao[$item_id] ?? 0);
+                            }
                             $peso_liquido = format_decimal_display($comp['peso_liquido'] ?? '');
                             $fator_correcao = format_decimal_display($comp['fator_correcao'] ?? '');
                             $peso_bruto = format_decimal_display($comp['peso_bruto'] ?? '');
@@ -1275,7 +1293,7 @@ body {
 <script>
 const CAN_SEE_COST = <?= $can_see_cost ? 'true' : 'false' ?>;
 const CURRENT_RECIPE_ID = <?= (int)$form_item_id ?>;
-let INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+let INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'unidade_padrao_texto' => $i['unidade_medida'] ?? '', 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 let RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome'], 'unidade_padrao' => (int)($r['unidade_medida_padrao_id'] ?? 0)], $receitas_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 const UNIDADES = <?= json_encode($unidades_medida, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 let COST_INSUMO = <?= json_encode($insumo_cost, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
@@ -1311,6 +1329,19 @@ function formatNumber(value, decimals = 3) {
 function formatCurrency(value) {
     if (value === null || value === undefined || Number.isNaN(value)) return '-';
     return 'R$ ' + Number(value).toFixed(2).replace('.', ',');
+}
+
+function normalizeUnitName(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function unidadeIdFromItem(item) {
+    if (!item) return 0;
+    const unidadeId = parseInt(item.unidade_padrao || '0', 10);
+    if (unidadeId > 0) return unidadeId;
+    const unidadeNome = normalizeUnitName(item.unidade_padrao_texto);
+    const found = UNIDADES.find(un => normalizeUnitName(un.nome) === unidadeNome);
+    return found ? parseInt(found.id || '0', 10) : 0;
 }
 
 function calcRow(row) {
@@ -1627,7 +1658,7 @@ function renderItemList() {
                 id,
                 nome,
                 tipo: modalTab === 'receitas' ? 'receita' : 'insumo',
-                unidade_padrao: item ? (item.unidade_padrao || 0) : 0
+                unidade_padrao: unidadeIdFromItem(item)
             };
             renderItemList();
         });
