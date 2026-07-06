@@ -13,6 +13,42 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/vendas_helper.php';
 
+function vendas_form_normalizar_texto(string $valor): string
+{
+    $valor = trim($valor);
+    if ($valor === '') {
+        return '';
+    }
+    if (function_exists('mb_strtolower')) {
+        $valor = mb_strtolower($valor, 'UTF-8');
+    } else {
+        $valor = strtolower($valor);
+    }
+    if (function_exists('iconv')) {
+        $convertido = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $valor);
+        if (is_string($convertido) && $convertido !== '') {
+            $valor = $convertido;
+        }
+    }
+    $valor = preg_replace('/[^a-z0-9]+/', ' ', $valor) ?? '';
+    return trim(preg_replace('/\s+/', ' ', $valor) ?? '');
+}
+
+function vendas_form_pacote_infantil_tipo(string $nome): string
+{
+    $normalizado = vendas_form_normalizar_texto($nome);
+    if ($normalizado === '') {
+        return '';
+    }
+    if (str_contains($normalizado, 'essencial')) {
+        return 'essencial';
+    }
+    if (str_contains($normalizado, 'diver')) {
+        return 'diver';
+    }
+    return '';
+}
+
 // Tipo de evento (casamento, infantil, pj)
 $tipo_evento = $_GET['tipo'] ?? 'casamento';
 if (!in_array($tipo_evento, ['casamento', 'infantil', 'pj'])) {
@@ -38,10 +74,18 @@ $limite_por_hora = 3; // Máximo 3 envios por hora por IP
 $pdo = $GLOBALS['pdo'];
 $pacotes_evento = pacotes_evento_listar($pdo, false);
 if ($tipo_evento === 'infantil') {
-    $pacotes_evento = array_values(array_filter($pacotes_evento, static function (array $pacote): bool {
-        $nome = mb_strtolower(trim((string)($pacote['nome'] ?? '')), 'UTF-8');
-        return in_array($nome, ['essencial', 'diver'], true);
-    }));
+    $pacotes_infantis = [];
+    foreach ($pacotes_evento as $pacote) {
+        $tipo_pacote = vendas_form_pacote_infantil_tipo((string)($pacote['nome'] ?? ''));
+        if ($tipo_pacote !== '' && !isset($pacotes_infantis[$tipo_pacote])) {
+            $pacotes_infantis[$tipo_pacote] = $pacote;
+        }
+    }
+
+    $pacotes_evento = [
+        $pacotes_infantis['essencial'] ?? ['nome' => 'Essencial'],
+        $pacotes_infantis['diver'] ?? ['nome' => 'Diver'],
+    ];
 }
 
 // Verificar rate limit
@@ -233,8 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             throw new Exception('Pacote/Plano escolhido é obrigatório');
         }
         if ($tipo_evento === 'infantil') {
-            $pacote_plano_normalizado = mb_strtolower($pacote_plano, 'UTF-8');
-            if (!in_array($pacote_plano_normalizado, ['essencial', 'diver'], true)) {
+            if (vendas_form_pacote_infantil_tipo($pacote_plano) === '') {
                 throw new Exception('Para eventos infantis, escolha apenas os pacotes Essencial ou Diver.');
             }
         }
