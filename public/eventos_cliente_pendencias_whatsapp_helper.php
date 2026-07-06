@@ -351,7 +351,7 @@ function eventos_cliente_pendencias_whatsapp_registrar(PDO $pdo, array $evento, 
         INSERT INTO eventos_cliente_pendencias_whatsapp_envios
             (meeting_id, me_event_id, tipo, data_evento, cliente_nome, telefone, mensagem, status, erro, enviado_em, created_at)
         VALUES
-            (:meeting_id, :me_event_id, :tipo, NULLIF(:data_evento, '')::date, :cliente_nome, :telefone, :mensagem, :status, :erro, CASE WHEN :status = 'enviada' THEN NOW() ELSE NULL END, NOW())
+            (:meeting_id, :me_event_id, :tipo, NULLIF(:data_evento, '')::date, :cliente_nome, :telefone, :mensagem, :status, :erro, CASE WHEN CAST(:status_enviado AS VARCHAR) = 'enviada' THEN NOW() ELSE NULL END, NOW())
         ON CONFLICT (meeting_id, tipo) DO UPDATE SET
             cliente_nome = EXCLUDED.cliente_nome,
             telefone = EXCLUDED.telefone,
@@ -369,6 +369,7 @@ function eventos_cliente_pendencias_whatsapp_registrar(PDO $pdo, array $evento, 
         ':telefone' => $telefone,
         ':mensagem' => $mensagem,
         ':status' => $status,
+        ':status_enviado' => $status,
         ':erro' => $erro !== '' ? $erro : null,
     ]);
 }
