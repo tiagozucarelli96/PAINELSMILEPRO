@@ -1553,6 +1553,7 @@ includeSidebar('Agenda');
         // Fechar modal
         function closeEventModal() {
             const modal = document.getElementById('eventModal');
+            const form = document.getElementById('eventForm');
             modal.classList.remove('active');
             document.getElementById('forcarConflitoInput').value = '0';
             document.getElementById('conflictWarning').style.display = 'none';
@@ -2087,16 +2088,18 @@ includeSidebar('Agenda');
                     showToast('✅ ' + tipoText + ' ' + isEdit + ' com sucesso!', 'success');
                     
                     setTimeout(() => {
-                        if (typeof calendar !== 'undefined' && calendar.refetchEvents) {
-                            calendar.refetchEvents();
-                        }
-                        closeEventModal();
-                        
-                        // Restaurar botão após fechar modal
-                        setTimeout(() => {
+                        try {
+                            closeEventModal();
+                            if (typeof calendar !== 'undefined' && calendar.refetchEvents) {
+                                calendar.refetchEvents();
+                            }
+                        } catch (error) {
+                            console.error('Erro após salvar agenda:', error);
+                            showToast('✅ Salvo, mas não foi possível atualizar a tela automaticamente. Recarregue a agenda se necessário.', 'success');
+                        } finally {
                             submitBtn.innerHTML = originalText;
                             submitBtn.disabled = false;
-                        }, 500);
+                        }
                     }, 1000);
                 } else {
                     // Erro
