@@ -1362,6 +1362,10 @@ includeSidebar('Agenda');
             
             // Limpar formulário
             form.reset();
+            document.getElementById('eventId').value = '';
+            document.getElementById('eventId').defaultValue = '';
+            document.getElementById('eventTipo').value = '';
+            document.getElementById('google_event_id').value = '';
             document.getElementById('forcarConflitoInput').value = '0';
             document.getElementById('conflictWarning').style.display = 'none';
             document.getElementById('conflictDetails').innerHTML = '';
@@ -1460,6 +1464,10 @@ includeSidebar('Agenda');
                         linkDiv.innerHTML = `<a href="${event.extendedProps.google_link}" target="_blank" class="btn btn-outline" style="text-decoration: none;">🔗 Abrir no Google Calendar</a>`;
                         document.getElementById('googleEventGroup').appendChild(linkDiv);
                     }
+                    document.getElementById('eventId').value = '';
+                    document.getElementById('eventTipo').value = 'google';
+                    modal.classList.add('active');
+                    return;
                 } else {
                     title.textContent = 'Editar Evento';
                     // Mostrar todos os campos para eventos normais

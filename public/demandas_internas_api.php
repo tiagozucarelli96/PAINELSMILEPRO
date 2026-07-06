@@ -40,6 +40,11 @@ function demandasInternasJson(array $payload, int $status = 200): void
     exit;
 }
 
+function demandasInternasPgBool(bool $value): string
+{
+    return $value ? '1' : '0';
+}
+
 function demandasInternasEnsureSchema(PDO $pdo): void
 {
     $pdo->exec("
@@ -844,7 +849,7 @@ function demandasInternasCreate(PDO $pdo, int $userId): void
             ':prioridade' => $prioridade,
             ':prazo' => $prazo,
             ':request_key' => $requestKey !== '' ? $requestKey : null,
-            ':enviar_jordao' => $enviarJordao,
+            ':enviar_jordao' => demandasInternasPgBool($enviarJordao),
         ]);
         $demandaId = (int)$stmt->fetchColumn();
     } catch (PDOException $e) {
@@ -948,7 +953,7 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
         ':status' => $status,
         ':prioridade' => $prioridade,
         ':prazo' => $prazo,
-        ':enviar_jordao' => $enviarJordao,
+        ':enviar_jordao' => demandasInternasPgBool($enviarJordao),
     ]);
 
     demandasInternasLog($pdo, $id, $userId, 'demanda_alterada', 'Status, prazo, prioridade ou cópia ao Jordão alterado.');
