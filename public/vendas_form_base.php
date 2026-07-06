@@ -49,6 +49,51 @@ function vendas_form_pacote_infantil_tipo(string $nome): string
     return '';
 }
 
+function vendas_form_unidade_lisbon_unidade_1(string $unidade): bool
+{
+    $normalizado = vendas_form_normalizar_texto($unidade);
+    return str_contains($normalizado, 'lisbon')
+        && (str_contains($normalizado, 'unidade 1') || str_contains($normalizado, 'parque dos sinos'));
+}
+
+function vendas_form_pacotes_infantis_default(): array
+{
+    return [
+        ['nome' => 'Essencial', 'grupo_unidade' => 'default'],
+        ['nome' => 'Diver', 'grupo_unidade' => 'default'],
+    ];
+}
+
+function vendas_form_pacotes_infantis_lisbon_unidade_1(): array
+{
+    return [
+        ['nome' => 'Plano Smile', 'grupo_unidade' => 'lisbon_unidade_1'],
+        ['nome' => 'Plano Almoço', 'grupo_unidade' => 'lisbon_unidade_1'],
+        ['nome' => 'Plano Diver', 'grupo_unidade' => 'lisbon_unidade_1'],
+        ['nome' => 'Plano Delícias Kids', 'grupo_unidade' => 'lisbon_unidade_1'],
+        ['nome' => 'Plano Gold', 'grupo_unidade' => 'lisbon_unidade_1'],
+    ];
+}
+
+function vendas_form_pacote_infantil_permitido(string $pacote, string $unidade): bool
+{
+    $normalizado = vendas_form_normalizar_texto($pacote);
+    if ($normalizado === '') {
+        return false;
+    }
+
+    if (vendas_form_unidade_lisbon_unidade_1($unidade)) {
+        foreach (['smile', 'almoco', 'diver', 'delicias kids', 'gold'] as $alias) {
+            if (str_contains($normalizado, $alias)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    return vendas_form_pacote_infantil_tipo($pacote) !== '';
+}
+
 // Tipo de evento (casamento, infantil, pj)
 $tipo_evento = $_GET['tipo'] ?? 'casamento';
 if (!in_array($tipo_evento, ['casamento', 'infantil', 'pj'])) {
@@ -74,18 +119,10 @@ $limite_por_hora = 3; // Máximo 3 envios por hora por IP
 $pdo = $GLOBALS['pdo'];
 $pacotes_evento = pacotes_evento_listar($pdo, false);
 if ($tipo_evento === 'infantil') {
-    $pacotes_infantis = [];
-    foreach ($pacotes_evento as $pacote) {
-        $tipo_pacote = vendas_form_pacote_infantil_tipo((string)($pacote['nome'] ?? ''));
-        if ($tipo_pacote !== '' && !isset($pacotes_infantis[$tipo_pacote])) {
-            $pacotes_infantis[$tipo_pacote] = $pacote;
-        }
-    }
-
-    $pacotes_evento = [
-        $pacotes_infantis['essencial'] ?? ['nome' => 'Essencial'],
-        $pacotes_infantis['diver'] ?? ['nome' => 'Diver'],
-    ];
+    $pacotes_evento = array_merge(
+        vendas_form_pacotes_infantis_default(),
+        vendas_form_pacotes_infantis_lisbon_unidade_1()
+    );
 }
 
 // Verificar rate limit
@@ -277,8 +314,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             throw new Exception('Pacote/Plano escolhido é obrigatório');
         }
         if ($tipo_evento === 'infantil') {
-            if (vendas_form_pacote_infantil_tipo($pacote_plano) === '') {
-                throw new Exception('Para eventos infantis, escolha apenas os pacotes Essencial ou Diver.');
+            if (!vendas_form_pacote_infantil_permitido($pacote_plano, $unidade)) {
+                throw new Exception('Pacote indisponível para a unidade selecionada.');
             }
         }
 
@@ -908,7 +945,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                         <select id="pacote_plano" name="pacote_plano" required>
                             <option value="">Selecione...</option>
                             <?php foreach ($pacotes_evento as $pacote): ?>
-                                <option value="<?php echo htmlspecialchars((string)$pacote['nome']); ?>" <?php echo (($_POST['pacote_plano'] ?? '') === (string)$pacote['nome']) ? 'selected' : ''; ?>>
+                                <option value="<?php echo htmlspecialchars((string)$pacote['nome']); ?>"
+                                        data-unit-group="<?php echo htmlspecialchars((string)($pacote['grupo_unidade'] ?? 'all')); ?>"
+                                        <?php echo (($_POST['pacote_plano'] ?? '') === (string)$pacote['nome']) ? 'selected' : ''; ?>>
                                     <?php echo htmlspecialchars((string)$pacote['nome']); ?>
                                 </option>
                             <?php endforeach; ?>
@@ -1037,6 +1076,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             clearTimeout(cepTimeout);
             cepTimeout = setTimeout(handleCepAuto, 350);
         });
+
+        const unidadeEl = document.getElementById('unidade');
+        const pacotePlanoEl = document.getElementById('pacote_plano');
+        const normalizarTexto = (valor) => String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+        const unidadeEhLisbonUnidade1 = (valor) => {
+            const normalizado = normalizarTexto(valor);
+            return normalizado.includes('lisbon')
+                && (normalizado.includes('unidade 1') || normalizado.includes('parque dos sinos'));
+        };
+        const atualizarPacotesPorUnidade = () => {
+            if (!unidadeEl || !pacotePlanoEl) return;
+            const grupoPermitido = unidadeEhLisbonUnidade1(unidadeEl.value) ? 'lisbon_unidade_1' : 'default';
+            let selecionadoContinuaVisivel = false;
+
+            Array.from(pacotePlanoEl.options).forEach((option) => {
+                const grupo = option.dataset.unitGroup || 'all';
+                const visivel = option.value === '' || grupo === 'all' || grupo === grupoPermitido;
+                option.hidden = !visivel;
+                option.disabled = !visivel;
+                if (option.selected && visivel) {
+                    selecionadoContinuaVisivel = true;
+                }
+            });
+
+            if (!selecionadoContinuaVisivel) {
+                pacotePlanoEl.value = '';
+            }
+        };
+        unidadeEl?.addEventListener('change', atualizarPacotesPorUnidade);
+        atualizarPacotesPorUnidade();
 
         const faixaHorarioEl = document.getElementById('faixa_horario');
         if (faixaHorarioEl) {
@@ -1192,6 +1266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             preencherCampo('pais', registro.pais || 'Brasil');
             preencherCampo('data_evento', registro.data_evento || '');
             preencherCampo('unidade', registro.unidade || '');
+            atualizarPacotesPorUnidade();
             preencherCampo('num_convidados', registro.num_convidados || '');
             preencherCampo('pacote_plano', registro.pacote_contratado || '');
             preencherCampo('forma_pagamento', registro.forma_pagamento || '');

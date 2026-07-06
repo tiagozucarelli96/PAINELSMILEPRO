@@ -419,6 +419,15 @@ function eventos_cliente_pendencias_whatsapp_datas_excluidas($dates): array
     return $normalized;
 }
 
+function eventos_cliente_pendencias_whatsapp_horario_minimo(array $options = []): int
+{
+    $hour = isset($options['min_send_hour'])
+        ? (int)$options['min_send_hour']
+        : (int)(getenv('CLIENTE_PENDENCIAS_WHATSAPP_MIN_HOUR') ?: 8);
+
+    return max(0, min(23, $hour));
+}
+
 function eventos_cliente_pendencias_whatsapp_processar(PDO $pdo, array $options = []): array
 {
     eventos_cliente_pendencias_whatsapp_ensure_schema($pdo);
@@ -426,6 +435,24 @@ function eventos_cliente_pendencias_whatsapp_processar(PDO $pdo, array $options 
     $dryRun = !empty($options['dry_run']);
     $refDate = eventos_cliente_pendencias_whatsapp_data($options['ref_date'] ?? null);
     $limit = (int)($options['limit'] ?? 200);
+    $force = !empty($options['force']);
+    $timezone = new DateTimeZone('America/Sao_Paulo');
+    $now = new DateTimeImmutable('now', $timezone);
+    $minSendHour = eventos_cliente_pendencias_whatsapp_horario_minimo($options);
+
+    if (!$dryRun && !$force && (int)$now->format('G') < $minSendHour) {
+        return [
+            'success' => true,
+            'skipped' => true,
+            'reason' => 'Envio bloqueado antes do horário mínimo configurado.',
+            'dry_run' => false,
+            'ref_date' => $refDate,
+            'timezone' => $timezone->getName(),
+            'now' => $now->format('Y-m-d H:i:s'),
+            'min_send_hour' => $minSendHour,
+        ];
+    }
+
     $rules = eventos_cliente_pendencias_whatsapp_regras();
     $excludedDates = eventos_cliente_pendencias_whatsapp_datas_excluidas($options['exclude_event_dates'] ?? []);
     $dispatcher = $dryRun ? null : new NotificationDispatcher($pdo);
@@ -440,6 +467,9 @@ function eventos_cliente_pendencias_whatsapp_processar(PDO $pdo, array $options 
         'ignorados' => 0,
         'falhas' => 0,
         'sem_telefone' => 0,
+        'timezone' => $timezone->getName(),
+        'now' => $now->format('Y-m-d H:i:s'),
+        'min_send_hour' => $minSendHour,
         'datas_excluidas' => array_keys($excludedDates),
         'detalhes' => [],
     ];

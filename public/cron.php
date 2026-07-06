@@ -483,6 +483,7 @@ if ($tipo === 'demandas_fixas') {
 
         $resultado = eventos_cliente_pendencias_whatsapp_processar($pdo, [
             'dry_run' => !empty($_GET['dry_run']),
+            'force' => !empty($_GET['force']),
             'ref_date' => $_GET['ref_date'] ?? null,
             'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 200,
             'exclude_event_dates' => $_GET['exclude_event_dates'] ?? ($_GET['excluir_datas'] ?? []),
