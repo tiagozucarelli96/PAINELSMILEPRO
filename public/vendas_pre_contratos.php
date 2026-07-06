@@ -221,6 +221,7 @@ function vendas_collect_comercial_payload_from_post(): array {
     $forma_pagamento_detalhada = trim((string)($_POST['forma_pagamento_detalhada'] ?? ''));
     $itens_adicionais = trim((string)($_POST['itens_adicionais'] ?? ''));
     $observacoes_internas = trim((string)($_POST['observacoes_internas'] ?? ''));
+    $unidade = trim((string)($_POST['unidade'] ?? ''));
     $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($_POST['tipo_evento_real'] ?? ''), $GLOBALS['pdo'] ?? null);
     $pacote_evento_raw = trim((string)($_POST['pacote_evento_id'] ?? ''));
     $pacote_evento_id = ctype_digit($pacote_evento_raw) && (int)$pacote_evento_raw > 0 ? (int)$pacote_evento_raw : 0;
@@ -246,6 +247,7 @@ function vendas_collect_comercial_payload_from_post(): array {
         'forma_pagamento' => $forma_pagamento_detalhada,
         'itens_adicionais' => $itens_adicionais,
         'observacoes_internas' => $observacoes_internas,
+        'unidade' => $unidade,
         'tipo_evento_real' => $tipo_evento_real,
         'pacote_evento_id' => $pacote_evento_id,
         'valor_negociado' => $valor_negociado,
@@ -255,7 +257,7 @@ function vendas_collect_comercial_payload_from_post(): array {
     ];
 }
 
-function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $payload, int $usuario_id, bool $registrar_pronto_aprovacao = true): array {
+function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $payload, int $usuario_id, bool $registrar_pronto_aprovacao = true, bool $permitir_alterar_unidade = false): array {
     $stmt_pre = $pdo->prepare("
         SELECT id, status, nome_completo, tipo_evento, data_evento, unidade, num_convidados
         FROM vendas_pre_contratos
@@ -272,6 +274,15 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
     $novo_status = $status_anterior;
     if ($registrar_pronto_aprovacao && !in_array($status_anterior, ['aprovado_criado_me', 'cancelado_nao_fechou'], true)) {
         $novo_status = 'pronto_aprovacao';
+    }
+
+    $unidade_atualizada = trim((string)($pre_contrato['unidade'] ?? ''));
+    if ($permitir_alterar_unidade && trim((string)($payload['unidade'] ?? '')) !== '') {
+        $unidade_payload = trim((string)$payload['unidade']);
+        if (!vendas_validar_local_mapeado($unidade_payload)) {
+            throw new Exception('Selecione uma unidade válida e mapeada em Logística > Conexão.');
+        }
+        $unidade_atualizada = $unidade_payload;
     }
 
     $preco_pacote_aplicado = null;
@@ -298,6 +309,7 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
     $stmt = $pdo->prepare("
         UPDATE vendas_pre_contratos
         SET pacote_contratado = ?, forma_pagamento = ?, itens_adicionais = ?, observacoes_internas = ?,
+            unidade = ?,
             tipo_evento_real = ?, pacote_evento_id = ?,
             valor_negociado = ?, desconto = ?, valor_total = ?,
             atualizado_em = NOW(), atualizado_por = ?, status = ?,
@@ -309,6 +321,7 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
         $payload['forma_pagamento'] !== '' ? $payload['forma_pagamento'] : null,
         $payload['itens_adicionais'] !== '' ? $payload['itens_adicionais'] : null,
         $payload['observacoes_internas'] !== '' ? $payload['observacoes_internas'] : null,
+        $unidade_atualizada,
         $payload['tipo_evento_real'] !== '' ? $payload['tipo_evento_real'] : null,
         $payload['pacote_evento_id'] > 0 ? $payload['pacote_evento_id'] : null,
         $payload['valor_negociado'],
@@ -353,6 +366,12 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
 
     $stmt_log = $pdo->prepare("INSERT INTO vendas_logs (pre_contrato_id, acao, usuario_id, detalhes) VALUES (?, 'dados_comerciais_salvos', ?, ?)");
     $detalhes_log = ['valor_total' => $payload['valor_total']];
+    if ($unidade_atualizada !== (string)($pre_contrato['unidade'] ?? '')) {
+        $detalhes_log['unidade_alterada'] = [
+            'antes' => (string)($pre_contrato['unidade'] ?? ''),
+            'depois' => $unidade_atualizada,
+        ];
+    }
     if ($preco_pacote_aplicado !== null) {
         $detalhes_log['preco_pacote_aplicado'] = $preco_pacote_aplicado;
     }
@@ -387,7 +406,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Selecione um pacote válido para a organização.');
             }
             $pdo->beginTransaction();
-            $save_result = vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload, $usuario_id, true);
+            $save_result = vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload, $usuario_id, true, $admin_context && $can_access_vendas_admin);
             
             $pdo->commit();
             $mensagens[] = 'Dados comerciais salvos com sucesso!';
@@ -496,7 +515,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $pdo->beginTransaction();
-            vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload_comercial, $usuario_id, true);
+            vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload_comercial, $usuario_id, true, true);
             $pdo->commit();
 
             // Buscar pré-contrato
@@ -980,6 +999,7 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $pre_contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $locais_curto_map = vendas_locais_curto_map($pdo);
+$locais_mapeados = vendas_buscar_locais_mapeados();
 $tipos_evento_real_options = eventos_reuniao_tipos_evento_real_options($pdo, false);
 
 // Base de URL para manter o contexto correto (listagem vs administração)
@@ -1373,6 +1393,17 @@ ob_start();
     line-height: 1.4;
 }
 
+.modal-field-select {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: #0f172a;
+    font: inherit;
+    font-weight: 600;
+    padding: 0;
+    outline: none;
+}
+
 .modal-secao {
     margin-top: 1.5rem;
     padding-top: 1.5rem;
@@ -1738,11 +1769,7 @@ ob_start();
                             <span class="status-badge <?php echo htmlspecialchars($status_meta['class']); ?>"><?php echo htmlspecialchars($status_meta['text']); ?></span>
                         </td>
                         <td class="col-acoes acoes-cell">
-                            <?php
-                                $status_normalizado = (string)($pc['status_normalizado'] ?? vendas_normalize_pre_contrato_status($pc));
-                                $abrir_aprovacao = ($is_admin && $status_normalizado === 'pronto_aprovacao') ? '&abrir_aprovacao=1' : '';
-                            ?>
-                            <a href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$pc['id'] . $abrir_aprovacao); ?>" class="btn btn-primary" style="font-size: 0.875rem;">
+                            <a href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$pc['id']); ?>" class="btn btn-primary" style="font-size: 0.875rem;">
                                 Visualizar
                             </a>
                             <?php if ($perm_comercial || $is_admin): ?>
@@ -1823,7 +1850,40 @@ ob_start();
                         </div>
                         <div class="modal-field">
                             <span class="modal-field-label">Unidade</span>
-                            <div class="modal-field-value"><?php echo htmlspecialchars(vendas_unidade_curta($locais_curto_map, $pre_contrato_editar['unidade'] ?? '')); ?></div>
+                            <?php if ($admin_context && $can_access_vendas_admin): ?>
+                                <?php
+                                    $unidade_atual_modal = trim((string)($pre_contrato_editar['unidade'] ?? ''));
+                                    $unidade_atual_encontrada = false;
+                                ?>
+                                <select class="modal-field-select" id="unidade" name="unidade" required>
+                                    <option value="">Selecione...</option>
+                                    <?php foreach ($locais_mapeados as $local): ?>
+                                        <?php
+                                            $local_nome = trim((string)($local['me_local_nome'] ?? ''));
+                                            if ($local_nome === '') {
+                                                continue;
+                                            }
+                                            if (strcasecmp($local_nome, $unidade_atual_modal) === 0) {
+                                                $unidade_atual_encontrada = true;
+                                            }
+                                            $local_label = vendas_unidade_curta($locais_curto_map, $local_nome);
+                                        ?>
+                                        <option value="<?php echo htmlspecialchars($local_nome); ?>" <?php echo strcasecmp($local_nome, $unidade_atual_modal) === 0 ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($local_label); ?>
+                                            <?php if ($local_label !== $local_nome): ?>
+                                                - <?php echo htmlspecialchars($local_nome); ?>
+                                            <?php endif; ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                    <?php if ($unidade_atual_modal !== '' && !$unidade_atual_encontrada): ?>
+                                        <option value="<?php echo htmlspecialchars($unidade_atual_modal); ?>" selected>
+                                            <?php echo htmlspecialchars(vendas_unidade_curta($locais_curto_map, $unidade_atual_modal)); ?> (não mapeada)
+                                        </option>
+                                    <?php endif; ?>
+                                </select>
+                            <?php else: ?>
+                                <div class="modal-field-value"><?php echo htmlspecialchars(vendas_unidade_curta($locais_curto_map, $pre_contrato_editar['unidade'] ?? '')); ?></div>
+                            <?php endif; ?>
                         </div>
                     </div>
 
