@@ -75,10 +75,16 @@ function eventos_feedback_whatsapp_mark(PDO $pdo, array $evento, string $status,
             evento_id, me_event_id, tipo, data_evento, telefone, status, tentativas,
             enviado_em, ultimo_erro, atualizado_em
         ) VALUES (
-            :evento_id, :me_event_id, 'fim_semana', :data_evento, :telefone, :status,
-            CASE WHEN :status = 'erro' THEN 1 ELSE 0 END,
-            CASE WHEN :status = 'enviada' THEN NOW() ELSE NULL END,
-            :erro, NOW()
+            :evento_id,
+            :me_event_id,
+            'fim_semana',
+            CAST(:data_evento AS DATE),
+            CAST(:telefone AS VARCHAR(40)),
+            CAST(:status AS VARCHAR(20)),
+            CASE WHEN CAST(:status AS VARCHAR(20)) = 'erro' THEN 1 ELSE 0 END,
+            CASE WHEN CAST(:status AS VARCHAR(20)) = 'enviada' THEN NOW() ELSE NULL END,
+            CAST(:erro AS TEXT),
+            NOW()
         )
         ON CONFLICT (evento_id, tipo) DO UPDATE SET
             telefone = EXCLUDED.telefone,
