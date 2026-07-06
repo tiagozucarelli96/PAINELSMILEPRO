@@ -67,6 +67,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
             
         case 'atualizar_evento':
             $evento_id = $_POST['evento_id'];
+            if (!is_scalar($evento_id) || !preg_match('/^\d+$/', (string)$evento_id)) {
+                $response = [
+                    'success' => false,
+                    'error' => 'Este evento veio do Google Calendar e não pode ser salvo pela Agenda interna.'
+                ];
+                break;
+            }
             
             // Debug: log dos valores recebidos
             error_log("POST compareceu: " . var_export($_POST['compareceu'] ?? 'NULL', true));
@@ -1884,8 +1891,9 @@ includeSidebar('Agenda');
         // Atualizar evento do Google Calendar
         function updateGoogleEvent(checkboxElement = null) {
             const eventId = document.getElementById('google_event_id').value;
-            if (!eventId) {
+            if (!/^\d+$/.test(String(eventId))) {
                 console.error('ID do evento Google não encontrado');
+                customAlert('ID do evento Google inválido. Recarregue a agenda e tente novamente.', '❌ Erro');
                 return;
             }
             
@@ -1970,6 +1978,11 @@ includeSidebar('Agenda');
 
             const eventoIdInput = document.getElementById('eventId');
             const eventTipoInput = document.getElementById('eventTipo');
+            if (eventoIdInput.value && !/^\d+$/.test(String(eventoIdInput.value))) {
+                showToast('Este evento veio do Google Calendar. Use os controles do bloco Google Calendar para atualizar.', 'error');
+                return;
+            }
+
             const isNovaVisita = !eventoIdInput.value && eventTipoInput.value === 'visita';
             let structuredVisitData = null;
 
