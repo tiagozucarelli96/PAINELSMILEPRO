@@ -784,7 +784,7 @@ includeSidebar('Agenda');
 
                     <div class="form-group">
                         <label for="visitTelefone">Telefone do cliente *</label>
-                        <input type="tel" id="visitTelefone" autocomplete="off" inputmode="numeric" placeholder="12999999999" maxlength="11">
+                        <input type="tel" id="visitTelefone" autocomplete="off" inputmode="numeric" placeholder="12999999999" maxlength="20">
                     </div>
                 </div>
 
@@ -1626,6 +1626,11 @@ includeSidebar('Agenda');
         });
         document.getElementById('visitTelefone').addEventListener('input', function() {
             this.value = normalizeVisitPhoneForSmclick(this.value);
+        });
+        document.getElementById('visitTelefone').addEventListener('paste', function(e) {
+            e.preventDefault();
+            const pasted = (e.clipboardData || window.clipboardData).getData('text');
+            this.value = normalizeVisitPhoneForSmclick(pasted);
         });
         
         // Verificar permissões
