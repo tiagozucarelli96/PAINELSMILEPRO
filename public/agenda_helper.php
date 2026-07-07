@@ -209,6 +209,44 @@ class AgendaHelper {
         }
     }
 
+    private function agendarWhatsappConfirmacoesVisitasDoDia(string $dataLocal, bool $dryRun = false): int {
+        try {
+            if ($dryRun) {
+                $stmt = $this->pdo->prepare("
+                    SELECT COUNT(*)
+                    FROM agenda_eventos ae
+                    WHERE ae.tipo = 'visita'
+                      AND ae.status = 'agendado'
+                      AND DATE(ae.inicio) = CAST(:data_local AS DATE)
+                ");
+                $stmt->execute([':data_local' => $dataLocal]);
+                return (int)$stmt->fetchColumn();
+            }
+
+            $stmt = $this->pdo->prepare("
+                INSERT INTO agenda_visita_whatsapp_notificacoes (
+                    evento_id, tipo, agendada_para, status, tentativas, ultimo_erro, atualizado_em
+                )
+                SELECT ae.id, 'confirmacao_8h', (DATE(ae.inicio) + TIME '08:00'), 'pendente', 0, NULL, NOW()
+                FROM agenda_eventos ae
+                WHERE ae.tipo = 'visita'
+                  AND ae.status = 'agendado'
+                  AND DATE(ae.inicio) = CAST(:data_local AS DATE)
+                ON CONFLICT (evento_id, tipo) DO UPDATE SET
+                    agendada_para = EXCLUDED.agendada_para,
+                    status = 'pendente',
+                    ultimo_erro = NULL,
+                    atualizado_em = NOW()
+                WHERE agenda_visita_whatsapp_notificacoes.status <> 'enviada'
+            ");
+            $stmt->execute([':data_local' => $dataLocal]);
+            return $stmt->rowCount();
+        } catch (Throwable $e) {
+            error_log('[AGENDA_VISITA_WHATSAPP] Falha ao agendar confirmações do dia ' . $dataLocal . ': ' . $e->getMessage());
+            return 0;
+        }
+    }
+
     private function enviarWhatsappClienteVisita(int $evento_id): array {
         try {
             $stmt = $this->pdo->prepare("
@@ -246,12 +284,16 @@ class AgendaHelper {
     public function processarWhatsappConfirmacoesVisitas(int $limit = 100, bool $dryRun = false): array {
         $this->ensureVisitWhatsappSchema();
         $limit = max(1, min(500, $limit));
+        $hojeLocal = (new DateTimeImmutable('now', new DateTimeZone(self::GOOGLE_TIMEZONE)))->format('Y-m-d');
+        $agendadasHoje = $this->agendarWhatsappConfirmacoesVisitasDoDia($hojeLocal, $dryRun);
         $resultado = [
             'success' => true,
             'processadas' => 0,
             'enviadas' => 0,
             'falhas' => 0,
             'canceladas' => 0,
+            'agendadas_hoje' => $agendadasHoje,
+            'data_referencia' => $hojeLocal,
             'dry_run' => $dryRun,
         ];
 
@@ -262,12 +304,13 @@ class AgendaHelper {
                 ae.tipo,
                 ae.status AS evento_status,
                 ae.cliente_nome,
-                ae.cliente_telefone
+                ae.cliente_telefone,
+                DATE(ae.inicio) AS data_visita
             FROM agenda_visita_whatsapp_notificacoes n
             JOIN agenda_eventos ae ON ae.id = n.evento_id
             WHERE n.tipo = 'confirmacao_8h'
               AND n.status IN ('pendente', 'erro')
-              AND n.agendada_para <= NOW()
+              AND n.agendada_para <= (NOW() AT TIME ZONE 'America/Sao_Paulo')
             ORDER BY n.agendada_para ASC, n.id ASC
             LIMIT :limit
         ");
@@ -282,6 +325,18 @@ class AgendaHelper {
             if (($item['tipo'] ?? '') !== 'visita' || ($item['evento_status'] ?? '') !== 'agendado') {
                 if (!$dryRun) {
                     $this->marcarWhatsappConfirmacao($notificacaoId, 'cancelada', null);
+                }
+                $resultado['canceladas']++;
+                continue;
+            }
+
+            $dataVisita = (string)($item['data_visita'] ?? '');
+            if ($dataVisita !== $hojeLocal) {
+                if (!$dryRun) {
+                    $erro = $dataVisita < $hojeLocal
+                        ? 'Confirmação expirada: cron executado após a data da visita.'
+                        : 'Confirmação ignorada: visita não é do dia atual.';
+                    $this->marcarWhatsappConfirmacao($notificacaoId, 'cancelada', $erro);
                 }
                 $resultado['canceladas']++;
                 continue;
