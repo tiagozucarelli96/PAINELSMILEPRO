@@ -3294,7 +3294,7 @@ includeSidebar($sidebar_title);
             if ($key === 'dj_protocolo') {
                 $is_locked = false;
                 $content_plain = trim((string)strip_tags((string)$content));
-                $show_dj_legacy_text_toggle = ($content_plain !== '');
+                $show_dj_legacy_text_toggle = ($content_plain !== '' && empty($links_cliente_dj_payload));
             }
         ?>
         <div class="tab-content <?= $key === $default_tab_key ? 'active' : '' ?>" id="tab-<?= $key ?>">
@@ -5422,6 +5422,40 @@ function abrirDjFormularioPublico(slot) {
     window.open(url, '_blank');
 }
 
+function copiarDjFormularioPublico(slot) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !djSlotExists(slotIndex)) {
+        alert('Formulário DJ inválido.');
+        return;
+    }
+    const url = getDjPublicUrl(slotIndex);
+    if (!url) {
+        alert('Nenhum link público disponível para este formulário DJ.');
+        return;
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(url).then(() => {
+            alert('Link copiado!');
+        }).catch(() => {
+            const tempInput = document.createElement('input');
+            tempInput.value = url;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            tempInput.remove();
+            alert('Link copiado!');
+        });
+        return;
+    }
+    const tempInput = document.createElement('input');
+    tempInput.value = url;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    document.execCommand('copy');
+    tempInput.remove();
+    alert('Link copiado!');
+}
+
 function buildDjSlotResponseStatusHtml(slot) {
     const link = djLinksBySlot[slot] || null;
     if (!link) {
@@ -5441,8 +5475,8 @@ function buildDjSlotResponseStatusHtml(slot) {
     if (hasDraft) {
         actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirModalDjResposta(${slot}, 'draft')">👁 Ver rascunho</button>`);
     }
-    if (hasSubmitted) {
-        actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirModalDjResposta(${slot}, 'submitted')">👁 Ver enviado</button>`);
+    if (hasSubmitted && publicUrl) {
+        actions.push(`<button type="button" class="btn btn-secondary" onclick="copiarDjFormularioPublico(${slot})">🔗 Copiar link</button>`);
     }
 
     if (!hasDraft && !hasSubmitted && !publicUrl) {
