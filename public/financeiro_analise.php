@@ -702,7 +702,7 @@ $dateBase = fa_request_param('data_base') ?? 'pagamento';
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
 $status = fa_request_param('status') ?? 'todos';
 $requestedTab = fa_request_param('tab') ?? 'principal';
-$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem'], true) ? $requestedTab : 'principal';
+$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem', 'equilibrio'], true) ? $requestedTab : 'principal';
 $export = fa_request_param('export') ?? '';
 
 $start = $month->format('Y-m-01');
@@ -725,6 +725,11 @@ $receitaLiquida = fa_dre_line_value($dre, 'Receita Líquida');
 $custosVariaveis = abs(fa_dre_line_value($dre, 'Custos Operacionais'));
 $margemContribuicao = fa_dre_line_value($dre, 'Margem de Contribuição');
 $margemContribuicaoPct = $receitaLiquida > 0 ? ($margemContribuicao / $receitaLiquida) * 100 : 0.0;
+$despesasFixasEquilibrio = abs(fa_dre_line_value($dre, 'Despesas Operacionais')) + abs(fa_dre_line_value($dre, 'Resultado Financeiro'));
+$pontoEquilibrioLiquido = $margemContribuicaoPct > 0 ? ($despesasFixasEquilibrio / ($margemContribuicaoPct / 100)) : 0.0;
+$taxaReceitaLiquida = $receitaBruta > 0 ? ($receitaLiquida / $receitaBruta) : 0.0;
+$pontoEquilibrioBruto = $taxaReceitaLiquida > 0 ? ($pontoEquilibrioLiquido / $taxaReceitaLiquida) : 0.0;
+$distanciaEquilibrio = $receitaLiquida - $pontoEquilibrioLiquido;
 
 if ($export === 'dre_pdf') {
     fa_output_dre_pdf($dre, (float)$summary['receitas'], $month, $dateBase, $status);
@@ -827,6 +832,7 @@ includeSidebar('Análise Financeira');
         <a class="fa-tab <?= $activeTab === 'principal' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'principal'])) ?>">Principal</a>
         <a class="fa-tab <?= $activeTab === 'dre' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'dre'])) ?>">DRE</a>
         <a class="fa-tab <?= $activeTab === 'margem' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'margem'])) ?>">Margem de contribuição</a>
+        <a class="fa-tab <?= $activeTab === 'equilibrio' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'equilibrio'])) ?>">Ponto de equilíbrio</a>
     </nav>
 
     <?php if ($activeTab === 'principal'): ?>
@@ -879,7 +885,7 @@ includeSidebar('Análise Financeira');
             </div>
             <?= fa_render_dre_list($dre, (float)$summary['receitas']) ?>
         </section>
-    <?php else: ?>
+    <?php elseif ($activeTab === 'margem'): ?>
         <section class="fa-card fa-section" style="margin-top:1rem">
             <div class="fa-panel-head">
                 <h2>Margem de Contribuição · <?= h(fa_month_label($month)) ?></h2>
@@ -931,6 +937,62 @@ includeSidebar('Análise Financeira');
                     <?php foreach (['Alimentos e Bebidas', 'Fornecedores de Eventos', 'Decoração e Estrutura', 'Música e Atrações', 'Mão de Obra de Evento', 'Logística de Evento'] as $costLabel): ?>
                         <?php foreach ($dre as $line): ?>
                             <?php if ((string)$line['label'] === $costLabel): ?>
+                                <?= fa_render_dre_list([$line], (float)$summary['receitas']) ?>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </section>
+    <?php else: ?>
+        <section class="fa-card fa-section" style="margin-top:1rem">
+            <div class="fa-panel-head">
+                <h2>Ponto de Equilíbrio · <?= h(fa_month_label($month)) ?></h2>
+            </div>
+            <div class="fa-margin-summary">
+                <div class="fa-margin-kpi">
+                    <span>Despesas fixas</span>
+                    <strong class="out"><?= h(format_currency($despesasFixasEquilibrio)) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Margem contribuição</span>
+                    <strong><?= h(number_format($margemContribuicaoPct, 2, ',', '.')) ?>%</strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Equilíbrio líquido</span>
+                    <strong><?= h(format_currency($pontoEquilibrioLiquido)) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Equilíbrio bruto estimado</span>
+                    <strong><?= h(format_currency($pontoEquilibrioBruto)) ?></strong>
+                </div>
+            </div>
+            <div class="fa-two">
+                <section>
+                    <h2>Resumo do mês</h2>
+                    <?= fa_render_margin_table([
+                        ['Receita Bruta atual', $receitaBruta],
+                        ['Receita Líquida atual', $receitaLiquida],
+                        ['Ponto de equilíbrio líquido', $pontoEquilibrioLiquido],
+                        [$distanciaEquilibrio >= 0 ? 'Acima do equilíbrio' : 'Abaixo do equilíbrio', $distanciaEquilibrio],
+                    ]) ?>
+                </section>
+                <section>
+                    <h2>Fórmula</h2>
+                    <div class="fa-formula-list">
+                        <div><strong>Despesas fixas</strong><span>Despesas Operacionais + Resultado Financeiro</span></div>
+                        <div><strong>Margem de contribuição %</strong><span>Margem de Contribuição ÷ Receita Líquida × 100</span></div>
+                        <div><strong>Ponto de equilíbrio líquido</strong><span>Despesas fixas ÷ Margem de contribuição %</span></div>
+                        <div><strong>Ponto de equilíbrio bruto estimado</strong><span>Equilíbrio líquido ajustado pela taxa atual de Receita Líquida sobre Receita Bruta</span></div>
+                    </div>
+                </section>
+            </div>
+            <div style="margin-top:1rem">
+                <h2>Composição das despesas fixas consideradas</h2>
+                <div class="fa-dre-list">
+                    <?php foreach (['Despesas Operacionais', 'Resultado Financeiro'] as $fixedLabel): ?>
+                        <?php foreach ($dre as $line): ?>
+                            <?php if ((string)$line['label'] === $fixedLabel): ?>
                                 <?= fa_render_dre_list([$line], (float)$summary['receitas']) ?>
                             <?php endif; ?>
                         <?php endforeach; ?>
