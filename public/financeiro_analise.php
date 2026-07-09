@@ -23,31 +23,14 @@ header('Expires: 0');
 
 function fa_request_param(string $name): ?string
 {
-    if (isset($_GET[$name]) && is_scalar($_GET[$name])) {
-        return (string)$_GET[$name];
-    }
-
-    $routeParams = $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] ?? null;
-    if (is_array($routeParams) && isset($routeParams[$name]) && is_scalar($routeParams[$name])) {
-        return (string)$routeParams[$name];
-    }
-
     $querySources = [
-        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? ''),
+        (string)(parse_url(str_replace('&amp;', '&', (string)($_SERVER['REQUEST_URI'] ?? '')), PHP_URL_QUERY) ?? ''),
+        (string)(parse_url(str_replace('&amp;', '&', (string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? '')), PHP_URL_QUERY) ?? ''),
+        (string)(parse_url(str_replace('&amp;', '&', (string)($_SERVER['HTTP_X_ORIGINAL_URL'] ?? '')), PHP_URL_QUERY) ?? ''),
+        (string)(parse_url(str_replace('&amp;', '&', (string)($_SERVER['HTTP_X_REWRITE_URL'] ?? '')), PHP_URL_QUERY) ?? ''),
         (string)($_SERVER['QUERY_STRING'] ?? ''),
+        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? ''),
     ];
-
-    foreach ([
-        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ''),
-        (string)($_SERVER['REQUEST_URI'] ?? ''),
-        (string)($_SERVER['HTTP_X_ORIGINAL_URL'] ?? ''),
-        (string)($_SERVER['HTTP_X_REWRITE_URL'] ?? ''),
-    ] as $uriSource) {
-        if ($uriSource === '') {
-            continue;
-        }
-        $querySources[] = (string)(parse_url(str_replace('&amp;', '&', $uriSource), PHP_URL_QUERY) ?? '');
-    }
 
     foreach ($querySources as $queryString) {
         if ($queryString === '') {
@@ -59,35 +42,14 @@ function fa_request_param(string $name): ?string
         }
     }
 
-    return null;
-}
-
-function fa_query_param_from_uri(string $name): ?string
-{
-    $sources = [
-        (string)($_SERVER['REQUEST_URI'] ?? ''),
-        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ''),
-        (string)($_SERVER['HTTP_X_ORIGINAL_URL'] ?? ''),
-        (string)($_SERVER['HTTP_X_REWRITE_URL'] ?? ''),
-    ];
-
-    foreach ($sources as $source) {
-        if ($source === '') {
-            continue;
-        }
-
-        $query = (string)(parse_url(str_replace('&amp;', '&', $source), PHP_URL_QUERY) ?? '');
-        if ($query === '') {
-            continue;
-        }
-
-        parse_str($query, $parsed);
-        if (isset($parsed[$name]) && is_scalar($parsed[$name])) {
-            return (string)$parsed[$name];
-        }
+    if (isset($_GET[$name]) && is_scalar($_GET[$name])) {
+        return (string)$_GET[$name];
     }
 
-    return null;
+    $routeParams = $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] ?? null;
+    return is_array($routeParams) && isset($routeParams[$name]) && is_scalar($routeParams[$name])
+        ? (string)$routeParams[$name]
+        : null;
 }
 
 function fa_parse_month(string $value): DateTimeImmutable
@@ -496,7 +458,7 @@ includeSidebar('Análise Financeira');
 ?>
 
 <style>
-.fa-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.fa-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.fa-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.fa-sub{margin:.3rem 0 0;color:#64748b}.fa-actions{display:flex;gap:.65rem;flex-wrap:wrap}.fa-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155}.fa-btn.primary{background:#1e3a8a;color:#fff}.fa-btn.green{background:#20c985;color:#fff}.fa-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07)}.fa-filters{margin:1rem 0;padding:1rem;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:.8rem;align-items:end}.fa-field{display:grid;gap:.35rem}.fa-field label{font-weight:900;color:#475569;font-size:.82rem}.fa-field select,.fa-field input{border:1px solid #cbd5e1;border-radius:8px;padding:.65rem .75rem;font:inherit;background:#fff}.fa-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.fa-kpi{padding:1.1rem;border-left:4px solid #38bdf8}.fa-kpi.receita{border-color:#22c55e}.fa-kpi.despesa{border-color:#ef4444}.fa-kpi.resultado{border-color:#3b82f6}.fa-kpi.margem{border-color:#a855f7}.fa-kpi h3{margin:0 0 .8rem;text-transform:uppercase;color:#64748b;font-size:.82rem}.fa-kpi .value{font-size:1.55rem;font-weight:900;color:#1f2937}.fa-kpi .meta{margin-top:.35rem;color:#64748b;font-size:.84rem}.fa-delta{font-weight:900}.fa-delta.good{color:#16a34a}.fa-delta.bad{color:#dc2626}.fa-month{display:flex;align-items:center;justify-content:center;gap:.7rem;margin:1.2rem 0}.fa-month a{width:36px;height:36px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;text-decoration:none;display:grid;place-items:center;font-weight:900}.fa-month-title{font-weight:900;font-size:1.35rem;color:#475569}.fa-grid{display:grid;grid-template-columns:1.25fr .9fr;gap:1rem;margin-top:1rem}.fa-section{padding:1rem}.fa-section h2{margin:0 0 1rem;color:#1e3a8a;font-size:1.08rem}.fa-chart{display:grid;gap:.8rem}.fa-chart-row{display:grid;grid-template-columns:95px 1fr 110px;gap:.8rem;align-items:center}.fa-bar-track{height:28px;background:#eef2f7;border-radius:6px;overflow:hidden}.fa-bar{height:100%;min-width:2px}.fa-bar.receita{background:#22c55e}.fa-bar.despesa{background:#ef4444}.fa-bar.resultado{background:#3b82f6}.fa-table-wrap{overflow:auto}.fa-table{width:100%;border-collapse:collapse;min-width:620px}.fa-table th,.fa-table td{padding:.75rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.fa-table th{background:#f8fafc;color:#475569;text-transform:uppercase;font-size:.75rem}.fa-money{font-weight:900}.fa-money.out{color:#b42318}.fa-money.in{color:#15803d}.fa-dre-list{display:grid;gap:.55rem}.fa-dre-item{border:1px solid #e2e8f0;border-radius:8px;background:#fff;overflow:hidden}.fa-dre-item summary,.fa-dre-static{list-style:none;display:grid;grid-template-columns:1fr 160px 110px;gap:1rem;align-items:center;padding:.85rem 1rem}.fa-dre-item summary{cursor:pointer}.fa-dre-item summary::-webkit-details-marker{display:none}.fa-dre-item.expandable summary:before{content:'▸';font-weight:900;color:#64748b;margin-right:.5rem}.fa-dre-item.expandable[open] summary:before{content:'▾'}.fa-dre-item.total summary,.fa-dre-item.total .fa-dre-static,.fa-dre-item.result summary,.fa-dre-item.result .fa-dre-static{background:#eef6ff;font-weight:900}.fa-dre-item.title summary,.fa-dre-item.title .fa-dre-static{background:#f8fafc;font-weight:900;color:#475569}.fa-dre-label{display:flex;align-items:center;gap:.35rem;font-weight:900}.fa-dre-label.indent{padding-left:1.1rem;font-weight:800}.fa-dre-details{padding:.25rem 1rem 1rem 2.3rem;background:#fff}.fa-dre-detail-table{width:100%;border-collapse:collapse}.fa-dre-detail-table th,.fa-dre-detail-table td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left}.fa-dre-detail-table th{font-size:.72rem;color:#64748b;text-transform:uppercase}.fa-insights{display:grid;gap:.65rem}.fa-insight{border-left:4px solid #38bdf8;background:#f8fbff;border-radius:8px;padding:.75rem .9rem;font-weight:800;color:#334155}.fa-two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}.fa-muted{color:#64748b;font-size:.86rem}@media(max-width:1050px){.fa-summary,.fa-grid,.fa-two{grid-template-columns:1fr}.fa-filters{grid-template-columns:1fr 1fr}}@media(max-width:650px){.fa-page{padding:1rem}.fa-filters{grid-template-columns:1fr}.fa-chart-row{grid-template-columns:1fr}.fa-summary{grid-template-columns:1fr}.fa-dre-item summary,.fa-dre-static{grid-template-columns:1fr}.fa-dre-details{padding:.25rem .8rem .9rem}}
+.fa-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.fa-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.fa-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.fa-sub{margin:.3rem 0 0;color:#64748b}.fa-actions{display:flex;gap:.65rem;flex-wrap:wrap}.fa-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155}.fa-btn.primary{background:#1e3a8a;color:#fff}.fa-btn.green{background:#20c985;color:#fff}.fa-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07)}.fa-filters{margin:1rem 0;padding:1rem;display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:.8rem;align-items:end}.fa-field{display:grid;gap:.35rem}.fa-field label{font-weight:900;color:#475569;font-size:.82rem}.fa-field select,.fa-field input{border:1px solid #cbd5e1;border-radius:8px;padding:.65rem .75rem;font:inherit;background:#fff}.fa-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.fa-kpi{padding:1.1rem;border-left:4px solid #38bdf8}.fa-kpi.receita{border-color:#22c55e}.fa-kpi.despesa{border-color:#ef4444}.fa-kpi.resultado{border-color:#3b82f6}.fa-kpi.margem{border-color:#a855f7}.fa-kpi h3{margin:0 0 .8rem;text-transform:uppercase;color:#64748b;font-size:.82rem}.fa-kpi .value{font-size:1.55rem;font-weight:900;color:#1f2937}.fa-kpi .meta{margin-top:.35rem;color:#64748b;font-size:.84rem}.fa-delta{font-weight:900}.fa-delta.good{color:#16a34a}.fa-delta.bad{color:#dc2626}.fa-month{display:flex;align-items:center;justify-content:center;gap:.7rem;margin:1.2rem 0}.fa-month a{width:36px;height:36px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;text-decoration:none;display:grid;place-items:center;font-weight:900}.fa-month-title{font-weight:900;font-size:1.35rem;color:#475569}.fa-grid{display:grid;grid-template-columns:1.25fr .9fr;gap:1rem;margin-top:1rem}.fa-section{padding:1rem}.fa-section h2{margin:0 0 1rem;color:#1e3a8a;font-size:1.08rem}.fa-chart{display:grid;gap:.8rem}.fa-chart-row{display:grid;grid-template-columns:95px 1fr 110px;gap:.8rem;align-items:center}.fa-bar-track{height:28px;background:#eef2f7;border-radius:6px;overflow:hidden}.fa-bar{height:100%;min-width:2px}.fa-bar.receita{background:#22c55e}.fa-bar.despesa{background:#ef4444}.fa-bar.resultado{background:#3b82f6}.fa-table-wrap{overflow:auto}.fa-table{width:100%;border-collapse:collapse;min-width:620px}.fa-table th,.fa-table td{padding:.75rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.fa-table th{background:#f8fafc;color:#475569;text-transform:uppercase;font-size:.75rem}.fa-money{font-weight:900}.fa-money.out{color:#b42318}.fa-money.in{color:#15803d}.fa-dre-list{display:grid;gap:.55rem}.fa-dre-item{border:1px solid #e2e8f0;border-radius:8px;background:#fff;overflow:hidden}.fa-dre-item summary,.fa-dre-static{list-style:none;display:grid;grid-template-columns:1fr 160px 110px;gap:1rem;align-items:center;padding:.85rem 1rem}.fa-dre-item summary{cursor:pointer}.fa-dre-item summary::-webkit-details-marker{display:none}.fa-dre-item.expandable summary:before{content:'▸';font-weight:900;color:#64748b;margin-right:.5rem}.fa-dre-item.expandable[open] summary:before{content:'▾'}.fa-dre-item.total summary,.fa-dre-item.total .fa-dre-static,.fa-dre-item.result summary,.fa-dre-item.result .fa-dre-static{background:#eef6ff;font-weight:900}.fa-dre-item.title summary,.fa-dre-item.title .fa-dre-static{background:#f8fafc;font-weight:900;color:#475569}.fa-dre-label{display:flex;align-items:center;gap:.35rem;font-weight:900}.fa-dre-label.indent{padding-left:1.1rem;font-weight:800}.fa-dre-details{padding:.25rem 1rem 1rem 2.3rem;background:#fff}.fa-dre-detail-table{width:100%;border-collapse:collapse}.fa-dre-detail-table th,.fa-dre-detail-table td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left}.fa-dre-detail-table th{font-size:.72rem;color:#64748b;text-transform:uppercase}.fa-insights{display:grid;gap:.65rem}.fa-insight{border-left:4px solid #38bdf8;background:#f8fbff;border-radius:8px;padding:.75rem .9rem;font-weight:800;color:#334155}.fa-two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}.fa-muted{color:#64748b;font-size:.86rem}@media(max-width:1050px){.fa-summary,.fa-grid,.fa-two{grid-template-columns:1fr}.fa-filters{grid-template-columns:1fr 1fr}}@media(max-width:650px){.fa-page{padding:1rem}.fa-filters{grid-template-columns:1fr}.fa-chart-row{grid-template-columns:1fr}.fa-summary{grid-template-columns:1fr}.fa-dre-item summary,.fa-dre-static{grid-template-columns:1fr}.fa-dre-details{padding:.25rem .8rem .9rem}}
 .fa-dre-item summary,.fa-dre-static{grid-template-columns:24px minmax(0,1fr) 160px 110px}.fa-dre-item.expandable summary:before,.fa-dre-item.expandable[open] summary:before{content:none}.fa-dre-arrow{width:18px;height:18px;display:inline-grid;place-items:center;color:#64748b;font-weight:900;transition:transform .15s ease}.fa-dre-item[open] .fa-dre-arrow{transform:rotate(90deg)}.fa-dre-static .fa-dre-arrow{visibility:hidden}.fa-dre-item summary .fa-money,.fa-dre-static .fa-money{text-align:right}.fa-dre-item summary span:last-child,.fa-dre-static span:last-child{text-align:right}@media(max-width:650px){.fa-dre-item summary,.fa-dre-static{grid-template-columns:24px 1fr;gap:.45rem .75rem}.fa-dre-item summary .fa-money,.fa-dre-static .fa-money,.fa-dre-item summary span:last-child,.fa-dre-static span:last-child{text-align:left;grid-column:2}}
 </style>
 
@@ -512,7 +474,7 @@ includeSidebar('Análise Financeira');
         </div>
     </div>
 
-    <form class="fa-card fa-filters" method="get">
+    <form class="fa-card fa-filters" action="index.php" method="get" data-fa-filter-form>
         <input type="hidden" name="page" value="financeiro_analise">
         <div class="fa-field">
             <label>Mês</label>
@@ -531,10 +493,6 @@ includeSidebar('Análise Financeira');
                 <option value="todos" <?= $status === 'todos' ? 'selected' : '' ?>>Todos</option>
                 <option value="pago" <?= $status === 'pago' ? 'selected' : '' ?>>Pago</option>
             </select>
-        </div>
-        <div class="fa-field">
-            <label>Competência</label>
-            <input type="text" value="<?= h(fa_month_label($month)) ?>" disabled>
         </div>
         <button class="fa-btn primary" type="submit">Filtrar</button>
     </form>
@@ -652,25 +610,28 @@ includeSidebar('Análise Financeira');
 
 <script>
 (() => {
-    const params = new URLSearchParams(window.location.search);
-    const competencia = params.get('competencia');
-    if (!/^\d{4}-\d{2}$/.test(competencia || '')) {
+    const form = document.querySelector('[data-fa-filter-form]');
+    if (!form) {
         return;
     }
 
-    const monthInput = document.querySelector('input[name="competencia"]');
-    if (!monthInput || monthInput.value === competencia) {
-        return;
-    }
+    form.addEventListener('submit', (event) => {
+        const monthInput = form.querySelector('input[name="competencia"]');
+        const dateBaseInput = form.querySelector('select[name="data_base"]');
+        const statusInput = form.querySelector('select[name="status"]');
+        const competencia = monthInput ? monthInput.value : '';
+        if (!/^\d{4}-\d{2}$/.test(competencia)) {
+            return;
+        }
 
-    monthInput.value = competencia;
-    if (params.has('_fa_reload')) {
-        return;
-    }
-
-    const url = new URL(window.location.href);
-    url.searchParams.set('_fa_reload', String(Date.now()));
-    window.location.replace(url.toString());
+        const url = new URL(form.getAttribute('action') || 'index.php', window.location.href);
+        url.searchParams.set('page', 'financeiro_analise');
+        url.searchParams.set('competencia', competencia);
+        url.searchParams.set('data_base', dateBaseInput ? dateBaseInput.value : 'pagamento');
+        url.searchParams.set('status', statusInput ? statusInput.value : 'todos');
+        event.preventDefault();
+        window.location.href = url.toString();
+    });
 })();
 </script>
 
