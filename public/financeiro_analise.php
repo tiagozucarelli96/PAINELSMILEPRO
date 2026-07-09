@@ -238,6 +238,18 @@ function fa_category_bucket(?string $category): string
     return 'Outras Despesas Operacionais';
 }
 
+function fa_is_outside_dre_bucket(string $bucket): bool
+{
+    return in_array($bucket, [
+        'Sócios',
+        'Reservas',
+        'Empréstimos e Financiamentos',
+        'Investimentos/Patrimônio',
+        'Obras e Expansão',
+        'Cartão de crédito',
+    ], true);
+}
+
 function fa_revenue_bucket(?string $description, ?string $payment): string
 {
     $descriptionNorm = fa_norm($description);
@@ -536,10 +548,20 @@ function fa_top_despesas(PDO $pdo, string $start, string $end, string $status): 
           AND d.data_movimento < CAST(:end AS DATE)
         GROUP BY 1
         ORDER BY valor DESC
-        LIMIT 10
     ");
     $stmt->execute([':start' => $start, ':end' => $end]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $rows = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        if (fa_is_outside_dre_bucket(fa_category_bucket((string)$row['categoria']))) {
+            continue;
+        }
+        $rows[] = $row;
+        if (count($rows) >= 10) {
+            break;
+        }
+    }
+    return $rows;
 }
 
 function fa_despesas_por_categoria(PDO $pdo, string $start, string $end, string $status): array
@@ -1392,6 +1414,11 @@ $compromissosFuturos = fa_future_commitments($pdo, $month);
 $metricasProjecao = fa_projection_metrics($pdo, $month, $dateBase, $status);
 $investimentos = fa_investimentos($pdo, $month, $status);
 $dre = fa_build_dre($summary, $despesasCategorias, $receitasLinhas);
+$previousDre = fa_build_dre(
+    $previous,
+    fa_despesas_por_categoria($pdo, $prevStart, $prevEnd, $status),
+    fa_receitas_por_linha($pdo, $prevStart, $prevEnd, $dateBase, $status)
+);
 $receitaBruta = fa_dre_line_value($dre, 'Receita Bruta');
 $deducoesValor = abs(fa_dre_line_value($dre, 'Deduções'));
 $receitaLiquida = fa_dre_line_value($dre, 'Receita Líquida');
@@ -1442,29 +1469,38 @@ if ($export === 'dre_pdf') {
     fa_output_dre_pdf($dre, (float)$summary['receitas'], $month, $dateBase, $status);
 }
 
-$deltaReceitas = fa_delta($summary['receitas'], $previous['receitas']);
-$deltaDespesas = fa_delta($summary['despesas'], $previous['despesas']);
-$deltaResultado = fa_delta($summary['resultado'], $previous['resultado']);
-$deltaMargem = $summary['margem'] - $previous['margem'];
-$maxChart = max(1, $summary['receitas'], $summary['despesas'], abs($summary['resultado']), $previous['receitas'], $previous['despesas'], abs($previous['resultado']));
+$principalReceitas = $receitaBruta;
+$principalDespesas = $deducoesValor + $custosVariaveis + abs(fa_dre_line_value($dre, 'Despesas Operacionais')) + abs(fa_dre_line_value($dre, 'Resultado Financeiro'));
+$principalResultado = fa_dre_line_value($dre, 'Resultado do Exercício');
+$principalMargem = $principalReceitas > 0 ? ($principalResultado / $principalReceitas) * 100 : 0.0;
+$previousPrincipalReceitas = fa_dre_line_value($previousDre, 'Receita Bruta');
+$previousPrincipalDespesas = abs(fa_dre_line_value($previousDre, 'Deduções')) + abs(fa_dre_line_value($previousDre, 'Custos Operacionais')) + abs(fa_dre_line_value($previousDre, 'Despesas Operacionais')) + abs(fa_dre_line_value($previousDre, 'Resultado Financeiro'));
+$previousPrincipalResultado = fa_dre_line_value($previousDre, 'Resultado do Exercício');
+$previousPrincipalMargem = $previousPrincipalReceitas > 0 ? ($previousPrincipalResultado / $previousPrincipalReceitas) * 100 : 0.0;
+
+$deltaReceitas = fa_delta($principalReceitas, $previousPrincipalReceitas);
+$deltaDespesas = fa_delta($principalDespesas, $previousPrincipalDespesas);
+$deltaResultado = fa_delta($principalResultado, $previousPrincipalResultado);
+$deltaMargem = $principalMargem - $previousPrincipalMargem;
+$maxChart = max(1, $principalReceitas, $principalDespesas, abs($principalResultado), $previousPrincipalReceitas, $previousPrincipalDespesas, abs($previousPrincipalResultado));
 
 $insights = [];
-if ($summary['resultado'] < 0) {
-    $insights[] = 'Resultado negativo no mês: as despesas superaram as receitas em ' . format_currency(abs($summary['resultado'])) . '.';
+if ($principalResultado < 0) {
+    $insights[] = 'Resultado operacional negativo no mês: as despesas do DRE superaram as receitas em ' . format_currency(abs($principalResultado)) . '.';
 } else {
-    $insights[] = 'Resultado positivo no mês: sobra operacional de ' . format_currency($summary['resultado']) . '.';
+    $insights[] = 'Resultado operacional positivo no mês: sobra de ' . format_currency($principalResultado) . '.';
 }
-if ($summary['despesas'] > $previous['despesas']) {
-    $insights[] = 'As despesas subiram ' . $deltaDespesas['label'] . ' contra o mês anterior.';
+if ($principalDespesas > $previousPrincipalDespesas) {
+    $insights[] = 'As despesas operacionais subiram ' . $deltaDespesas['label'] . ' contra o mês anterior.';
 } else {
-    $insights[] = 'As despesas reduziram ' . str_replace('-', '', $deltaDespesas['label']) . ' contra o mês anterior.';
+    $insights[] = 'As despesas operacionais reduziram ' . str_replace('-', '', $deltaDespesas['label']) . ' contra o mês anterior.';
 }
-if (!empty($topDespesas[0]) && $summary['despesas'] > 0) {
-    $share = ((float)$topDespesas[0]['valor'] / $summary['despesas']) * 100;
-    $insights[] = $topDespesas[0]['categoria'] . ' concentra ' . number_format($share, 1, ',', '.') . '% das despesas do mês.';
+if (!empty($topDespesas[0]) && $principalDespesas > 0) {
+    $share = ((float)$topDespesas[0]['valor'] / $principalDespesas) * 100;
+    $insights[] = $topDespesas[0]['categoria'] . ' concentra ' . number_format($share, 1, ',', '.') . '% das despesas operacionais do mês.';
 }
 if ($summary['a_pagar'] > 0) {
-    $insights[] = 'Existem ' . format_currency($summary['a_pagar']) . ' em despesas ainda pendentes no mês.';
+    $insights[] = 'Existem ' . format_currency($summary['a_pagar']) . ' em saídas de caixa ainda pendentes no mês.';
 }
 
 includeSidebar('Análise Financeira');
@@ -1519,19 +1555,19 @@ includeSidebar('Análise Financeira');
             <div class="meta"><?= (int)$summary['receitas_qtd'] ?> lançamentos · <span class="fa-delta <?= $deltaReceitas['value'] >= 0 ? 'good' : 'bad' ?>"><?= h($deltaReceitas['label']) ?></span> vs mês anterior</div>
         </div>
         <div class="fa-card fa-kpi despesa">
-            <h3>Despesas <?= h($month->format('m/Y')) ?></h3>
-            <div class="value"><?= h(format_currency($summary['despesas'])) ?></div>
-            <div class="meta"><?= (int)$summary['despesas_qtd'] ?> lançamentos · <span class="fa-delta <?= $deltaDespesas['value'] <= 0 ? 'good' : 'bad' ?>"><?= h($deltaDespesas['label']) ?></span> vs mês anterior</div>
+            <h3>Despesas DRE <?= h($month->format('m/Y')) ?></h3>
+            <div class="value"><?= h(format_currency($principalDespesas)) ?></div>
+            <div class="meta">Operacional · <span class="fa-delta <?= $deltaDespesas['value'] <= 0 ? 'good' : 'bad' ?>"><?= h($deltaDespesas['label']) ?></span> vs mês anterior</div>
         </div>
         <div class="fa-card fa-kpi resultado">
-            <h3>Resultado</h3>
-            <div class="value"><?= h(format_currency($summary['resultado'])) ?></div>
-            <div class="meta"><?= $summary['resultado'] >= 0 ? 'Lucro' : 'Prejuízo' ?> · <span class="fa-delta <?= $deltaResultado['value'] >= 0 ? 'good' : 'bad' ?>"><?= h($deltaResultado['label']) ?></span></div>
+            <h3>Resultado DRE</h3>
+            <div class="value"><?= h(format_currency($principalResultado)) ?></div>
+            <div class="meta"><?= $principalResultado >= 0 ? 'Lucro operacional' : 'Prejuízo operacional' ?> · <span class="fa-delta <?= $deltaResultado['value'] >= 0 ? 'good' : 'bad' ?>"><?= h($deltaResultado['label']) ?></span></div>
         </div>
         <div class="fa-card fa-kpi margem">
             <h3>Margem</h3>
-            <div class="value"><?= h(number_format($summary['margem'], 1, ',', '.')) ?>%</div>
-            <div class="meta">Resultado ÷ receita · <span class="fa-delta <?= $deltaMargem >= 0 ? 'good' : 'bad' ?>"><?= h(($deltaMargem >= 0 ? '+' : '') . number_format($deltaMargem, 1, ',', '.')) ?>pp</span></div>
+            <div class="value"><?= h(number_format($principalMargem, 1, ',', '.')) ?>%</div>
+            <div class="meta">Resultado DRE ÷ receita · <span class="fa-delta <?= $deltaMargem >= 0 ? 'good' : 'bad' ?>"><?= h(($deltaMargem >= 0 ? '+' : '') . number_format($deltaMargem, 1, ',', '.')) ?>pp</span></div>
         </div>
     </div>
 
@@ -1550,7 +1586,7 @@ includeSidebar('Análise Financeira');
             <section class="fa-card fa-section">
                 <h2>Comparativo com <?= h(fa_month_label($prev)) ?></h2>
                 <div class="fa-chart">
-                    <?php foreach ([['Receitas', $summary['receitas'], $previous['receitas'], 'receita'], ['Despesas', $summary['despesas'], $previous['despesas'], 'despesa'], ['Resultado', abs($summary['resultado']), abs($previous['resultado']), 'resultado']] as $row): ?>
+                    <?php foreach ([['Receitas', $principalReceitas, $previousPrincipalReceitas, 'receita'], ['Despesas DRE', $principalDespesas, $previousPrincipalDespesas, 'despesa'], ['Resultado DRE', abs($principalResultado), abs($previousPrincipalResultado), 'resultado']] as $row): ?>
                         <div class="fa-chart-row">
                             <strong><?= h($row[0]) ?></strong>
                             <div>
@@ -1580,7 +1616,7 @@ includeSidebar('Análise Financeira');
                 </tbody></table></div>
             </section>
             <section class="fa-card fa-section">
-                <h2>Maiores Despesas</h2>
+                <h2>Maiores Despesas DRE</h2>
                 <div class="fa-table-wrap"><table class="fa-table"><thead><tr><th>#</th><th>Categoria</th><th>Lançamentos</th><th>Valor</th></tr></thead><tbody>
                     <?php foreach ($topDespesas as $idx => $row): ?><tr><td><?= $idx + 1 ?></td><td><?= h((string)$row['categoria']) ?></td><td><?= (int)$row['qtd'] ?></td><td><span class="fa-money out">-<?= h(format_currency($row['valor'])) ?></span></td></tr><?php endforeach; ?>
                     <?php if (!$topDespesas): ?><tr><td colspan="4" class="fa-muted">Nenhuma despesa no período.</td></tr><?php endif; ?>
