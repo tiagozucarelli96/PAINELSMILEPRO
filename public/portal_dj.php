@@ -451,6 +451,214 @@ function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array
     ];
 }
 
+function portal_dj_extra_texto_payload(string $content_html): array
+{
+    $content_html = html_entity_decode($content_html, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    if (!preg_match('/data-smile-client-payload\s*=\s*(["\'])(.*?)\1/i', $content_html, $matches)) {
+        return [];
+    }
+
+    $decoded = base64_decode(trim((string)($matches[2] ?? '')), true);
+    if ($decoded === false || $decoded === '') {
+        return [];
+    }
+
+    $payload = json_decode($decoded, true);
+    if (!is_array($payload) || !isset($payload['values']) || !is_array($payload['values'])) {
+        return [];
+    }
+
+    $values = [];
+    foreach ($payload['values'] as $key => $value) {
+        $values[(string)$key] = (string)$value;
+    }
+    return $values;
+}
+
+function portal_dj_schema_da_secao(?array $secao): array
+{
+    if (!is_array($secao)) {
+        return [];
+    }
+    $raw = $secao['form_schema_json'] ?? null;
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    return eventos_form_template_normalizar_schema($decoded);
+}
+
+function portal_dj_anexos_por_campo(array $anexos, string $field_id): array
+{
+    $field_id = trim($field_id);
+    if ($field_id === '') {
+        return [];
+    }
+    $filtered = [];
+    foreach ($anexos as $anexo) {
+        if (!is_array($anexo)) {
+            continue;
+        }
+        if (trim((string)($anexo['form_field_id'] ?? '')) === $field_id) {
+            $filtered[] = $anexo;
+        }
+    }
+    return $filtered;
+}
+
+function portal_dj_music_time_value_key(string $field_id, string $part): string
+{
+    $part = preg_replace('/[^a-zA-Z0-9_\-]/', '_', trim($part)) ?: 'part';
+    return trim($field_id) . '__music_time_' . $part;
+}
+
+function portal_dj_field_usa_tempo_musica(array $field): bool
+{
+    if (strtolower(trim((string)($field['type'] ?? ''))) !== 'textarea') {
+        return false;
+    }
+    $label = function_exists('mb_strtolower')
+        ? mb_strtolower(trim((string)($field['label'] ?? '')), 'UTF-8')
+        : strtolower(trim((string)($field['label'] ?? '')));
+    foreach ([
+        'música da entrada da debutante para o cerimonial',
+        'vai ter sapato, anel e etc',
+        'valsa. se for ter mais de uma',
+        'irá ter mais algum momento especial no cerimonial',
+    ] as $target) {
+        if (strpos($label, $target) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function portal_dj_renderizar_anexos_campo(array $anexos): string
+{
+    if (empty($anexos)) {
+        return '';
+    }
+    $html = '<div class="dj-field-files">';
+    $html .= '<div class="dj-field-files-title">Arquivos</div>';
+    foreach ($anexos as $anexo) {
+        if (!is_array($anexo)) {
+            continue;
+        }
+        $name = trim((string)($anexo['original_name'] ?? 'arquivo'));
+        $url = trim((string)($anexo['public_url'] ?? ''));
+        $mime = strtolower(trim((string)($anexo['mime_type'] ?? '')));
+        $kind = strtolower(trim((string)($anexo['file_kind'] ?? '')));
+        $note = trim((string)($anexo['note'] ?? $anexo['descricao'] ?? ''));
+        $icon = $kind === 'audio' || strpos($mime, 'audio/') === 0 ? '🎵' : '📎';
+        $html .= '<div class="dj-file-row">';
+        $html .= '<div class="dj-file-main"><span>' . $icon . '</span><div><strong>' . htmlspecialchars($name !== '' ? $name : 'arquivo') . '</strong>';
+        if ($note !== '') {
+            $html .= '<small>Obs: ' . htmlspecialchars($note) . '</small>';
+        }
+        $html .= '</div></div>';
+        if ($url !== '') {
+            $html .= '<div class="dj-file-actions">';
+            $html .= '<button type="button" class="btn btn-secondary btn-small" data-open-anexo-modal="1" data-url="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" data-name="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '" data-mime="' . htmlspecialchars($mime, ENT_QUOTES, 'UTF-8') . '" data-kind="' . htmlspecialchars($kind, ENT_QUOTES, 'UTF-8') . '">Visualizar</button>';
+            $html .= '<a class="btn btn-primary btn-small" href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener noreferrer" download>Download</a>';
+            $html .= '</div>';
+        }
+        $html .= '</div>';
+    }
+    $html .= '</div>';
+    return $html;
+}
+
+function portal_dj_renderizar_dj_schema_cards(?array $secao, array $anexos): string
+{
+    $schema = portal_dj_schema_da_secao($secao);
+    $content_html = is_array($secao) ? trim((string)($secao['content_html'] ?? '')) : '';
+    $values = portal_dj_extra_texto_payload($content_html);
+    if (empty($schema) || empty($values)) {
+        return '';
+    }
+
+    $html = '<div class="dj-protocol-view">';
+    $schema_count = count($schema);
+    $section_title = 'Informações';
+    $section_cards = '';
+    $flush_section = static function () use (&$html, &$section_title, &$section_cards): void {
+        if (trim($section_cards) === '') {
+            return;
+        }
+        $html .= '<section class="dj-protocol-section"><h3>' . htmlspecialchars($section_title !== '' ? $section_title : 'Informações') . '</h3>' . $section_cards . '</section>';
+        $section_cards = '';
+    };
+    for ($i = 0; $i < $schema_count; $i++) {
+        $field = is_array($schema[$i] ?? null) ? (array)$schema[$i] : [];
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        $field_id = trim((string)($field['id'] ?? ''));
+        $label = trim((string)($field['label'] ?? 'Campo'));
+
+        if ($type === 'section') {
+            $flush_section();
+            $section_title = $label !== '' ? $label : 'Seção';
+            continue;
+        }
+        if (in_array($type, ['note', 'divider'], true)) {
+            continue;
+        }
+
+        $upload_field = null;
+        if ($type !== 'file' && isset($schema[$i + 1]) && is_array($schema[$i + 1]) && strtolower(trim((string)($schema[$i + 1]['type'] ?? ''))) === 'file') {
+            $upload_field = (array)$schema[$i + 1];
+            $i++;
+        } elseif ($type === 'file') {
+            $upload_field = $field;
+        }
+
+        $value = trim((string)($values[$field_id] ?? ''));
+        if ($type === 'yesno') {
+            $value = $value === 'sim' ? 'Sim' : ($value === 'nao' ? 'Não' : $value);
+        }
+        $field_anexos = [];
+        if (is_array($upload_field)) {
+            $field_anexos = portal_dj_anexos_por_campo($anexos, (string)($upload_field['id'] ?? ''));
+        } elseif ($field_id !== '') {
+            $field_anexos = portal_dj_anexos_por_campo($anexos, $field_id);
+        }
+
+        if ($value === '' && empty($field_anexos)) {
+            continue;
+        }
+
+        $card_html = '<article class="dj-protocol-card">';
+        $card_html .= '<div class="dj-protocol-label">' . htmlspecialchars($label !== '' ? $label : 'Campo') . '</div>';
+        if ($value !== '') {
+            $card_html .= '<div class="dj-protocol-answer">' . nl2br(htmlspecialchars($value)) . '</div>';
+        } elseif ($type !== 'file') {
+            $card_html .= '<div class="dj-protocol-empty">Não informado</div>';
+        }
+
+        if (portal_dj_field_usa_tempo_musica($field)) {
+            $time_start = trim((string)($values[portal_dj_music_time_value_key($field_id, 'start')] ?? ''));
+            $time_end = trim((string)($values[portal_dj_music_time_value_key($field_id, 'end')] ?? ''));
+            $time_full = trim((string)($values[portal_dj_music_time_value_key($field_id, 'full')] ?? '')) === '1';
+            if ($time_full || $time_start !== '' || $time_end !== '') {
+                $time_label = $time_full
+                    ? 'Música inteira'
+                    : (($time_start !== '' ? $time_start : '00:00') . ' até ' . ($time_end !== '' ? $time_end : '00:00'));
+                $card_html .= '<div class="dj-time-chip"><strong>Tempo da música:</strong> ' . htmlspecialchars($time_label) . '</div>';
+            }
+        }
+
+        $card_html .= portal_dj_renderizar_anexos_campo($field_anexos);
+        $card_html .= '</article>';
+        $section_cards .= $card_html;
+    }
+    $flush_section();
+    $html .= '</div>';
+
+    return $html;
+}
+
 /**
  * Resolve conteúdo/anexos da seção DJ com base nos links ativos.
  * Evita exibir dados órfãos quando os quadros forem excluídos na reunião final.
@@ -1293,6 +1501,113 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
             word-break: break-word;
             font-weight: 700;
         }
+        .dj-protocol-view {
+            display: grid;
+            gap: 1rem;
+        }
+        .dj-protocol-section {
+            display: grid;
+            gap: 0.65rem;
+        }
+        .dj-protocol-section h3 {
+            margin: 0;
+            padding: 0.6rem 0.75rem;
+            border-radius: 8px;
+            background: #eaf1ff;
+            border: 1px solid #bfdbfe;
+            color: #1e3a8a;
+            font-size: 0.96rem;
+            font-weight: 800;
+        }
+        .dj-protocol-card {
+            border: 1px solid #dbe3ef;
+            border-left: 5px solid #2563eb;
+            background: #fff;
+            border-radius: 10px;
+            padding: 0.85rem;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+        }
+        .dj-protocol-label {
+            color: #0f172a;
+            font-size: 0.91rem;
+            font-weight: 800;
+            margin-bottom: 0.45rem;
+        }
+        .dj-protocol-answer {
+            white-space: normal;
+            overflow-wrap: anywhere;
+            color: #1f2937;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 0.65rem 0.7rem;
+        }
+        .dj-protocol-empty {
+            color: #64748b;
+            font-style: italic;
+            font-size: 0.86rem;
+        }
+        .dj-time-chip {
+            display: inline-flex;
+            gap: 0.35rem;
+            align-items: center;
+            margin-top: 0.6rem;
+            border: 1px solid #fde68a;
+            background: #fffbeb;
+            color: #92400e;
+            border-radius: 999px;
+            padding: 0.25rem 0.65rem;
+            font-size: 0.82rem;
+        }
+        .dj-field-files {
+            margin-top: 0.7rem;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 0.7rem;
+            display: grid;
+            gap: 0.45rem;
+        }
+        .dj-field-files-title {
+            font-size: 0.82rem;
+            font-weight: 800;
+            color: #334155;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .dj-file-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.65rem;
+            border: 1px solid #dbeafe;
+            background: #f8fbff;
+            border-radius: 8px;
+            padding: 0.55rem;
+            flex-wrap: wrap;
+        }
+        .dj-file-main {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            min-width: 0;
+        }
+        .dj-file-main strong {
+            display: block;
+            color: #1d4ed8;
+            font-size: 0.86rem;
+            overflow-wrap: anywhere;
+        }
+        .dj-file-main small {
+            display: block;
+            color: #64748b;
+            margin-top: 0.15rem;
+        }
+        .dj-file-actions {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
         .anexos-list {
             margin-top: 1.5rem;
         }
@@ -1745,7 +2060,15 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                     $anexos_aba_ativa = is_array($aba_atual['anexos'] ?? null) ? $aba_atual['anexos'] : [];
                     $mostrar_lista_anexos_aba = !empty($anexos_aba_ativa);
 
-                    if (in_array($aba_detalhe, ['dj_protocolo', 'formulario'], true) && $html_secao_ativa !== '') {
+                    if ($aba_detalhe === 'dj_protocolo' && $html_secao_ativa !== '') {
+                        $dj_cards_html = portal_dj_renderizar_dj_schema_cards($secao_ativa, $anexos_aba_ativa);
+                        if (trim($dj_cards_html) !== '') {
+                            $html_secao_ativa_render = $dj_cards_html;
+                            $mostrar_lista_anexos_aba = false;
+                        }
+                    }
+
+                    if ($aba_detalhe !== 'dj_protocolo' && in_array($aba_detalhe, ['formulario'], true) && $html_secao_ativa !== '') {
                         $inline = portal_dj_renderizar_html_com_anexos_inline($html_secao_ativa, $anexos_aba_ativa, $secao_ativa);
                         $html_secao_ativa_render = trim((string)($inline['html'] ?? $html_secao_ativa));
                         if (!empty($inline['used_inline'])) {
