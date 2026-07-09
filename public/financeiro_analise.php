@@ -607,4 +607,28 @@ includeSidebar('Análise Financeira');
     </section>
 </div>
 
+<script>
+(() => {
+    const params = new URLSearchParams(window.location.search);
+    const competencia = params.get('competencia');
+    if (!/^\d{4}-\d{2}$/.test(competencia || '')) {
+        return;
+    }
+
+    const monthInput = document.querySelector('input[name="competencia"]');
+    if (!monthInput || monthInput.value === competencia) {
+        return;
+    }
+
+    monthInput.value = competencia;
+    if (params.has('_fa_reload')) {
+        return;
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('_fa_reload', String(Date.now()));
+    window.location.replace(url.toString());
+})();
+</script>
+
 <?php endSidebar(); ?>
