@@ -1042,13 +1042,18 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
             <?php if ($activeTab === 'receitas'): ?>
                 <div class="table-wrap">
                     <table class="finance-table">
-                        <thead><tr><th>Acoes</th><th>Data</th><th>Descricao</th><th>Responsavel</th><th>Valor</th><th>Categoria/Banco</th><th>Status</th><th>Link</th></tr></thead>
+                        <thead><tr><th>Acoes</th><th>Data</th><th>Descricao</th><th>Responsavel</th><th>Valor</th><th>Categoria/Banco</th><th>Status</th></tr></thead>
                         <tbody>
                         <?php foreach ($receitas as $receita): ?>
                             <?php
                             $status = (string)($receita['status'] ?? 'pendente');
                             $modo = (string)($receita['modo_pagamento'] ?? $receita['forma_pagamento'] ?? '');
                             $unidade = (string)($receita['unidade'] ?? $receita['evento_unidade'] ?? '');
+                            if (($receita['origem_financeira'] ?? '') === 'formatura' && !empty($receita['formando_id'])) {
+                                $responsavelUrl = 'index.php?page=eventos_formatura&evento_id=' . (int)$receita['evento_id'] . '&formando_id=' . (int)$receita['formando_id'];
+                            } else {
+                                $responsavelUrl = 'index.php?page=eventos_financeiro&evento_id=' . (int)$receita['evento_id'];
+                            }
                             ?>
                             <tr>
                                 <td><span class="badge badge-receita">↑</span></td>
@@ -1057,22 +1062,13 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                     <?= h((string)$receita['descricao']) ?>
                                     <?php if ((int)($receita['parcelas_total'] ?? 1) > 1): ?><span class="badge"><?= (int)$receita['parcela_numero'] ?>/<?= (int)$receita['parcelas_total'] ?></span><?php endif; ?>
                                 </td>
-                                <td><span class="event-name"><?= h((string)($receita['nome_evento'] ?? 'Evento')) ?></span><span class="event-meta"><?= h($unidade) ?></span></td>
+                                <td><a class="event-name" href="<?= h($responsavelUrl) ?>"><?= h((string)($receita['nome_evento'] ?? 'Evento')) ?></a><span class="event-meta"><?= h($unidade) ?></span></td>
                                 <td><span class="money"><?= h(format_currency($receita['valor'])) ?></span></td>
                                 <td><span class="wallet">Receita<small><?= h(financeiro_modo_label($modo)) ?> · <?= h(ucfirst((string)($receita['carteira'] ?? 'manual'))) ?></small></span></td>
                                 <td><span class="badge badge-<?= h($status) ?>"><?= h(financeiro_status_label($status)) ?></span></td>
-                                <td>
-                                    <?php if (!empty($receita['asaas_invoice_url'])): ?>
-                                        <a href="<?= h((string)$receita['asaas_invoice_url']) ?>" target="_blank" rel="noopener">Abrir</a>
-                                    <?php elseif (($receita['origem_financeira'] ?? '') === 'formatura' && !empty($receita['formando_id'])): ?>
-                                        <a href="index.php?page=eventos_formatura&evento_id=<?= (int)$receita['evento_id'] ?>&formando_id=<?= (int)$receita['formando_id'] ?>">Formando</a>
-                                    <?php else: ?>
-                                        <a href="index.php?page=eventos_financeiro&evento_id=<?= (int)$receita['evento_id'] ?>">Evento</a>
-                                    <?php endif; ?>
-                                </td>
                             </tr>
                         <?php endforeach; ?>
-                        <?php if (!$receitas): ?><tr><td colspan="8" class="muted">Nenhuma receita encontrada.</td></tr><?php endif; ?>
+                        <?php if (!$receitas): ?><tr><td colspan="7" class="muted">Nenhuma receita encontrada.</td></tr><?php endif; ?>
                         </tbody>
                     </table>
                 </div>
