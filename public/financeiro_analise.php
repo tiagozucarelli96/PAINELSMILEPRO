@@ -974,7 +974,6 @@ function fa_build_dre(array $summary, array $despesasCategorias, array $receitas
     $lucroOperacional = $margemContribuicao - $operacionais;
     $financeiras = ($buckets['Despesas Financeiras'] ?? 0) + ($buckets['INSS'] ?? 0);
     $resultadoFinal = $lucroOperacional - $financeiras;
-    $foraDre = ($buckets['Sócios'] ?? 0) + ($buckets['Reservas'] ?? 0) + ($buckets['Empréstimos e Financiamentos'] ?? 0) + ($buckets['Investimentos/Patrimônio'] ?? 0) + ($buckets['Obras e Expansão'] ?? 0) + ($buckets['Cartão de crédito'] ?? 0);
 
     $line = static function (string $label, string $nature, float $value, int $level = 0, string $bucket = '') use ($bucketDetails): array {
         return [
@@ -1023,13 +1022,6 @@ function fa_build_dre(array $summary, array $despesasCategorias, array $receitas
         $line('Despesas Financeiras', 'despesa', -($buckets['Despesas Financeiras'] ?? 0), 1, 'Despesas Financeiras'),
         $line('INSS', 'despesa', -($buckets['INSS'] ?? 0), 1, 'INSS'),
         $line('Resultado do Exercício', 'result', $resultadoFinal),
-        $line('Fora do DRE / Movimento de Caixa', 'title', -$foraDre),
-        $line('Sócios', 'despesa', -($buckets['Sócios'] ?? 0), 1, 'Sócios'),
-        $line('Reservas', 'despesa', -($buckets['Reservas'] ?? 0), 1, 'Reservas'),
-        $line('Empréstimos e Financiamentos', 'despesa', -($buckets['Empréstimos e Financiamentos'] ?? 0), 1, 'Empréstimos e Financiamentos'),
-        $line('Investimentos/Patrimônio', 'despesa', -($buckets['Investimentos/Patrimônio'] ?? 0), 1, 'Investimentos/Patrimônio'),
-        $line('Obras e Expansão', 'despesa', -($buckets['Obras e Expansão'] ?? 0), 1, 'Obras e Expansão'),
-        $line('Cartão de crédito', 'despesa', -($buckets['Cartão de crédito'] ?? 0), 1, 'Cartão de crédito'),
     ];
 }
 
