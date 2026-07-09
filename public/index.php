@@ -403,6 +403,7 @@ $routes = [
   'portal_decoracao' => 'portal_decoracao.php',
   // Link público do cliente para DJ
   'eventos_cliente_dj' => 'eventos_cliente_dj.php',
+  'eventos_dj_fornecedor' => 'eventos_dj_fornecedor.php',
   'eventos_cliente_portal' => 'eventos_cliente_portal.php',
   'eventos_cliente_convidados' => 'eventos_cliente_convidados.php',
   'eventos_cliente_reuniao' => 'eventos_cliente_reuniao.php',
@@ -468,6 +469,7 @@ $public_pages = [
   'portal_decoracao',
   // Link público do cliente para DJ
   'eventos_cliente_dj',
+  'eventos_dj_fornecedor',
   'eventos_cliente_portal',
   'eventos_cliente_convidados',
   'eventos_cliente_reuniao',

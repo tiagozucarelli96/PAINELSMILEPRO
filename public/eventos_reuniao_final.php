@@ -5408,6 +5408,15 @@ function getDjPublicUrl(slot) {
     return `${base}/index.php?page=eventos_cliente_dj&token=${encodeURIComponent(String(link.token))}`;
 }
 
+function getDjFornecedorUrl(slot) {
+    const link = djLinksBySlot[slot] || null;
+    if (!link || !link.token) {
+        return '';
+    }
+    const base = String(clientPortalBaseUrl || window.location.origin || '').replace(/\/+$/, '');
+    return `${base}/index.php?page=eventos_dj_fornecedor&token=${encodeURIComponent(String(link.token))}`;
+}
+
 function abrirDjFormularioPublico(slot) {
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !djSlotExists(slotIndex)) {
@@ -5428,9 +5437,9 @@ function copiarDjFormularioPublico(slot) {
         alert('Formulário DJ inválido.');
         return;
     }
-    const url = getDjPublicUrl(slotIndex);
+    const url = getDjFornecedorUrl(slotIndex);
     if (!url) {
-        alert('Nenhum link público disponível para este formulário DJ.');
+        alert('Nenhum link de fornecedor disponível para este formulário DJ.');
         return;
     }
     if (navigator.clipboard && window.isSecureContext) {
