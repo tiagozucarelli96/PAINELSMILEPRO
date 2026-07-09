@@ -560,6 +560,108 @@ function fa_despesas_por_categoria(PDO $pdo, string $start, string $end, string 
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+function fa_debt_category_type(?string $category): ?string
+{
+    if (fa_in_category($category, ['Emprestimos', 'Empréstimos', 'Financiamento Carro'])) {
+        return 'principal';
+    }
+    if (fa_in_category($category, ['Juros', 'Iof', 'IOF'])) {
+        return 'juros';
+    }
+    return null;
+}
+
+function fa_debt_category_label(?string $category): string
+{
+    if (fa_in_category($category, ['Emprestimos', 'Empréstimos'])) {
+        return 'Emprestimos';
+    }
+    if (fa_in_category($category, ['Financiamento Carro'])) {
+        return 'Financiamento Carro';
+    }
+    if (fa_in_category($category, ['Juros'])) {
+        return 'Juros';
+    }
+    if (fa_in_category($category, ['Iof', 'IOF'])) {
+        return 'Iof';
+    }
+    return trim((string)$category) !== '' ? trim((string)$category) : 'Nao Informado';
+}
+
+function fa_endividamento(PDO $pdo, string $start, string $end, string $status): array
+{
+    $despesaStatus = fa_status_clause('d', $status, true);
+    $stmt = $pdo->prepare("
+        SELECT d.data_movimento,
+               COALESCE(NULLIF(TRIM(d.categoria), ''), 'Nao Informado') AS categoria,
+               COALESCE(NULLIF(TRIM(d.banco), ''), NULLIF(TRIM(d.conta), ''), 'Nao Informado') AS origem,
+               COALESCE(NULLIF(TRIM(d.descricao), ''), 'Sem descricao') AS descricao,
+               COALESCE(d.valor, 0) AS valor,
+               d.status
+        FROM financeiro_despesas d
+        WHERE {$despesaStatus}
+          AND d.data_movimento >= CAST(:start AS DATE)
+          AND d.data_movimento < CAST(:end AS DATE)
+        ORDER BY d.data_movimento DESC, d.valor DESC
+    ");
+    $stmt->execute([':start' => $start, ':end' => $end]);
+
+    $result = [
+        'total' => 0.0,
+        'principal' => 0.0,
+        'juros' => 0.0,
+        'qtd' => 0,
+        'categorias' => [],
+        'origens' => [],
+        'lancamentos' => [],
+    ];
+
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        $category = (string)($row['categoria'] ?? '');
+        $type = fa_debt_category_type($category);
+        if ($type === null) {
+            continue;
+        }
+
+        $label = fa_debt_category_label($category);
+        $origin = trim((string)($row['origem'] ?? '')) !== '' ? trim((string)$row['origem']) : 'Nao Informado';
+        $value = (float)($row['valor'] ?? 0);
+
+        $result['total'] += $value;
+        $result[$type] += $value;
+        $result['qtd']++;
+
+        if (!isset($result['categorias'][$label])) {
+            $result['categorias'][$label] = ['nome' => $label, 'valor' => 0.0, 'qtd' => 0];
+        }
+        $result['categorias'][$label]['valor'] += $value;
+        $result['categorias'][$label]['qtd']++;
+
+        if (!isset($result['origens'][$origin])) {
+            $result['origens'][$origin] = ['nome' => $origin, 'valor' => 0.0, 'qtd' => 0];
+        }
+        $result['origens'][$origin]['valor'] += $value;
+        $result['origens'][$origin]['qtd']++;
+
+        $result['lancamentos'][] = [
+            'data' => (string)($row['data_movimento'] ?? ''),
+            'categoria' => $label,
+            'origem' => $origin,
+            'descricao' => (string)($row['descricao'] ?? ''),
+            'status' => (string)($row['status'] ?? ''),
+            'valor' => $value,
+        ];
+    }
+
+    foreach (['categorias', 'origens'] as $key) {
+        $items = array_values($result[$key]);
+        usort($items, static fn(array $a, array $b): int => $b['valor'] <=> $a['valor']);
+        $result[$key] = $items;
+    }
+
+    return $result;
+}
+
 function fa_build_dre(array $summary, array $despesasCategorias, array $receitasLinhas): array
 {
     $buckets = [];
@@ -751,6 +853,55 @@ function fa_render_ticket_table(array $rows, string $countLabel, string $countKe
     return (string)ob_get_clean();
 }
 
+function fa_render_debt_summary_table(array $rows, string $nameLabel): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th><?= h($nameLabel) ?></th><th>Lançamentos</th><th>Valor</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h((string)$row['nome']) ?></td>
+                        <td><?= (int)$row['qtd'] ?></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['valor'])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (!$rows): ?><tr><td colspan="3" class="fa-muted">Sem lançamentos de dívida no período.</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
+function fa_render_debt_entries_table(array $rows): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th>Data</th><th>Categoria</th><th>Banco/conta</th><th>Descrição</th><th>Status</th><th>Valor</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h(brDateOnly((string)$row['data'])) ?></td>
+                        <td><?= h((string)$row['categoria']) ?></td>
+                        <td><?= h((string)$row['origem']) ?></td>
+                        <td><?= h((string)$row['descricao']) ?></td>
+                        <td><?= h((string)$row['status']) ?></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['valor'])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (!$rows): ?><tr><td colspan="6" class="fa-muted">Sem lançamentos de dívida no período.</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
 function fa_render_dre_pdf_html(array $dre, float $receitas, DateTimeImmutable $month, string $dateBase, string $status): string
 {
     $rows = '';
@@ -817,7 +968,7 @@ $dateBase = fa_request_param('data_base') ?? 'pagamento';
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
 $status = fa_request_param('status') ?? 'todos';
 $requestedTab = fa_request_param('tab') ?? 'principal';
-$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem', 'equilibrio', 'ticket'], true) ? $requestedTab : 'principal';
+$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem', 'equilibrio', 'ticket', 'endividamento'], true) ? $requestedTab : 'principal';
 $export = fa_request_param('export') ?? '';
 
 $start = $month->format('Y-m-01');
@@ -837,6 +988,7 @@ $ticketsReceitas = fa_ticket_por_receitas($receitasUnidade);
 $receitasLinhas = fa_receitas_por_linha($pdo, $start, $end, $dateBase, $status);
 $topDespesas = fa_top_despesas($pdo, $start, $end, $status);
 $despesasCategorias = fa_despesas_por_categoria($pdo, $start, $end, $status);
+$endividamento = fa_endividamento($pdo, $start, $end, $status);
 $dre = fa_build_dre($summary, $despesasCategorias, $receitasLinhas);
 $receitaBruta = fa_dre_line_value($dre, 'Receita Bruta');
 $deducoesValor = abs(fa_dre_line_value($dre, 'Deduções'));
@@ -849,6 +1001,7 @@ $pontoEquilibrioLiquido = $margemContribuicaoPct > 0 ? ($despesasFixasEquilibrio
 $taxaReceitaLiquida = $receitaBruta > 0 ? ($receitaLiquida / $receitaBruta) : 0.0;
 $pontoEquilibrioBruto = $taxaReceitaLiquida > 0 ? ($pontoEquilibrioLiquido / $taxaReceitaLiquida) : 0.0;
 $distanciaEquilibrio = $receitaLiquida - $pontoEquilibrioLiquido;
+$comprometimentoDividas = $receitaLiquida > 0 ? (((float)$endividamento['total'] / $receitaLiquida) * 100) : 0.0;
 
 if ($export === 'dre_pdf') {
     fa_output_dre_pdf($dre, (float)$summary['receitas'], $month, $dateBase, $status);
@@ -953,6 +1106,7 @@ includeSidebar('Análise Financeira');
         <a class="fa-tab <?= $activeTab === 'margem' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'margem'])) ?>">Margem de contribuição</a>
         <a class="fa-tab <?= $activeTab === 'equilibrio' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'equilibrio'])) ?>">Ponto de equilíbrio</a>
         <a class="fa-tab <?= $activeTab === 'ticket' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'ticket'])) ?>">Ticket por unidade</a>
+        <a class="fa-tab <?= $activeTab === 'endividamento' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'endividamento'])) ?>">Endividamento</a>
     </nav>
 
     <?php if ($activeTab === 'principal'): ?>
@@ -1120,7 +1274,7 @@ includeSidebar('Análise Financeira');
                 </div>
             </div>
         </section>
-    <?php else: ?>
+    <?php elseif ($activeTab === 'ticket'): ?>
         <section class="fa-card fa-section" style="margin-top:1rem">
             <div class="fa-panel-head">
                 <h2>Ticket Médio por Unidade · <?= h(fa_month_label($month)) ?></h2>
@@ -1143,6 +1297,64 @@ includeSidebar('Análise Financeira');
                     <div><strong>Ticket por eventos realizados</strong><span>Receita da unidade ÷ quantidade de eventos realizados da unidade</span></div>
                     <div><strong>Ticket por receitas do mês</strong><span>Receita da unidade ÷ quantidade de lançamentos de receita da unidade</span></div>
                 </div>
+            </div>
+        </section>
+    <?php else: ?>
+        <section class="fa-card fa-section" style="margin-top:1rem">
+            <div class="fa-panel-head">
+                <h2>Endividamento · <?= h(fa_month_label($month)) ?></h2>
+            </div>
+            <p class="fa-muted">Relatório financeiro separado do DRE. Mostra o peso mensal de empréstimos, financiamentos, juros e IOF no caixa.</p>
+            <div class="fa-margin-summary">
+                <div class="fa-margin-kpi">
+                    <span>Dívidas do mês</span>
+                    <strong class="out"><?= h(format_currency((float)$endividamento['total'])) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Principal/financiamento</span>
+                    <strong class="out"><?= h(format_currency((float)$endividamento['principal'])) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Juros/IOF do mês</span>
+                    <strong class="out"><?= h(format_currency((float)$endividamento['juros'])) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Comprometimento</span>
+                    <strong><?= h(number_format($comprometimentoDividas, 2, ',', '.')) ?>%</strong>
+                </div>
+            </div>
+            <div class="fa-two">
+                <section>
+                    <h2>Categorias consideradas</h2>
+                    <?= fa_render_debt_summary_table($endividamento['categorias'], 'Categoria') ?>
+                </section>
+                <section>
+                    <h2>Dívida por banco/conta</h2>
+                    <?= fa_render_debt_summary_table($endividamento['origens'], 'Banco/conta') ?>
+                </section>
+            </div>
+            <div class="fa-two" style="margin-top:1rem">
+                <section>
+                    <h2>Resumo do comprometimento</h2>
+                    <?= fa_render_margin_table([
+                        ['Receita líquida do mês', $receitaLiquida],
+                        ['Parcelas de dívidas', (float)$endividamento['total']],
+                        ['Comprometimento', number_format($comprometimentoDividas, 2, ',', '.') . '%'],
+                    ]) ?>
+                </section>
+                <section>
+                    <h2>Regras usadas</h2>
+                    <div class="fa-formula-list">
+                        <div><strong>Entra no Endividamento</strong><span>Emprestimos, Financiamento Carro, Juros e Iof</span></div>
+                        <div><strong>Principal</strong><span>Emprestimos + Financiamento Carro</span></div>
+                        <div><strong>Juros do mês</strong><span>Juros + Iof; estes também pesam no Resultado Financeiro do DRE</span></div>
+                        <div><strong>Comprometimento da receita</strong><span>Parcelas de dívidas ÷ Receita Líquida × 100</span></div>
+                    </div>
+                </section>
+            </div>
+            <div style="margin-top:1rem">
+                <h2>Lançamentos considerados</h2>
+                <?= fa_render_debt_entries_table($endividamento['lancamentos']) ?>
             </div>
         </section>
     <?php endif; ?>
