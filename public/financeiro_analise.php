@@ -62,6 +62,34 @@ function fa_request_param(string $name): ?string
     return null;
 }
 
+function fa_query_param_from_uri(string $name): ?string
+{
+    $sources = [
+        (string)($_SERVER['REQUEST_URI'] ?? ''),
+        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ''),
+        (string)($_SERVER['HTTP_X_ORIGINAL_URL'] ?? ''),
+        (string)($_SERVER['HTTP_X_REWRITE_URL'] ?? ''),
+    ];
+
+    foreach ($sources as $source) {
+        if ($source === '') {
+            continue;
+        }
+
+        $query = (string)(parse_url(str_replace('&amp;', '&', $source), PHP_URL_QUERY) ?? '');
+        if ($query === '') {
+            continue;
+        }
+
+        parse_str($query, $parsed);
+        if (isset($parsed[$name]) && is_scalar($parsed[$name])) {
+            return (string)$parsed[$name];
+        }
+    }
+
+    return null;
+}
+
 function fa_parse_month(string $value): DateTimeImmutable
 {
     $value = trim($value);
@@ -419,9 +447,16 @@ function fa_build_dre(array $summary, array $despesasCategorias): array
     ];
 }
 
+<<<<<<< HEAD
 $competenciaParam = fa_request_param('competencia') ?? date('Y-m');
 $month = fa_parse_month($competenciaParam);
 $dateBase = fa_request_param('data_base') ?? 'pagamento';
+=======
+$queryParams = fa_query_params();
+$competenciaParam = fa_query_param_from_uri('competencia') ?? (string)($queryParams['competencia'] ?? '');
+$month = fa_parse_month($competenciaParam);
+$dateBase = (string)($queryParams['data_base'] ?? 'pagamento');
+>>>>>>> d2e04a1361de70333b33d420dd0e53c31d51b869
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
 $status = fa_request_param('status') ?? 'todos';
 
