@@ -421,7 +421,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && empty($_GET['preview'])) {
 
 $cartoes = $pdo->query("SELECT * FROM financeiro_cartoes ORDER BY ativo DESC, nome")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 $faturasPorCartao = [];
-$stmt = $pdo->query("SELECT f.*, c.nome AS cartao_nome FROM financeiro_cartao_faturas f INNER JOIN financeiro_cartoes c ON c.id = f.cartao_id ORDER BY f.vencimento DESC");
+$stmt = $pdo->query("SELECT f.*, c.nome AS cartao_nome FROM financeiro_cartao_faturas f INNER JOIN financeiro_cartoes c ON c.id = f.cartao_id ORDER BY f.vencimento ASC");
 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $fatura) {
     $faturasPorCartao[(int)$fatura['cartao_id']][] = $fatura;
 }
@@ -439,11 +439,44 @@ if ($viewFaturaId > 0) {
     $viewLancamentos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+function fc_render_categoria_combo(array $categorias, string $name, string $value = '', bool $disabled = false): string
+{
+    ob_start();
+    ?>
+    <div class="cc-cat-field" data-cc-cat-field>
+        <input type="hidden" name="<?= h($name) ?>" value="<?= h($value) ?>" data-cc-cat-hidden <?= $disabled ? 'disabled' : '' ?>>
+        <div class="cc-cat-combo <?= $disabled ? 'disabled' : '' ?>" data-cc-cat-combo>
+            <button class="cc-cat-trigger" type="button" data-cc-cat-trigger <?= $disabled ? 'disabled' : '' ?>>
+                <span data-cc-cat-label><?= h($value !== '' ? $value : 'Selecionar categoria') ?></span>
+            </button>
+            <div class="cc-cat-panel">
+                <div class="cc-cat-search-wrap"><input class="cc-cat-search" type="text" placeholder="Pesquisar categoria" data-cc-cat-search></div>
+                <div class="cc-cat-option <?= $value === '' ? 'active' : '' ?>" data-cc-cat-option data-value="" data-group="">Selecionar categoria</div>
+                <?php
+                $grupoAtual = null;
+                foreach ($categorias as $categoria):
+                    $nomeCategoria = (string)($categoria['nome'] ?? '');
+                    $grupoCategoria = (string)($categoria['grupo'] ?? 'Geral');
+                    if ($grupoAtual !== $grupoCategoria):
+                        $grupoAtual = $grupoCategoria;
+                        ?>
+                        <div class="cc-cat-group" data-cc-cat-group="<?= h($grupoCategoria) ?>"><?= h($grupoCategoria) ?></div>
+                    <?php endif; ?>
+                    <div class="cc-cat-option <?= $value === $nomeCategoria ? 'active' : '' ?>" data-cc-cat-option data-value="<?= h($nomeCategoria) ?>" data-group="<?= h($grupoCategoria) ?>"><?= h($nomeCategoria) ?></div>
+                <?php endforeach; ?>
+                <div class="cc-cat-empty" data-cc-cat-empty style="display:none">Nenhuma categoria encontrada.</div>
+            </div>
+        </div>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
 includeSidebar('Cartoes de Credito');
 ?>
 
 <style>
-.cc-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.cc-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.cc-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.cc-sub{margin:.3rem 0 0;color:#64748b}.cc-actions{display:flex;gap:.65rem;flex-wrap:wrap}.cc-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;font:inherit}.cc-btn.primary{background:#1e3a8a;color:#fff}.cc-btn.green{background:#20c985;color:#fff}.cc-alert{padding:.85rem 1rem;border-radius:8px;margin:1rem 0;font-weight:800}.cc-alert.success{background:#ecfdf5;color:#166534;border:1px solid #a7f3d0}.cc-alert.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.cc-grid{display:grid;grid-template-columns:1fr;gap:1rem;margin-top:1rem}.cc-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07);overflow:hidden}.cc-card summary{cursor:pointer;padding:1rem;background:#f8fbff;display:flex;justify-content:space-between;gap:1rem;align-items:center}.cc-card-title{font-weight:900;color:#1e293b}.cc-muted{color:#64748b;font-size:.88rem}.cc-table-wrap{overflow:auto}.cc-table{width:100%;border-collapse:collapse;min-width:900px}.cc-table th,.cc-table td{padding:.8rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.cc-table th{background:#f8fafc;color:#475569;font-size:.76rem;text-transform:uppercase}.cc-pill{display:inline-flex;border-radius:999px;padding:.22rem .55rem;font-size:.76rem;font-weight:900}.cc-pill.on{background:#dcfce7;color:#166534}.cc-pill.off{background:#fee2e2;color:#991b1b}.cc-money{font-weight:900;color:#b42318}.cc-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cc-small-btn{border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:.42rem .62rem;cursor:pointer;font-weight:800;color:#334155;text-decoration:none}.cc-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.cc-modal-backdrop.open{display:flex}.cc-modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.cc-modal-head{display:flex;justify-content:space-between;align-items:center;padding:1rem;border-bottom:1px solid #e2e8f0}.cc-modal-title{margin:0;font-size:1.15rem;color:#1e293b;font-weight:900}.cc-close{width:36px;height:36px;border:0;border-radius:999px;background:#f1f5f9;cursor:pointer;font-size:1.25rem}.cc-form{padding:1rem;display:grid;gap:.85rem}.cc-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.cc-field{display:grid;gap:.35rem}.cc-field.full{grid-column:1/-1}.cc-field label{font-weight:800;font-size:.84rem}.cc-field input,.cc-field select,.cc-field textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.68rem .78rem;font:inherit}.cc-field textarea{min-height:180px}.cc-preview{margin-top:1rem;border:1px solid #bae6fd;border-radius:10px;overflow:hidden;background:#f0f9ff}.cc-preview-head{padding:1rem;border-bottom:1px solid #bae6fd;font-weight:900;color:#075985}.cc-duplicate{background:#fff7ed}.cc-footer{display:flex;justify-content:flex-end;padding:1rem;border-top:1px solid #e2e8f0}.cc-cat{min-width:220px}@media(max-width:760px){.cc-form-grid{grid-template-columns:1fr}.cc-page{padding:1rem}}
+.cc-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.cc-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.cc-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.cc-sub{margin:.3rem 0 0;color:#64748b}.cc-actions{display:flex;gap:.65rem;flex-wrap:wrap}.cc-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;font:inherit}.cc-btn.primary{background:#1e3a8a;color:#fff}.cc-btn.green{background:#20c985;color:#fff}.cc-alert{padding:.85rem 1rem;border-radius:8px;margin:1rem 0;font-weight:800}.cc-alert.success{background:#ecfdf5;color:#166534;border:1px solid #a7f3d0}.cc-alert.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.cc-grid{display:grid;grid-template-columns:1fr;gap:1rem;margin-top:1rem}.cc-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07);overflow:hidden}.cc-card summary{cursor:pointer;padding:1rem;background:#f8fbff;display:flex;justify-content:space-between;gap:1rem;align-items:center}.cc-card-title{font-weight:900;color:#1e293b}.cc-muted{color:#64748b;font-size:.88rem}.cc-table-wrap{overflow:auto}.cc-table{width:100%;border-collapse:collapse;min-width:900px}.cc-table th,.cc-table td{padding:.8rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.cc-table th{background:#f8fafc;color:#475569;font-size:.76rem;text-transform:uppercase}.cc-pill{display:inline-flex;border-radius:999px;padding:.22rem .55rem;font-size:.76rem;font-weight:900}.cc-pill.on{background:#dcfce7;color:#166534}.cc-pill.off{background:#fee2e2;color:#991b1b}.cc-money{font-weight:900;color:#b42318}.cc-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cc-small-btn{border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:.42rem .62rem;cursor:pointer;font-weight:800;color:#334155;text-decoration:none}.cc-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.cc-modal-backdrop.open{display:flex}.cc-modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.cc-modal-head{display:flex;justify-content:space-between;align-items:center;padding:1rem;border-bottom:1px solid #e2e8f0}.cc-modal-title{margin:0;font-size:1.15rem;color:#1e293b;font-weight:900}.cc-close{width:36px;height:36px;border:0;border-radius:999px;background:#f1f5f9;cursor:pointer;font-size:1.25rem}.cc-form{padding:1rem;display:grid;gap:.85rem}.cc-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.cc-field{display:grid;gap:.35rem}.cc-field.full{grid-column:1/-1}.cc-field label{font-weight:800;font-size:.84rem}.cc-field input,.cc-field select,.cc-field textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.68rem .78rem;font:inherit}.cc-field textarea{min-height:180px}.cc-preview{margin-top:1rem;border:1px solid #bae6fd;border-radius:10px;overflow:visible;background:#f0f9ff}.cc-preview-head{padding:1rem;border-bottom:1px solid #bae6fd;font-weight:900;color:#075985}.cc-duplicate{background:#fff7ed}.cc-footer{display:flex;justify-content:flex-end;padding:1rem;border-top:1px solid #e2e8f0}.cc-cat-field{min-width:260px}.cc-cat-combo{position:relative}.cc-cat-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.55rem .68rem;font:inherit;text-align:left;cursor:pointer}.cc-cat-trigger:after{content:'▾';color:#64748b;font-size:.78rem}.cc-cat-panel{position:absolute;z-index:90;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:280px;overflow:auto}.cc-cat-combo.open .cc-cat-panel{display:block}.cc-cat-search-wrap{position:relative;margin-bottom:.45rem}.cc-cat-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem;font:inherit}.cc-cat-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cc-cat-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cc-cat-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cc-cat-option:hover,.cc-cat-option.active{background:#334155;color:#fff}.cc-cat-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cc-cat-combo.disabled{opacity:.55;pointer-events:none}@media(max-width:760px){.cc-form-grid{grid-template-columns:1fr}.cc-page{padding:1rem}}
 </style>
 
 <main class="cc-page">
@@ -472,7 +505,7 @@ includeSidebar('Cartoes de Credito');
                         <td><?= h((string)$item['descricao']) ?></td>
                         <td><span class="cc-money"><?= h(format_currency($item['valor'])) ?></span></td>
                         <td><?= (int)$item['parcela_numero'] ?>/<?= (int)$item['parcelas_total'] ?></td>
-                        <td><select class="cc-cat" name="categoria[<?= (int)$idx ?>]" <?= $dup ? 'disabled' : '' ?>><option value="">Selecionar categoria</option><?php $grupoAtual=null; foreach($categorias as $categoria): $nome=(string)$categoria['nome']; $grupo=(string)$categoria['grupo']; if($grupoAtual!==$grupo): if($grupoAtual!==null): ?></optgroup><?php endif; ?><optgroup label="<?= h($grupo) ?>"><?php $grupoAtual=$grupo; endif; ?><option value="<?= h($nome) ?>" <?= $cat===$nome?'selected':'' ?>><?= h($nome) ?></option><?php endforeach; if($grupoAtual!==null): ?></optgroup><?php endif; ?></select></td>
+                        <td><?= fc_render_categoria_combo($categorias, 'categoria[' . (int)$idx . ']', $cat, $dup) ?></td>
                         <td><?= $dup ? '<span class="cc-pill off">Duplicado</span>' : '<span class="cc-pill on">Pronto</span>' ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -562,6 +595,75 @@ document.querySelector('[data-cc-select-all]')?.addEventListener('change', (even
             checkbox.checked = event.target.checked;
         }
     });
+});
+
+document.querySelectorAll('[data-cc-cat-combo]').forEach((combo) => {
+    const trigger = combo.querySelector('[data-cc-cat-trigger]');
+    const search = combo.querySelector('[data-cc-cat-search]');
+    const label = combo.querySelector('[data-cc-cat-label]');
+    const hidden = combo.closest('[data-cc-cat-field]')?.querySelector('[data-cc-cat-hidden]');
+    const options = Array.from(combo.querySelectorAll('[data-cc-cat-option]'));
+    const groups = Array.from(combo.querySelectorAll('[data-cc-cat-group]'));
+    const empty = combo.querySelector('[data-cc-cat-empty]');
+
+    function filterOptions() {
+        const term = (search?.value || '').trim().toLowerCase();
+        let visibleCount = 0;
+        options.forEach((option) => {
+            const text = `${option.dataset.value || ''} ${option.dataset.group || ''}`.toLowerCase();
+            const visible = term === '' || text.includes(term);
+            option.style.display = visible ? '' : 'none';
+            if (visible) {
+                visibleCount++;
+            }
+        });
+        groups.forEach((group) => {
+            const groupName = group.dataset.ccCatGroup || '';
+            const hasVisible = options.some((option) => option.dataset.group === groupName && option.style.display !== 'none');
+            group.style.display = hasVisible ? '' : 'none';
+        });
+        if (empty) {
+            empty.style.display = visibleCount === 0 ? '' : 'none';
+        }
+    }
+
+    trigger?.addEventListener('click', () => {
+        document.querySelectorAll('[data-cc-cat-combo].open').forEach((other) => {
+            if (other !== combo) {
+                other.classList.remove('open');
+            }
+        });
+        combo.classList.toggle('open');
+        if (combo.classList.contains('open')) {
+            if (search) {
+                search.value = '';
+            }
+            filterOptions();
+            setTimeout(() => search?.focus(), 0);
+        }
+    });
+
+    search?.addEventListener('input', filterOptions);
+
+    options.forEach((option) => {
+        option.addEventListener('click', () => {
+            const value = option.dataset.value || '';
+            if (hidden) {
+                hidden.value = value;
+            }
+            if (label) {
+                label.textContent = value || 'Selecionar categoria';
+            }
+            options.forEach((item) => item.classList.toggle('active', item === option));
+            combo.classList.remove('open');
+        });
+    });
+});
+
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('[data-cc-cat-combo]')) {
+        document.querySelectorAll('[data-cc-cat-combo].open').forEach((combo) => combo.classList.remove('open'));
+    }
 });
 </script>
 
