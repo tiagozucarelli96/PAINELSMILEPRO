@@ -36,6 +36,7 @@ return [
     'cadastros_pacotes_produtos' => 'perm_cadastros',
     'cadastros_categorias_financeiras' => 'perm_cadastros',
     'financeiro' => 'perm_financeiro',
+    'financeiro_analise' => 'perm_financeiro',
     'financeiro_cartoes' => ['perm_financeiro', 'perm_cadastros'],
     'administrativo' => ['perm_administrativo', 'perm_vendas_administracao'],
     'administrativo_gestao_documentos' => 'perm_administrativo',
