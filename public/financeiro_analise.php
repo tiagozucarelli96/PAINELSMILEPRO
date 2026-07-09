@@ -662,6 +662,129 @@ function fa_endividamento(PDO $pdo, string $start, string $end, string $status):
     return $result;
 }
 
+function fa_investment_group(?string $category): ?string
+{
+    if (fa_in_category($category, ['Obras - Antiga e nova'])) {
+        return 'Obras';
+    }
+    if (fa_in_category($category, ['Aquisicao de equipamentos', 'Aquisição de equipamentos'])) {
+        return 'Equipamentos';
+    }
+    if (fa_in_category($category, ['Investimentos'])) {
+        return 'Investimentos';
+    }
+    if (fa_in_category($category, ['Fundo de emergencia', 'Fundo de emergência'])) {
+        return 'Reserva';
+    }
+    return null;
+}
+
+function fa_investimentos(PDO $pdo, DateTimeImmutable $month, string $status): array
+{
+    $yearStart = $month->format('Y-01-01');
+    $yearEnd = $month->modify('first day of january next year')->format('Y-m-d');
+    $monthKey = $month->format('Y-m');
+    $despesaStatus = fa_status_clause('d', $status, true);
+    $stmt = $pdo->prepare("
+        SELECT d.data_movimento,
+               TO_CHAR(d.data_movimento, 'YYYY-MM') AS mes,
+               COALESCE(NULLIF(TRIM(d.categoria), ''), 'Nao Informado') AS categoria,
+               COALESCE(NULLIF(TRIM(d.centro_custo), ''), 'Nao Informado') AS unidade,
+               COALESCE(NULLIF(TRIM(d.banco), ''), NULLIF(TRIM(d.conta), ''), 'Nao Informado') AS origem,
+               COALESCE(NULLIF(TRIM(d.descricao), ''), 'Sem descricao') AS descricao,
+               COALESCE(d.valor, 0) AS valor,
+               d.status
+        FROM financeiro_despesas d
+        WHERE {$despesaStatus}
+          AND d.data_movimento >= CAST(:start AS DATE)
+          AND d.data_movimento < CAST(:end AS DATE)
+        ORDER BY d.data_movimento DESC, d.valor DESC
+    ");
+    $stmt->execute([':start' => $yearStart, ':end' => $yearEnd]);
+
+    $groups = ['Obras', 'Equipamentos', 'Investimentos', 'Reserva'];
+    $result = [
+        'mes_total' => 0.0,
+        'ano_total' => 0.0,
+        'maior_categoria' => '-',
+        'grupos_mes' => [],
+        'unidades_mes' => [],
+        'mensal' => [],
+        'lancamentos' => [],
+    ];
+    foreach ($groups as $group) {
+        $result['grupos_mes'][$group] = ['nome' => $group, 'valor' => 0.0, 'qtd' => 0];
+    }
+
+    $cursor = DateTimeImmutable::createFromFormat('!Y-m-d', $yearStart) ?: $month;
+    while ($cursor <= $month) {
+        $key = $cursor->format('Y-m');
+        $result['mensal'][$key] = [
+            'mes' => fa_month_label($cursor),
+            'Obras' => 0.0,
+            'Equipamentos' => 0.0,
+            'Investimentos' => 0.0,
+            'Reserva' => 0.0,
+            'total' => 0.0,
+        ];
+        $cursor = $cursor->modify('+1 month');
+    }
+
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        $group = fa_investment_group((string)($row['categoria'] ?? ''));
+        if ($group === null) {
+            continue;
+        }
+
+        $value = (float)($row['valor'] ?? 0);
+        $rowMonth = (string)($row['mes'] ?? '');
+        $unit = trim((string)($row['unidade'] ?? '')) !== '' ? trim((string)$row['unidade']) : 'Nao Informado';
+        $result['ano_total'] += $value;
+
+        if (isset($result['mensal'][$rowMonth])) {
+            $result['mensal'][$rowMonth][$group] += $value;
+            $result['mensal'][$rowMonth]['total'] += $value;
+        }
+
+        if ($rowMonth !== $monthKey) {
+            continue;
+        }
+
+        $result['mes_total'] += $value;
+        $result['grupos_mes'][$group]['valor'] += $value;
+        $result['grupos_mes'][$group]['qtd']++;
+
+        if (!isset($result['unidades_mes'][$unit])) {
+            $result['unidades_mes'][$unit] = ['nome' => $unit, 'valor' => 0.0, 'qtd' => 0];
+        }
+        $result['unidades_mes'][$unit]['valor'] += $value;
+        $result['unidades_mes'][$unit]['qtd']++;
+
+        $result['lancamentos'][] = [
+            'data' => (string)($row['data_movimento'] ?? ''),
+            'grupo' => $group,
+            'categoria' => (string)($row['categoria'] ?? ''),
+            'unidade' => $unit,
+            'origem' => (string)($row['origem'] ?? ''),
+            'descricao' => (string)($row['descricao'] ?? ''),
+            'status' => (string)($row['status'] ?? ''),
+            'valor' => $value,
+        ];
+    }
+
+    $groupsMonth = array_values($result['grupos_mes']);
+    usort($groupsMonth, static fn(array $a, array $b): int => $b['valor'] <=> $a['valor']);
+    $result['grupos_mes'] = $groupsMonth;
+    $result['maior_categoria'] = !empty($groupsMonth) && (float)$groupsMonth[0]['valor'] > 0 ? (string)$groupsMonth[0]['nome'] : '-';
+
+    $units = array_values($result['unidades_mes']);
+    usort($units, static fn(array $a, array $b): int => $b['valor'] <=> $a['valor']);
+    $result['unidades_mes'] = $units;
+    $result['mensal'] = array_values($result['mensal']);
+
+    return $result;
+}
+
 function fa_build_dre(array $summary, array $despesasCategorias, array $receitasLinhas): array
 {
     $buckets = [];
@@ -853,7 +976,7 @@ function fa_render_ticket_table(array $rows, string $countLabel, string $countKe
     return (string)ob_get_clean();
 }
 
-function fa_render_debt_summary_table(array $rows, string $nameLabel): string
+function fa_render_debt_summary_table(array $rows, string $nameLabel, string $emptyMessage = 'Sem lançamentos de dívida no período.'): string
 {
     ob_start();
     ?>
@@ -868,7 +991,7 @@ function fa_render_debt_summary_table(array $rows, string $nameLabel): string
                         <td><span class="fa-money out">-<?= h(format_currency((float)$row['valor'])) ?></span></td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if (!$rows): ?><tr><td colspan="3" class="fa-muted">Sem lançamentos de dívida no período.</td></tr><?php endif; ?>
+                <?php if (!$rows): ?><tr><td colspan="3" class="fa-muted"><?= h($emptyMessage) ?></td></tr><?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -895,6 +1018,59 @@ function fa_render_debt_entries_table(array $rows): string
                     </tr>
                 <?php endforeach; ?>
                 <?php if (!$rows): ?><tr><td colspan="6" class="fa-muted">Sem lançamentos de dívida no período.</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
+function fa_render_investment_monthly_table(array $rows): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th>Mês</th><th>Obras</th><th>Equipamentos</th><th>Investimentos</th><th>Reserva</th><th>Total</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h((string)$row['mes']) ?></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['Obras'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['Equipamentos'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['Investimentos'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['Reserva'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['total'])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
+function fa_render_investment_entries_table(array $rows): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th>Data</th><th>Grupo</th><th>Categoria</th><th>Unidade</th><th>Origem</th><th>Descrição</th><th>Status</th><th>Valor</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h(brDateOnly((string)$row['data'])) ?></td>
+                        <td><?= h((string)$row['grupo']) ?></td>
+                        <td><?= h((string)$row['categoria']) ?></td>
+                        <td><?= h((string)$row['unidade']) ?></td>
+                        <td><?= h((string)$row['origem']) ?></td>
+                        <td><?= h((string)$row['descricao']) ?></td>
+                        <td><?= h((string)$row['status']) ?></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['valor'])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (!$rows): ?><tr><td colspan="8" class="fa-muted">Sem lançamentos de investimento no período.</td></tr><?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -968,7 +1144,7 @@ $dateBase = fa_request_param('data_base') ?? 'pagamento';
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
 $status = fa_request_param('status') ?? 'todos';
 $requestedTab = fa_request_param('tab') ?? 'principal';
-$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem', 'equilibrio', 'ticket', 'endividamento'], true) ? $requestedTab : 'principal';
+$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem', 'equilibrio', 'ticket', 'endividamento', 'investimentos'], true) ? $requestedTab : 'principal';
 $export = fa_request_param('export') ?? '';
 
 $start = $month->format('Y-m-01');
@@ -989,6 +1165,7 @@ $receitasLinhas = fa_receitas_por_linha($pdo, $start, $end, $dateBase, $status);
 $topDespesas = fa_top_despesas($pdo, $start, $end, $status);
 $despesasCategorias = fa_despesas_por_categoria($pdo, $start, $end, $status);
 $endividamento = fa_endividamento($pdo, $start, $end, $status);
+$investimentos = fa_investimentos($pdo, $month, $status);
 $dre = fa_build_dre($summary, $despesasCategorias, $receitasLinhas);
 $receitaBruta = fa_dre_line_value($dre, 'Receita Bruta');
 $deducoesValor = abs(fa_dre_line_value($dre, 'Deduções'));
@@ -1002,6 +1179,10 @@ $taxaReceitaLiquida = $receitaBruta > 0 ? ($receitaLiquida / $receitaBruta) : 0.
 $pontoEquilibrioBruto = $taxaReceitaLiquida > 0 ? ($pontoEquilibrioLiquido / $taxaReceitaLiquida) : 0.0;
 $distanciaEquilibrio = $receitaLiquida - $pontoEquilibrioLiquido;
 $comprometimentoDividas = $receitaLiquida > 0 ? (((float)$endividamento['total'] / $receitaLiquida) * 100) : 0.0;
+$investimentosGruposMes = ['Obras' => 0.0, 'Equipamentos' => 0.0, 'Investimentos' => 0.0, 'Reserva' => 0.0];
+foreach ($investimentos['grupos_mes'] as $grupoInvestimento) {
+    $investimentosGruposMes[(string)$grupoInvestimento['nome']] = (float)$grupoInvestimento['valor'];
+}
 
 if ($export === 'dre_pdf') {
     fa_output_dre_pdf($dre, (float)$summary['receitas'], $month, $dateBase, $status);
@@ -1107,6 +1288,7 @@ includeSidebar('Análise Financeira');
         <a class="fa-tab <?= $activeTab === 'equilibrio' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'equilibrio'])) ?>">Ponto de equilíbrio</a>
         <a class="fa-tab <?= $activeTab === 'ticket' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'ticket'])) ?>">Ticket por unidade</a>
         <a class="fa-tab <?= $activeTab === 'endividamento' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'endividamento'])) ?>">Endividamento</a>
+        <a class="fa-tab <?= $activeTab === 'investimentos' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'investimentos'])) ?>">Investimentos</a>
     </nav>
 
     <?php if ($activeTab === 'principal'): ?>
@@ -1299,7 +1481,7 @@ includeSidebar('Análise Financeira');
                 </div>
             </div>
         </section>
-    <?php else: ?>
+    <?php elseif ($activeTab === 'endividamento'): ?>
         <section class="fa-card fa-section" style="margin-top:1rem">
             <div class="fa-panel-head">
                 <h2>Endividamento · <?= h(fa_month_label($month)) ?></h2>
@@ -1355,6 +1537,71 @@ includeSidebar('Análise Financeira');
             <div style="margin-top:1rem">
                 <h2>Lançamentos considerados</h2>
                 <?= fa_render_debt_entries_table($endividamento['lancamentos']) ?>
+            </div>
+        </section>
+    <?php else: ?>
+        <section class="fa-card fa-section" style="margin-top:1rem">
+            <div class="fa-panel-head">
+                <h2>Investimentos / Obras / Patrimônio · <?= h(fa_month_label($month)) ?></h2>
+            </div>
+            <p class="fa-muted">Relatório separado do DRE operacional. Responde quanto dinheiro está indo para crescimento, estrutura, patrimônio e reserva.</p>
+            <div class="fa-margin-summary">
+                <div class="fa-margin-kpi">
+                    <span>Investimento do mês</span>
+                    <strong class="out"><?= h(format_currency((float)$investimentos['mes_total'])) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Investimento no ano</span>
+                    <strong class="out"><?= h(format_currency((float)$investimentos['ano_total'])) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Maior categoria</span>
+                    <strong><?= h((string)$investimentos['maior_categoria']) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Lançamentos no mês</span>
+                    <strong><?= count($investimentos['lancamentos']) ?></strong>
+                </div>
+            </div>
+            <div class="fa-two">
+                <section>
+                    <h2>Investimento por grupo</h2>
+                    <?= fa_render_debt_summary_table($investimentos['grupos_mes'], 'Grupo', 'Sem lançamentos de investimento no período.') ?>
+                </section>
+                <section>
+                    <h2>Investimento por unidade</h2>
+                    <?= fa_render_debt_summary_table($investimentos['unidades_mes'], 'Unidade', 'Sem lançamentos de investimento no período.') ?>
+                </section>
+            </div>
+            <div style="margin-top:1rem">
+                <h2>Evolução no ano</h2>
+                <?= fa_render_investment_monthly_table($investimentos['mensal']) ?>
+            </div>
+            <div class="fa-two" style="margin-top:1rem">
+                <section>
+                    <h2>Resumo do mês</h2>
+                    <?= fa_render_margin_table([
+                        ['Obras', $investimentosGruposMes['Obras']],
+                        ['Equipamentos', $investimentosGruposMes['Equipamentos']],
+                        ['Investimentos', $investimentosGruposMes['Investimentos']],
+                        ['Reserva', $investimentosGruposMes['Reserva']],
+                        ['Total', (float)$investimentos['mes_total']],
+                    ]) ?>
+                </section>
+                <section>
+                    <h2>Regras usadas</h2>
+                    <div class="fa-formula-list">
+                        <div><strong>Obras</strong><span>Obras - Antiga e nova</span></div>
+                        <div><strong>Equipamentos</strong><span>Aquisicao de equipamentos</span></div>
+                        <div><strong>Investimentos</strong><span>Investimentos</span></div>
+                        <div><strong>Reserva</strong><span>Fundo de emergencia</span></div>
+                        <div><strong>Tratamento</strong><span>Fora do DRE operacional; movimento de caixa/patrimônio separado</span></div>
+                    </div>
+                </section>
+            </div>
+            <div style="margin-top:1rem">
+                <h2>Lançamentos considerados</h2>
+                <?= fa_render_investment_entries_table($investimentos['lancamentos']) ?>
             </div>
         </section>
     <?php endif; ?>
