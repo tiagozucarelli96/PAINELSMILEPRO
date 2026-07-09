@@ -291,9 +291,21 @@ function fa_despesas_por_categoria(PDO $pdo, string $start, string $end, string 
 function fa_build_dre(array $summary, array $despesasCategorias): array
 {
     $buckets = [];
+    $bucketDetails = [];
     foreach ($despesasCategorias as $row) {
         $bucket = fa_category_bucket((string)$row['categoria']);
-        $buckets[$bucket] = ($buckets[$bucket] ?? 0) + (float)$row['valor'];
+        $category = (string)($row['categoria'] ?? 'Nao Informado');
+        $value = (float)$row['valor'];
+        $buckets[$bucket] = ($buckets[$bucket] ?? 0) + $value;
+        if (!isset($bucketDetails[$bucket][$category])) {
+            $bucketDetails[$bucket][$category] = ['categoria' => $category, 'valor' => 0.0, 'qtd' => 0];
+        }
+        $bucketDetails[$bucket][$category]['valor'] += $value;
+        $bucketDetails[$bucket][$category]['qtd'] += (int)($row['qtd'] ?? 0);
+    }
+    foreach ($bucketDetails as $bucket => $items) {
+        usort($items, static fn(array $a, array $b): int => $b['valor'] <=> $a['valor']);
+        $bucketDetails[$bucket] = $items;
     }
 
     $deducoes = ($buckets['Impostos sobre vendas'] ?? 0) + ($buckets['Taxa de cobrança'] ?? 0) + ($buckets['Comissões sobre vendas'] ?? 0) + ($buckets['Devolução de vendas'] ?? 0);
@@ -305,30 +317,40 @@ function fa_build_dre(array $summary, array $despesasCategorias): array
     $financeiras = $buckets['Despesas Financeiras'] ?? 0;
     $resultadoFinal = $lucroOperacional - $financeiras;
 
+    $line = static function (string $label, string $nature, float $value, int $level = 0, string $bucket = '') use ($bucketDetails): array {
+        return [
+            'label' => $label,
+            'nature' => $nature,
+            'value' => $value,
+            'level' => $level,
+            'details' => $bucket !== '' ? ($bucketDetails[$bucket] ?? []) : [],
+        ];
+    };
+
     return [
-        ['label' => 'Receita Bruta', 'nature' => 'total', 'value' => $summary['receitas'], 'level' => 0],
-        ['label' => 'Receita de Serviços', 'nature' => 'receita', 'value' => $summary['receitas'], 'level' => 1],
-        ['label' => 'Deduções', 'nature' => 'title', 'value' => -$deducoes, 'level' => 0],
-        ['label' => 'Impostos sobre vendas', 'nature' => 'despesa', 'value' => -($buckets['Impostos sobre vendas'] ?? 0), 'level' => 1],
-        ['label' => 'Taxa de cobrança', 'nature' => 'despesa', 'value' => -($buckets['Taxa de cobrança'] ?? 0), 'level' => 1],
-        ['label' => 'Comissões sobre vendas', 'nature' => 'despesa', 'value' => -($buckets['Comissões sobre vendas'] ?? 0), 'level' => 1],
-        ['label' => 'Devolução de vendas', 'nature' => 'despesa', 'value' => -($buckets['Devolução de vendas'] ?? 0), 'level' => 1],
-        ['label' => 'Receita Líquida', 'nature' => 'total', 'value' => $receitaLiquida, 'level' => 0],
-        ['label' => 'Custos Operacionais', 'nature' => 'title', 'value' => -$custos, 'level' => 0],
-        ['label' => 'Agua e Luz', 'nature' => 'despesa', 'value' => -($buckets['Agua e Luz'] ?? 0), 'level' => 1],
-        ['label' => 'Custo de Materiais', 'nature' => 'despesa', 'value' => -($buckets['Custo de Materiais'] ?? 0), 'level' => 1],
-        ['label' => 'Freelancer', 'nature' => 'despesa', 'value' => -($buckets['Freelancer'] ?? 0), 'level' => 1],
-        ['label' => 'Transporte e Logística', 'nature' => 'despesa', 'value' => -($buckets['Transporte e Logística'] ?? 0), 'level' => 1],
-        ['label' => 'Margem de Contribuição', 'nature' => 'total', 'value' => $margemContribuicao, 'level' => 0],
-        ['label' => 'Despesas Operacionais', 'nature' => 'title', 'value' => -$operacionais, 'level' => 0],
-        ['label' => 'Rescisões Trabalhistas', 'nature' => 'despesa', 'value' => -($buckets['Rescisões Trabalhistas'] ?? 0), 'level' => 1],
-        ['label' => 'Despesas Comerciais', 'nature' => 'despesa', 'value' => -($buckets['Despesas Comerciais'] ?? 0), 'level' => 1],
-        ['label' => 'Despesas Gerais', 'nature' => 'despesa', 'value' => -($buckets['Despesas Gerais'] ?? 0), 'level' => 1],
-        ['label' => 'Despesas Fixas', 'nature' => 'despesa', 'value' => -($buckets['Despesas Fixas'] ?? 0), 'level' => 1],
-        ['label' => 'Outras Despesas', 'nature' => 'despesa', 'value' => -($buckets['Outras Despesas'] ?? 0), 'level' => 1],
-        ['label' => 'Lucro Operacional', 'nature' => 'total', 'value' => $lucroOperacional, 'level' => 0],
-        ['label' => 'Despesas Financeiras', 'nature' => 'despesa', 'value' => -$financeiras, 'level' => 1],
-        ['label' => 'Resultado do Exercício', 'nature' => 'result', 'value' => $resultadoFinal, 'level' => 0],
+        $line('Receita Bruta', 'total', $summary['receitas']),
+        $line('Receita de Serviços', 'receita', $summary['receitas'], 1),
+        $line('Deduções', 'title', -$deducoes),
+        $line('Impostos sobre vendas', 'despesa', -($buckets['Impostos sobre vendas'] ?? 0), 1, 'Impostos sobre vendas'),
+        $line('Taxa de cobrança', 'despesa', -($buckets['Taxa de cobrança'] ?? 0), 1, 'Taxa de cobrança'),
+        $line('Comissões sobre vendas', 'despesa', -($buckets['Comissões sobre vendas'] ?? 0), 1, 'Comissões sobre vendas'),
+        $line('Devolução de vendas', 'despesa', -($buckets['Devolução de vendas'] ?? 0), 1, 'Devolução de vendas'),
+        $line('Receita Líquida', 'total', $receitaLiquida),
+        $line('Custos Operacionais', 'title', -$custos),
+        $line('Agua e Luz', 'despesa', -($buckets['Agua e Luz'] ?? 0), 1, 'Agua e Luz'),
+        $line('Custo de Materiais', 'despesa', -($buckets['Custo de Materiais'] ?? 0), 1, 'Custo de Materiais'),
+        $line('Freelancer', 'despesa', -($buckets['Freelancer'] ?? 0), 1, 'Freelancer'),
+        $line('Transporte e Logística', 'despesa', -($buckets['Transporte e Logística'] ?? 0), 1, 'Transporte e Logística'),
+        $line('Margem de Contribuição', 'total', $margemContribuicao),
+        $line('Despesas Operacionais', 'title', -$operacionais),
+        $line('Rescisões Trabalhistas', 'despesa', -($buckets['Rescisões Trabalhistas'] ?? 0), 1, 'Rescisões Trabalhistas'),
+        $line('Despesas Comerciais', 'despesa', -($buckets['Despesas Comerciais'] ?? 0), 1, 'Despesas Comerciais'),
+        $line('Despesas Gerais', 'despesa', -($buckets['Despesas Gerais'] ?? 0), 1, 'Despesas Gerais'),
+        $line('Despesas Fixas', 'despesa', -($buckets['Despesas Fixas'] ?? 0), 1, 'Despesas Fixas'),
+        $line('Outras Despesas', 'despesa', -($buckets['Outras Despesas'] ?? 0), 1, 'Outras Despesas'),
+        $line('Lucro Operacional', 'total', $lucroOperacional),
+        $line('Despesas Financeiras', 'despesa', -$financeiras, 1, 'Despesas Financeiras'),
+        $line('Resultado do Exercício', 'result', $resultadoFinal),
     ];
 }
 
@@ -380,7 +402,7 @@ includeSidebar('Análise Financeira');
 ?>
 
 <style>
-.fa-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.fa-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.fa-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.fa-sub{margin:.3rem 0 0;color:#64748b}.fa-actions{display:flex;gap:.65rem;flex-wrap:wrap}.fa-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155}.fa-btn.primary{background:#1e3a8a;color:#fff}.fa-btn.green{background:#20c985;color:#fff}.fa-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07)}.fa-filters{margin:1rem 0;padding:1rem;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:.8rem;align-items:end}.fa-field{display:grid;gap:.35rem}.fa-field label{font-weight:900;color:#475569;font-size:.82rem}.fa-field select,.fa-field input{border:1px solid #cbd5e1;border-radius:8px;padding:.65rem .75rem;font:inherit;background:#fff}.fa-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.fa-kpi{padding:1.1rem;border-left:4px solid #38bdf8}.fa-kpi.receita{border-color:#22c55e}.fa-kpi.despesa{border-color:#ef4444}.fa-kpi.resultado{border-color:#3b82f6}.fa-kpi.margem{border-color:#a855f7}.fa-kpi h3{margin:0 0 .8rem;text-transform:uppercase;color:#64748b;font-size:.82rem}.fa-kpi .value{font-size:1.55rem;font-weight:900;color:#1f2937}.fa-kpi .meta{margin-top:.35rem;color:#64748b;font-size:.84rem}.fa-delta{font-weight:900}.fa-delta.good{color:#16a34a}.fa-delta.bad{color:#dc2626}.fa-month{display:flex;align-items:center;justify-content:center;gap:.7rem;margin:1.2rem 0}.fa-month a{width:36px;height:36px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;text-decoration:none;display:grid;place-items:center;font-weight:900}.fa-month-title{font-weight:900;font-size:1.35rem;color:#475569}.fa-grid{display:grid;grid-template-columns:1.25fr .9fr;gap:1rem;margin-top:1rem}.fa-section{padding:1rem}.fa-section h2{margin:0 0 1rem;color:#1e3a8a;font-size:1.08rem}.fa-chart{display:grid;gap:.8rem}.fa-chart-row{display:grid;grid-template-columns:95px 1fr 110px;gap:.8rem;align-items:center}.fa-bar-track{height:28px;background:#eef2f7;border-radius:6px;overflow:hidden}.fa-bar{height:100%;min-width:2px}.fa-bar.receita{background:#22c55e}.fa-bar.despesa{background:#ef4444}.fa-bar.resultado{background:#3b82f6}.fa-table-wrap{overflow:auto}.fa-table{width:100%;border-collapse:collapse;min-width:620px}.fa-table th,.fa-table td{padding:.75rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.fa-table th{background:#f8fafc;color:#475569;text-transform:uppercase;font-size:.75rem}.fa-money{font-weight:900}.fa-money.out{color:#b42318}.fa-money.in{color:#15803d}.fa-dre .title td{background:#f8fafc;font-weight:900;color:#475569}.fa-dre .total td,.fa-dre .result td{font-weight:900;background:#eef6ff}.fa-dre .indent{padding-left:1.8rem}.fa-insights{display:grid;gap:.65rem}.fa-insight{border-left:4px solid #38bdf8;background:#f8fbff;border-radius:8px;padding:.75rem .9rem;font-weight:800;color:#334155}.fa-two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}.fa-muted{color:#64748b;font-size:.86rem}@media(max-width:1050px){.fa-summary,.fa-grid,.fa-two{grid-template-columns:1fr}.fa-filters{grid-template-columns:1fr 1fr}}@media(max-width:650px){.fa-page{padding:1rem}.fa-filters{grid-template-columns:1fr}.fa-chart-row{grid-template-columns:1fr}.fa-summary{grid-template-columns:1fr}}
+.fa-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.fa-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.fa-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.fa-sub{margin:.3rem 0 0;color:#64748b}.fa-actions{display:flex;gap:.65rem;flex-wrap:wrap}.fa-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155}.fa-btn.primary{background:#1e3a8a;color:#fff}.fa-btn.green{background:#20c985;color:#fff}.fa-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07)}.fa-filters{margin:1rem 0;padding:1rem;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:.8rem;align-items:end}.fa-field{display:grid;gap:.35rem}.fa-field label{font-weight:900;color:#475569;font-size:.82rem}.fa-field select,.fa-field input{border:1px solid #cbd5e1;border-radius:8px;padding:.65rem .75rem;font:inherit;background:#fff}.fa-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.fa-kpi{padding:1.1rem;border-left:4px solid #38bdf8}.fa-kpi.receita{border-color:#22c55e}.fa-kpi.despesa{border-color:#ef4444}.fa-kpi.resultado{border-color:#3b82f6}.fa-kpi.margem{border-color:#a855f7}.fa-kpi h3{margin:0 0 .8rem;text-transform:uppercase;color:#64748b;font-size:.82rem}.fa-kpi .value{font-size:1.55rem;font-weight:900;color:#1f2937}.fa-kpi .meta{margin-top:.35rem;color:#64748b;font-size:.84rem}.fa-delta{font-weight:900}.fa-delta.good{color:#16a34a}.fa-delta.bad{color:#dc2626}.fa-month{display:flex;align-items:center;justify-content:center;gap:.7rem;margin:1.2rem 0}.fa-month a{width:36px;height:36px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;text-decoration:none;display:grid;place-items:center;font-weight:900}.fa-month-title{font-weight:900;font-size:1.35rem;color:#475569}.fa-grid{display:grid;grid-template-columns:1.25fr .9fr;gap:1rem;margin-top:1rem}.fa-section{padding:1rem}.fa-section h2{margin:0 0 1rem;color:#1e3a8a;font-size:1.08rem}.fa-chart{display:grid;gap:.8rem}.fa-chart-row{display:grid;grid-template-columns:95px 1fr 110px;gap:.8rem;align-items:center}.fa-bar-track{height:28px;background:#eef2f7;border-radius:6px;overflow:hidden}.fa-bar{height:100%;min-width:2px}.fa-bar.receita{background:#22c55e}.fa-bar.despesa{background:#ef4444}.fa-bar.resultado{background:#3b82f6}.fa-table-wrap{overflow:auto}.fa-table{width:100%;border-collapse:collapse;min-width:620px}.fa-table th,.fa-table td{padding:.75rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.fa-table th{background:#f8fafc;color:#475569;text-transform:uppercase;font-size:.75rem}.fa-money{font-weight:900}.fa-money.out{color:#b42318}.fa-money.in{color:#15803d}.fa-dre-list{display:grid;gap:.55rem}.fa-dre-item{border:1px solid #e2e8f0;border-radius:8px;background:#fff;overflow:hidden}.fa-dre-item summary,.fa-dre-static{list-style:none;display:grid;grid-template-columns:1fr 160px 110px;gap:1rem;align-items:center;padding:.85rem 1rem}.fa-dre-item summary{cursor:pointer}.fa-dre-item summary::-webkit-details-marker{display:none}.fa-dre-item.expandable summary:before{content:'▸';font-weight:900;color:#64748b;margin-right:.5rem}.fa-dre-item.expandable[open] summary:before{content:'▾'}.fa-dre-item.total summary,.fa-dre-item.total .fa-dre-static,.fa-dre-item.result summary,.fa-dre-item.result .fa-dre-static{background:#eef6ff;font-weight:900}.fa-dre-item.title summary,.fa-dre-item.title .fa-dre-static{background:#f8fafc;font-weight:900;color:#475569}.fa-dre-label{display:flex;align-items:center;gap:.35rem;font-weight:900}.fa-dre-label.indent{padding-left:1.1rem;font-weight:800}.fa-dre-details{padding:.25rem 1rem 1rem 2.3rem;background:#fff}.fa-dre-detail-table{width:100%;border-collapse:collapse}.fa-dre-detail-table th,.fa-dre-detail-table td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left}.fa-dre-detail-table th{font-size:.72rem;color:#64748b;text-transform:uppercase}.fa-insights{display:grid;gap:.65rem}.fa-insight{border-left:4px solid #38bdf8;background:#f8fbff;border-radius:8px;padding:.75rem .9rem;font-weight:800;color:#334155}.fa-two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}.fa-muted{color:#64748b;font-size:.86rem}@media(max-width:1050px){.fa-summary,.fa-grid,.fa-two{grid-template-columns:1fr}.fa-filters{grid-template-columns:1fr 1fr}}@media(max-width:650px){.fa-page{padding:1rem}.fa-filters{grid-template-columns:1fr}.fa-chart-row{grid-template-columns:1fr}.fa-summary{grid-template-columns:1fr}.fa-dre-item summary,.fa-dre-static{grid-template-columns:1fr}.fa-dre-details{padding:.25rem .8rem .9rem}}
 </style>
 
 <div class="fa-page">
@@ -495,15 +517,40 @@ includeSidebar('Análise Financeira');
 
     <section class="fa-card fa-section" style="margin-top:1rem">
         <h2>DRE por Categorias</h2>
-        <div class="fa-table-wrap"><table class="fa-table fa-dre"><thead><tr><th>Natureza</th><th>Valor</th><th>% Receita</th></tr></thead><tbody>
-            <?php foreach ($dre as $line): $pct = $summary['receitas'] > 0 ? (((float)$line['value'] / $summary['receitas']) * 100) : 0; ?>
-                <tr class="<?= h((string)$line['nature']) ?>">
-                    <td class="<?= (int)$line['level'] > 0 ? 'indent' : '' ?>"><?= h((string)$line['label']) ?></td>
-                    <td><span class="fa-money <?= (float)$line['value'] < 0 ? 'out' : 'in' ?>"><?= h(format_currency($line['value'])) ?></span></td>
-                    <td><?= h(number_format($pct, 1, ',', '.')) ?>%</td>
-                </tr>
+        <div class="fa-dre-list">
+            <?php foreach ($dre as $line): ?>
+                <?php
+                    $pct = $summary['receitas'] > 0 ? (((float)$line['value'] / $summary['receitas']) * 100) : 0;
+                    $details = is_array($line['details'] ?? null) ? $line['details'] : [];
+                    $hasDetails = !empty($details);
+                    $tag = $hasDetails ? 'details' : 'div';
+                    $class = 'fa-dre-item ' . (string)$line['nature'] . ($hasDetails ? ' expandable' : '');
+                ?>
+                <<?= $tag ?> class="<?= h($class) ?>">
+                    <?php if ($hasDetails): ?><summary><?php else: ?><div class="fa-dre-static"><?php endif; ?>
+                        <span class="fa-dre-label <?= (int)$line['level'] > 0 ? 'indent' : '' ?>"><?= h((string)$line['label']) ?></span>
+                        <span class="fa-money <?= (float)$line['value'] < 0 ? 'out' : 'in' ?>"><?= h(format_currency($line['value'])) ?></span>
+                        <span><?= h(number_format($pct, 1, ',', '.')) ?>%</span>
+                    <?php if ($hasDetails): ?></summary><?php else: ?></div><?php endif; ?>
+                    <?php if ($hasDetails): ?>
+                        <div class="fa-dre-details">
+                            <table class="fa-dre-detail-table">
+                                <thead><tr><th>Categoria envolvida</th><th>Lançamentos</th><th>Valor</th></tr></thead>
+                                <tbody>
+                                    <?php foreach ($details as $detail): ?>
+                                        <tr>
+                                            <td><?= h((string)$detail['categoria']) ?></td>
+                                            <td><?= (int)$detail['qtd'] ?></td>
+                                            <td><span class="fa-money out">-<?= h(format_currency($detail['valor'])) ?></span></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </<?= $tag ?>>
             <?php endforeach; ?>
-        </tbody></table></div>
+        </div>
     </section>
 </div>
 
