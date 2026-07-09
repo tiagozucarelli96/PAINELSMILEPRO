@@ -1929,34 +1929,104 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
         }
 
         .schema-field-card {
-            margin-bottom: 1rem;
-            border: 1px solid #dbe3ef;
-            border-radius: 10px;
+            margin-bottom: 1.35rem;
+            border: 2px solid #bfdbfe;
+            border-left: 6px solid #2563eb;
+            border-radius: 12px;
             background: #ffffff;
-            padding: 0.95rem;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            padding: 0;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
         }
 
         .schema-field-card + .schema-field-card {
-            margin-top: 0.85rem;
+            margin-top: 1.35rem;
         }
 
         .schema-field-label {
             display: block;
             font-weight: 700;
-            color: #1f2937;
-            margin-bottom: 0.4rem;
+            color: #172554;
+            margin: 0;
+            padding: 0.8rem 1rem;
             line-height: 1.35;
+            background: #eff6ff;
+            border-bottom: 1px solid #bfdbfe;
         }
 
         .schema-field-help {
             margin: 0 0 0.75rem 0;
             color: #475569;
             font-size: 0.86rem;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background: #f8fbff;
+            border: 1px solid #dbeafe;
             border-radius: 8px;
             padding: 0.6rem 0.7rem;
+        }
+
+        .schema-field-card > .schema-field-help,
+        .schema-field-card > .schema-field-control,
+        .schema-field-card > .schema-upload-box,
+        .schema-field-card > p,
+        .schema-field-card > .orderable-row {
+            margin-left: 1rem;
+            margin-right: 1rem;
+        }
+
+        .schema-field-card > .schema-field-help,
+        .schema-field-card > .schema-field-control,
+        .schema-field-card > p,
+        .schema-field-card > .orderable-row {
+            margin-top: 0.9rem;
+        }
+
+        .schema-field-card > .schema-field-control,
+        .schema-field-card > p {
+            margin-bottom: 0.9rem;
+        }
+
+        .schema-field-card > .schema-upload-box:last-child {
+            margin-bottom: 1rem;
+        }
+
+        .schema-field-card:focus-within {
+            border-color: #60a5fa;
+            border-left-color: #1d4ed8;
+            box-shadow: 0 12px 28px rgba(37, 99, 235, 0.14);
+        }
+
+        .schema-field-card:focus-within .schema-field-label {
+            background: #dbeafe;
+            border-bottom-color: #93c5fd;
+        }
+
+        .schema-field-card .attachments-list {
+            background: #f8fafc;
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            padding: 0.75rem;
+            margin-top: 0.85rem;
+        }
+
+        .schema-field-card .attachments-list h4 {
+            color: #1e3a8a;
+        }
+
+        .schema-field-card .attachments-list li {
+            border-color: #cbd5e1;
+            background: #ffffff;
+        }
+
+        .schema-field-card .attachment-item-head {
+            font-weight: 600;
+        }
+
+        .schema-field-card .attachment-remove-btn {
+            background: #fff1f2;
+        }
+
+        .schema-field-card .attachment-remove-btn:hover {
+            background: #ffe4e6;
         }
 
         .schema-field-control,
@@ -1969,6 +2039,16 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             background: #fff;
         }
 
+        .schema-field-card > .schema-field-control {
+            max-width: calc(100% - 2rem);
+        }
+
+        .schema-field-card > .schema-field-control:focus,
+        .schema-field-card .schema-file-control:focus {
+            outline: 2px solid rgba(37, 99, 235, 0.18);
+            border-color: #3b82f6;
+        }
+
         textarea.schema-field-control {
             resize: vertical;
             min-height: 112px;
@@ -1976,14 +2056,16 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
 
         .schema-upload-box {
             margin-top: 0.85rem;
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid #bfdbfe;
             padding-top: 0.85rem;
+            padding-bottom: 0.1rem;
+            background: #fbfdff;
         }
 
         .schema-upload-label {
             display: block;
             font-weight: 700;
-            color: #334155;
+            color: #1f2937;
             margin-bottom: 0.4rem;
             font-size: 0.9rem;
         }
