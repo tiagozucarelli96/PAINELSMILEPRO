@@ -402,6 +402,97 @@ function fa_top_receitas(PDO $pdo, string $start, string $end, string $dateBase,
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+function fa_receitas_por_unidade(PDO $pdo, string $start, string $end, string $dateBase, string $status): array
+{
+    $receitaSql = fa_receita_sources($pdo, $dateBase);
+    $receitaStatus = fa_status_clause('r', $status, false);
+    $unidadeSql = fa_unidade_sql('unidade');
+    $stmt = $pdo->prepare("
+        SELECT {$unidadeSql} AS unidade,
+               COALESCE(SUM(valor), 0) AS receita,
+               COUNT(*) AS lancamentos
+        FROM ({$receitaSql}) r
+        WHERE {$receitaStatus}
+          AND data_ref >= CAST(:start AS DATE)
+          AND data_ref < CAST(:end AS DATE)
+        GROUP BY 1
+        ORDER BY receita DESC
+    ");
+    $stmt->execute([':start' => $start, ':end' => $end]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function fa_eventos_realizados_por_unidade(PDO $pdo, string $start, string $end): array
+{
+    static $exists = null;
+    if ($exists === null) {
+        try {
+            $exists = trim((string)$pdo->query("SELECT to_regclass('logistica_eventos_espelho')")->fetchColumn()) !== '';
+        } catch (Throwable $e) {
+            $exists = false;
+        }
+    }
+    if (!$exists) {
+        return [];
+    }
+
+    $unidadeSql = fa_unidade_sql('space_visivel');
+    $stmt = $pdo->prepare("
+        SELECT {$unidadeSql} AS unidade,
+               COUNT(*) AS eventos
+        FROM logistica_eventos_espelho
+        WHERE data_evento >= CAST(:start AS DATE)
+          AND data_evento < CAST(:end AS DATE)
+          AND COALESCE(arquivado, FALSE) IS FALSE
+        GROUP BY 1
+        ORDER BY eventos DESC
+    ");
+    $stmt->execute([':start' => $start, ':end' => $end]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function fa_ticket_por_eventos(array $receitasUnidade, array $eventosUnidade): array
+{
+    $rows = [];
+    foreach ($receitasUnidade as $row) {
+        $unidade = (string)$row['unidade'];
+        $rows[$unidade] = [
+            'unidade' => $unidade,
+            'receita' => (float)$row['receita'],
+            'eventos' => 0,
+        ];
+    }
+    foreach ($eventosUnidade as $row) {
+        $unidade = (string)$row['unidade'];
+        if (!isset($rows[$unidade])) {
+            $rows[$unidade] = ['unidade' => $unidade, 'receita' => 0.0, 'eventos' => 0];
+        }
+        $rows[$unidade]['eventos'] = (int)$row['eventos'];
+    }
+    foreach ($rows as &$row) {
+        $row['ticket'] = $row['eventos'] > 0 ? $row['receita'] / $row['eventos'] : 0.0;
+    }
+    unset($row);
+    usort($rows, static fn(array $a, array $b): int => $b['receita'] <=> $a['receita']);
+    return $rows;
+}
+
+function fa_ticket_por_receitas(array $receitasUnidade): array
+{
+    $rows = [];
+    foreach ($receitasUnidade as $row) {
+        $lancamentos = (int)$row['lancamentos'];
+        $receita = (float)$row['receita'];
+        $rows[] = [
+            'unidade' => (string)$row['unidade'],
+            'receita' => $receita,
+            'lancamentos' => $lancamentos,
+            'ticket' => $lancamentos > 0 ? $receita / $lancamentos : 0.0,
+        ];
+    }
+    return $rows;
+}
+
 function fa_receitas_por_linha(PDO $pdo, string $start, string $end, string $dateBase, string $status): array
 {
     $receitaSql = fa_receita_sources($pdo, $dateBase);
@@ -636,6 +727,30 @@ function fa_render_margin_table(array $rows): string
     return (string)ob_get_clean();
 }
 
+function fa_render_ticket_table(array $rows, string $countLabel, string $countKey): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th>Unidade</th><th>Receita</th><th><?= h($countLabel) ?></th><th>Ticket médio</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h((string)$row['unidade']) ?></td>
+                        <td><span class="fa-money in"><?= h(format_currency((float)$row['receita'])) ?></span></td>
+                        <td><?= (int)$row[$countKey] ?></td>
+                        <td><span class="fa-money"><?= h(format_currency((float)$row['ticket'])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (!$rows): ?><tr><td colspan="4" class="fa-muted">Sem dados para o período.</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
 function fa_render_dre_pdf_html(array $dre, float $receitas, DateTimeImmutable $month, string $dateBase, string $status): string
 {
     $rows = '';
@@ -702,7 +817,7 @@ $dateBase = fa_request_param('data_base') ?? 'pagamento';
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
 $status = fa_request_param('status') ?? 'todos';
 $requestedTab = fa_request_param('tab') ?? 'principal';
-$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem', 'equilibrio'], true) ? $requestedTab : 'principal';
+$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem', 'equilibrio', 'ticket'], true) ? $requestedTab : 'principal';
 $export = fa_request_param('export') ?? '';
 
 $start = $month->format('Y-m-01');
@@ -715,6 +830,10 @@ $next = $month->modify('+1 month');
 $summary = fa_summary($pdo, $start, $end, $dateBase, $status);
 $previous = fa_summary($pdo, $prevStart, $prevEnd, $dateBase, $status);
 $topReceitas = fa_top_receitas($pdo, $start, $end, $dateBase, $status);
+$receitasUnidade = fa_receitas_por_unidade($pdo, $start, $end, $dateBase, $status);
+$eventosUnidade = fa_eventos_realizados_por_unidade($pdo, $start, $end);
+$ticketsEventos = fa_ticket_por_eventos($receitasUnidade, $eventosUnidade);
+$ticketsReceitas = fa_ticket_por_receitas($receitasUnidade);
 $receitasLinhas = fa_receitas_por_linha($pdo, $start, $end, $dateBase, $status);
 $topDespesas = fa_top_despesas($pdo, $start, $end, $status);
 $despesasCategorias = fa_despesas_por_categoria($pdo, $start, $end, $status);
@@ -833,6 +952,7 @@ includeSidebar('Análise Financeira');
         <a class="fa-tab <?= $activeTab === 'dre' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'dre'])) ?>">DRE</a>
         <a class="fa-tab <?= $activeTab === 'margem' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'margem'])) ?>">Margem de contribuição</a>
         <a class="fa-tab <?= $activeTab === 'equilibrio' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'equilibrio'])) ?>">Ponto de equilíbrio</a>
+        <a class="fa-tab <?= $activeTab === 'ticket' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'ticket'])) ?>">Ticket por unidade</a>
     </nav>
 
     <?php if ($activeTab === 'principal'): ?>
@@ -944,7 +1064,7 @@ includeSidebar('Análise Financeira');
                 </div>
             </div>
         </section>
-    <?php else: ?>
+    <?php elseif ($activeTab === 'equilibrio'): ?>
         <section class="fa-card fa-section" style="margin-top:1rem">
             <div class="fa-panel-head">
                 <h2>Ponto de Equilíbrio · <?= h(fa_month_label($month)) ?></h2>
@@ -997,6 +1117,31 @@ includeSidebar('Análise Financeira');
                             <?php endif; ?>
                         <?php endforeach; ?>
                     <?php endforeach; ?>
+                </div>
+            </div>
+        </section>
+    <?php else: ?>
+        <section class="fa-card fa-section" style="margin-top:1rem">
+            <div class="fa-panel-head">
+                <h2>Ticket Médio por Unidade · <?= h(fa_month_label($month)) ?></h2>
+            </div>
+            <div class="fa-two">
+                <section>
+                    <h2>Índice por eventos realizados</h2>
+                    <p class="fa-muted">Receita bruta da unidade dividida pelos eventos realizados na unidade dentro do mês.</p>
+                    <?= fa_render_ticket_table($ticketsEventos, 'Eventos', 'eventos') ?>
+                </section>
+                <section>
+                    <h2>Índice por receitas do mês</h2>
+                    <p class="fa-muted">Receita bruta da unidade dividida pela quantidade de lançamentos de receita no mês.</p>
+                    <?= fa_render_ticket_table($ticketsReceitas, 'Receitas', 'lancamentos') ?>
+                </section>
+            </div>
+            <div style="margin-top:1rem">
+                <h2>Fórmulas</h2>
+                <div class="fa-formula-list">
+                    <div><strong>Ticket por eventos realizados</strong><span>Receita da unidade ÷ quantidade de eventos realizados da unidade</span></div>
+                    <div><strong>Ticket por receitas do mês</strong><span>Receita da unidade ÷ quantidade de lançamentos de receita da unidade</span></div>
                 </div>
             </div>
         </section>
