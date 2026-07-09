@@ -256,6 +256,24 @@ function fa_revenue_bucket(?string $description, ?string $payment): string
     return 'Receita de Eventos';
 }
 
+function fa_url(array $overrides = []): string
+{
+    $params = [
+        'page' => 'financeiro_analise',
+        'competencia' => $GLOBALS['month']->format('Y-m'),
+        'data_base' => $GLOBALS['dateBase'],
+        'status' => $GLOBALS['status'],
+    ];
+    foreach ($overrides as $key => $value) {
+        if ($value === null) {
+            unset($params[$key]);
+        } else {
+            $params[$key] = $value;
+        }
+    }
+    return 'index.php?' . http_build_query($params);
+}
+
 function fa_receita_data_expr(string $dateBase): string
 {
     return $dateBase === 'pagamento'
@@ -544,11 +562,116 @@ function fa_build_dre(array $summary, array $despesasCategorias, array $receitas
     ];
 }
 
+function fa_render_dre_list(array $dre, float $receitas, bool $withDetails = true): string
+{
+    ob_start();
+    ?>
+    <div class="fa-dre-list">
+        <?php foreach ($dre as $line): ?>
+            <?php
+                $pct = $receitas > 0 ? (((float)$line['value'] / $receitas) * 100) : 0;
+                $details = is_array($line['details'] ?? null) ? $line['details'] : [];
+                $hasDetails = $withDetails && !empty($details);
+                $tag = $hasDetails ? 'details' : 'div';
+                $class = 'fa-dre-item ' . (string)$line['nature'] . ($hasDetails ? ' expandable' : '');
+            ?>
+            <<?= $tag ?> class="<?= h($class) ?>">
+                <?php if ($hasDetails): ?><summary><?php else: ?><div class="fa-dre-static"><?php endif; ?>
+                    <span class="fa-dre-arrow"><?= $hasDetails ? '▸' : '' ?></span>
+                    <span class="fa-dre-label <?= (int)$line['level'] > 0 ? 'indent' : '' ?>"><?= h((string)$line['label']) ?></span>
+                    <span class="fa-money <?= (float)$line['value'] < 0 ? 'out' : 'in' ?>"><?= h(format_currency($line['value'])) ?></span>
+                    <span><?= h(number_format($pct, 1, ',', '.')) ?>%</span>
+                <?php if ($hasDetails): ?></summary><?php else: ?></div><?php endif; ?>
+                <?php if ($hasDetails): ?>
+                    <div class="fa-dre-details">
+                        <table class="fa-dre-detail-table">
+                            <thead><tr><th>Categoria envolvida</th><th>Lançamentos</th><th>Valor</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($details as $detail): ?>
+                                    <tr>
+                                        <td><?= h((string)$detail['categoria']) ?></td>
+                                        <td><?= (int)$detail['qtd'] ?></td>
+                                        <td><span class="fa-money out">-<?= h(format_currency($detail['valor'])) ?></span></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </<?= $tag ?>>
+        <?php endforeach; ?>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
+function fa_render_dre_pdf_html(array $dre, float $receitas, DateTimeImmutable $month, string $dateBase, string $status): string
+{
+    $rows = '';
+    foreach ($dre as $line) {
+        $pct = $receitas > 0 ? (((float)$line['value'] / $receitas) * 100) : 0;
+        $levelClass = ((int)$line['level'] > 0) ? ' indent' : '';
+        $natureClass = preg_replace('/[^a-z0-9_-]+/i', '', (string)$line['nature']);
+        $rows .= '<tr class="' . h($natureClass) . '">'
+            . '<td class="label' . $levelClass . '">' . h((string)$line['label']) . '</td>'
+            . '<td class="value ' . ((float)$line['value'] < 0 ? 'negative' : 'positive') . '">' . h(format_currency($line['value'])) . '</td>'
+            . '<td class="pct">' . h(number_format($pct, 1, ',', '.')) . '%</td>'
+            . '</tr>';
+    }
+
+    return '<!doctype html><html><head><meta charset="utf-8"><style>
+        @page{margin:28px 32px}
+        body{font-family:DejaVu Sans,Arial,sans-serif;color:#1f2937;font-size:12px}
+        h1{margin:0;color:#1e3a8a;font-size:22px}
+        .meta{margin:6px 0 18px;color:#64748b}
+        table{width:100%;border-collapse:collapse}
+        th{background:#eef2f7;color:#475569;text-transform:uppercase;font-size:10px;text-align:left;padding:8px;border-bottom:1px solid #cbd5e1}
+        td{padding:8px;border-bottom:1px solid #e2e8f0}
+        .label{font-weight:700}.indent{padding-left:24px;font-weight:500}
+        .value,.pct{text-align:right;white-space:nowrap}.positive{color:#15803d}.negative{color:#b42318}
+        tr.total td,tr.result td{background:#eef6ff;font-weight:800}
+        tr.title td{background:#f8fafc;font-weight:800;color:#475569}
+    </style></head><body>'
+        . '<h1>DRE por Categorias</h1>'
+        . '<div class="meta">' . h(fa_month_label($month)) . ' · Receitas por data de ' . h($dateBase === 'pagamento' ? 'pagamento' : 'vencimento') . ' · Status: ' . h($status === 'pago' ? 'Pago' : 'Todos') . '</div>'
+        . '<table><thead><tr><th>Linha do DRE</th><th>Valor</th><th>% Receita</th></tr></thead><tbody>' . $rows . '</tbody></table>'
+        . '</body></html>';
+}
+
+function fa_output_dre_pdf(array $dre, float $receitas, DateTimeImmutable $month, string $dateBase, string $status): void
+{
+    $previousReporting = error_reporting();
+    error_reporting($previousReporting & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+    $autoload = __DIR__ . '/../vendor/autoload.php';
+    if (file_exists($autoload)) {
+        require_once $autoload;
+    }
+
+    $html = fa_render_dre_pdf_html($dre, $receitas, $month, $dateBase, $status);
+    $filename = 'dre_' . $month->format('Y_m') . '.pdf';
+
+    if (class_exists('\\Dompdf\\Dompdf')) {
+        $dompdf = new \Dompdf\Dompdf(['isRemoteEnabled' => true, 'isHtml5ParserEnabled' => true]);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        $dompdf->stream($filename, ['Attachment' => true]);
+        exit;
+    }
+
+    header('Content-Type: text/html; charset=utf-8');
+    echo $html;
+    exit;
+}
+
 $competenciaParam = fa_request_param('competencia') ?? date('Y-m');
 $month = fa_parse_month($competenciaParam);
 $dateBase = fa_request_param('data_base') ?? 'pagamento';
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
 $status = fa_request_param('status') ?? 'todos';
+$activeTab = fa_request_param('tab') === 'dre' ? 'dre' : 'principal';
+$export = fa_request_param('export') ?? '';
 
 $start = $month->format('Y-m-01');
 $end = $month->modify('+1 month')->format('Y-m-01');
@@ -564,6 +687,10 @@ $receitasLinhas = fa_receitas_por_linha($pdo, $start, $end, $dateBase, $status);
 $topDespesas = fa_top_despesas($pdo, $start, $end, $status);
 $despesasCategorias = fa_despesas_por_categoria($pdo, $start, $end, $status);
 $dre = fa_build_dre($summary, $despesasCategorias, $receitasLinhas);
+
+if ($export === 'dre_pdf') {
+    fa_output_dre_pdf($dre, (float)$summary['receitas'], $month, $dateBase, $status);
+}
 
 $deltaReceitas = fa_delta($summary['receitas'], $previous['receitas']);
 $deltaDespesas = fa_delta($summary['despesas'], $previous['despesas']);
@@ -594,7 +721,7 @@ includeSidebar('Análise Financeira');
 ?>
 
 <style>
-.fa-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.fa-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.fa-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.fa-sub{margin:.3rem 0 0;color:#64748b}.fa-actions{display:flex;gap:.65rem;flex-wrap:wrap}.fa-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;cursor:pointer}.fa-btn.primary{background:#1e3a8a;color:#fff}.fa-btn.green{background:#20c985;color:#fff}.fa-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07)}.fa-filters{margin:1rem 0;padding:1rem;display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:.8rem;align-items:end}.fa-field{display:grid;gap:.35rem}.fa-field label{font-weight:900;color:#475569;font-size:.82rem}.fa-field select,.fa-field input{border:1px solid #cbd5e1;border-radius:8px;padding:.65rem .75rem;font:inherit;background:#fff}.fa-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.fa-kpi{padding:1.1rem;border-left:4px solid #38bdf8}.fa-kpi.receita{border-color:#22c55e}.fa-kpi.despesa{border-color:#ef4444}.fa-kpi.resultado{border-color:#3b82f6}.fa-kpi.margem{border-color:#a855f7}.fa-kpi h3{margin:0 0 .8rem;text-transform:uppercase;color:#64748b;font-size:.82rem}.fa-kpi .value{font-size:1.55rem;font-weight:900;color:#1f2937}.fa-kpi .meta{margin-top:.35rem;color:#64748b;font-size:.84rem}.fa-delta{font-weight:900}.fa-delta.good{color:#16a34a}.fa-delta.bad{color:#dc2626}.fa-month{display:flex;align-items:center;justify-content:center;gap:.7rem;margin:1.2rem 0}.fa-month a{width:36px;height:36px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;text-decoration:none;display:grid;place-items:center;font-weight:900}.fa-month-title{font-weight:900;font-size:1.35rem;color:#475569}.fa-grid{display:grid;grid-template-columns:1.25fr .9fr;gap:1rem;margin-top:1rem}.fa-section{padding:1rem}.fa-section h2{margin:0 0 1rem;color:#1e3a8a;font-size:1.08rem}.fa-chart{display:grid;gap:.8rem}.fa-chart-row{display:grid;grid-template-columns:95px 1fr 110px;gap:.8rem;align-items:center}.fa-bar-track{height:28px;background:#eef2f7;border-radius:6px;overflow:hidden}.fa-bar{height:100%;min-width:2px}.fa-bar.receita{background:#22c55e}.fa-bar.despesa{background:#ef4444}.fa-bar.resultado{background:#3b82f6}.fa-table-wrap{overflow:auto}.fa-table{width:100%;border-collapse:collapse;min-width:620px}.fa-table th,.fa-table td{padding:.75rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.fa-table th{background:#f8fafc;color:#475569;text-transform:uppercase;font-size:.75rem}.fa-money{font-weight:900}.fa-money.out{color:#b42318}.fa-money.in{color:#15803d}.fa-dre-list{display:grid;gap:.55rem}.fa-dre-item{border:1px solid #e2e8f0;border-radius:8px;background:#fff;overflow:hidden}.fa-dre-item summary,.fa-dre-static{list-style:none;display:grid;grid-template-columns:1fr 160px 110px;gap:1rem;align-items:center;padding:.85rem 1rem}.fa-dre-item summary{cursor:pointer}.fa-dre-item summary::-webkit-details-marker{display:none}.fa-dre-item.expandable summary:before{content:'▸';font-weight:900;color:#64748b;margin-right:.5rem}.fa-dre-item.expandable[open] summary:before{content:'▾'}.fa-dre-item.total summary,.fa-dre-item.total .fa-dre-static,.fa-dre-item.result summary,.fa-dre-item.result .fa-dre-static{background:#eef6ff;font-weight:900}.fa-dre-item.title summary,.fa-dre-item.title .fa-dre-static{background:#f8fafc;font-weight:900;color:#475569}.fa-dre-label{display:flex;align-items:center;gap:.35rem;font-weight:900}.fa-dre-label.indent{padding-left:1.1rem;font-weight:800}.fa-dre-details{padding:.25rem 1rem 1rem 2.3rem;background:#fff}.fa-dre-detail-table{width:100%;border-collapse:collapse}.fa-dre-detail-table th,.fa-dre-detail-table td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left}.fa-dre-detail-table th{font-size:.72rem;color:#64748b;text-transform:uppercase}.fa-insights{display:grid;gap:.65rem}.fa-insight{border-left:4px solid #38bdf8;background:#f8fbff;border-radius:8px;padding:.75rem .9rem;font-weight:800;color:#334155}.fa-two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}.fa-muted{color:#64748b;font-size:.86rem}@media(max-width:1050px){.fa-summary,.fa-grid,.fa-two{grid-template-columns:1fr}.fa-filters{grid-template-columns:1fr 1fr}}@media(max-width:650px){.fa-page{padding:1rem}.fa-filters{grid-template-columns:1fr}.fa-chart-row{grid-template-columns:1fr}.fa-summary{grid-template-columns:1fr}.fa-dre-item summary,.fa-dre-static{grid-template-columns:1fr}.fa-dre-details{padding:.25rem .8rem .9rem}}
+.fa-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.fa-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.fa-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.fa-sub{margin:.3rem 0 0;color:#64748b}.fa-actions{display:flex;gap:.65rem;flex-wrap:wrap}.fa-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;cursor:pointer}.fa-btn.primary{background:#1e3a8a;color:#fff}.fa-btn.green{background:#20c985;color:#fff}.fa-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07)}.fa-filters{margin:1rem 0;padding:1rem;display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:.8rem;align-items:end}.fa-field{display:grid;gap:.35rem}.fa-field label{font-weight:900;color:#475569;font-size:.82rem}.fa-field select,.fa-field input{border:1px solid #cbd5e1;border-radius:8px;padding:.65rem .75rem;font:inherit;background:#fff}.fa-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.fa-kpi{padding:1.1rem;border-left:4px solid #38bdf8}.fa-kpi.receita{border-color:#22c55e}.fa-kpi.despesa{border-color:#ef4444}.fa-kpi.resultado{border-color:#3b82f6}.fa-kpi.margem{border-color:#a855f7}.fa-kpi h3{margin:0 0 .8rem;text-transform:uppercase;color:#64748b;font-size:.82rem}.fa-kpi .value{font-size:1.55rem;font-weight:900;color:#1f2937}.fa-kpi .meta{margin-top:.35rem;color:#64748b;font-size:.84rem}.fa-delta{font-weight:900}.fa-delta.good{color:#16a34a}.fa-delta.bad{color:#dc2626}.fa-tabs{display:flex;justify-content:center;gap:.5rem;margin:1.2rem 0;flex-wrap:wrap}.fa-tab{border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;text-decoration:none;font-weight:900;padding:.72rem 1.2rem;min-width:120px;text-align:center}.fa-tab.active{background:#1e3a8a;border-color:#1e3a8a;color:#fff}.fa-panel-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}.fa-panel-head h2{margin:0;color:#1e3a8a;font-size:1.08rem}.fa-grid{display:grid;grid-template-columns:1.25fr .9fr;gap:1rem;margin-top:1rem}.fa-section{padding:1rem}.fa-section h2{margin:0 0 1rem;color:#1e3a8a;font-size:1.08rem}.fa-chart{display:grid;gap:.8rem}.fa-chart-row{display:grid;grid-template-columns:95px 1fr 110px;gap:.8rem;align-items:center}.fa-bar-track{height:28px;background:#eef2f7;border-radius:6px;overflow:hidden}.fa-bar{height:100%;min-width:2px}.fa-bar.receita{background:#22c55e}.fa-bar.despesa{background:#ef4444}.fa-bar.resultado{background:#3b82f6}.fa-table-wrap{overflow:auto}.fa-table{width:100%;border-collapse:collapse;min-width:620px}.fa-table th,.fa-table td{padding:.75rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.fa-table th{background:#f8fafc;color:#475569;text-transform:uppercase;font-size:.75rem}.fa-money{font-weight:900}.fa-money.out{color:#b42318}.fa-money.in{color:#15803d}.fa-dre-list{display:grid;gap:.55rem}.fa-dre-item{border:1px solid #e2e8f0;border-radius:8px;background:#fff;overflow:hidden}.fa-dre-item summary,.fa-dre-static{list-style:none;display:grid;grid-template-columns:1fr 160px 110px;gap:1rem;align-items:center;padding:.85rem 1rem}.fa-dre-item summary{cursor:pointer}.fa-dre-item summary::-webkit-details-marker{display:none}.fa-dre-item.expandable summary:before{content:'▸';font-weight:900;color:#64748b;margin-right:.5rem}.fa-dre-item.expandable[open] summary:before{content:'▾'}.fa-dre-item.total summary,.fa-dre-item.total .fa-dre-static,.fa-dre-item.result summary,.fa-dre-item.result .fa-dre-static{background:#eef6ff;font-weight:900}.fa-dre-item.title summary,.fa-dre-item.title .fa-dre-static{background:#f8fafc;font-weight:900;color:#475569}.fa-dre-label{display:flex;align-items:center;gap:.35rem;font-weight:900}.fa-dre-label.indent{padding-left:1.1rem;font-weight:800}.fa-dre-details{padding:.25rem 1rem 1rem 2.3rem;background:#fff}.fa-dre-detail-table{width:100%;border-collapse:collapse}.fa-dre-detail-table th,.fa-dre-detail-table td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left}.fa-dre-detail-table th{font-size:.72rem;color:#64748b;text-transform:uppercase}.fa-insights{display:grid;gap:.65rem}.fa-insight{border-left:4px solid #38bdf8;background:#f8fbff;border-radius:8px;padding:.75rem .9rem;font-weight:800;color:#334155}.fa-two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}.fa-muted{color:#64748b;font-size:.86rem}@media(max-width:1050px){.fa-summary,.fa-grid,.fa-two{grid-template-columns:1fr}.fa-filters{grid-template-columns:1fr 1fr}}@media(max-width:650px){.fa-page{padding:1rem}.fa-filters{grid-template-columns:1fr}.fa-chart-row{grid-template-columns:1fr}.fa-summary{grid-template-columns:1fr}.fa-dre-item summary,.fa-dre-static{grid-template-columns:1fr}.fa-dre-details{padding:.25rem .8rem .9rem}.fa-tab{flex:1}}
 .fa-dre-item summary,.fa-dre-static{grid-template-columns:24px minmax(0,1fr) 160px 110px}.fa-dre-item.expandable summary:before,.fa-dre-item.expandable[open] summary:before{content:none}.fa-dre-arrow{width:18px;height:18px;display:inline-grid;place-items:center;color:#64748b;font-weight:900;transition:transform .15s ease}.fa-dre-item[open] .fa-dre-arrow{transform:rotate(90deg)}.fa-dre-static .fa-dre-arrow{visibility:hidden}.fa-dre-item summary .fa-money,.fa-dre-static .fa-money{text-align:right}.fa-dre-item summary span:last-child,.fa-dre-static span:last-child{text-align:right}@media(max-width:650px){.fa-dre-item summary,.fa-dre-static{grid-template-columns:24px 1fr;gap:.45rem .75rem}.fa-dre-item summary .fa-money,.fa-dre-static .fa-money,.fa-dre-item summary span:last-child,.fa-dre-static span:last-child{text-align:left;grid-column:2}}
 </style>
 
@@ -612,6 +739,7 @@ includeSidebar('Análise Financeira');
 
     <form class="fa-card fa-filters" action="index.php" method="get" data-fa-filter-form>
         <input type="hidden" name="page" value="financeiro_analise">
+        <input type="hidden" name="tab" value="<?= h($activeTab) ?>">
         <div class="fa-field">
             <label>Mês</label>
             <input type="month" name="competencia" value="<?= h($month->format('Y-m')) ?>">
@@ -656,92 +784,62 @@ includeSidebar('Análise Financeira');
         </div>
     </div>
 
-    <div class="fa-month">
-        <a href="index.php?page=financeiro_analise&competencia=<?= h($prev->format('Y-m')) ?>&data_base=<?= h($dateBase) ?>&status=<?= h($status) ?>">‹</a>
-        <span class="fa-month-title"><?= h(fa_month_label($month)) ?></span>
-        <a href="index.php?page=financeiro_analise&competencia=<?= h($next->format('Y-m')) ?>&data_base=<?= h($dateBase) ?>&status=<?= h($status) ?>">›</a>
-    </div>
+    <nav class="fa-tabs" aria-label="Seções da análise financeira">
+        <a class="fa-tab <?= $activeTab === 'principal' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'principal'])) ?>">Principal</a>
+        <a class="fa-tab <?= $activeTab === 'dre' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'dre'])) ?>">DRE</a>
+    </nav>
 
-    <div class="fa-grid">
-        <section class="fa-card fa-section">
-            <h2>Comparativo com <?= h(fa_month_label($prev)) ?></h2>
-            <div class="fa-chart">
-                <?php foreach ([['Receitas', $summary['receitas'], $previous['receitas'], 'receita'], ['Despesas', $summary['despesas'], $previous['despesas'], 'despesa'], ['Resultado', abs($summary['resultado']), abs($previous['resultado']), 'resultado']] as $row): ?>
-                    <div class="fa-chart-row">
-                        <strong><?= h($row[0]) ?></strong>
-                        <div>
-                            <div class="fa-bar-track"><div class="fa-bar <?= h($row[3]) ?>" style="width:<?= h((string)max(2, min(100, ($row[1] / $maxChart) * 100))) ?>%"></div></div>
-                            <div class="fa-muted">Atual: <?= h(format_currency($row[1])) ?> · Anterior: <?= h(format_currency($row[2])) ?></div>
+    <?php if ($activeTab === 'principal'): ?>
+        <div class="fa-grid">
+            <section class="fa-card fa-section">
+                <h2>Comparativo com <?= h(fa_month_label($prev)) ?></h2>
+                <div class="fa-chart">
+                    <?php foreach ([['Receitas', $summary['receitas'], $previous['receitas'], 'receita'], ['Despesas', $summary['despesas'], $previous['despesas'], 'despesa'], ['Resultado', abs($summary['resultado']), abs($previous['resultado']), 'resultado']] as $row): ?>
+                        <div class="fa-chart-row">
+                            <strong><?= h($row[0]) ?></strong>
+                            <div>
+                                <div class="fa-bar-track"><div class="fa-bar <?= h($row[3]) ?>" style="width:<?= h((string)max(2, min(100, ($row[1] / $maxChart) * 100))) ?>%"></div></div>
+                                <div class="fa-muted">Atual: <?= h(format_currency($row[1])) ?> · Anterior: <?= h(format_currency($row[2])) ?></div>
+                            </div>
+                            <span class="fa-money"><?= h(format_currency($row[1])) ?></span>
                         </div>
-                        <span class="fa-money"><?= h(format_currency($row[1])) ?></span>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </section>
+                    <?php endforeach; ?>
+                </div>
+            </section>
 
-        <section class="fa-card fa-section">
-            <h2>Leitura inteligente</h2>
-            <div class="fa-insights">
-                <?php foreach ($insights as $insight): ?><div class="fa-insight"><?= h($insight) ?></div><?php endforeach; ?>
-            </div>
-        </section>
-    </div>
-
-    <div class="fa-two">
-        <section class="fa-card fa-section">
-            <h2>Maiores Receitas</h2>
-            <div class="fa-table-wrap"><table class="fa-table"><thead><tr><th>#</th><th>Unidade</th><th>Lançamentos</th><th>Valor</th></tr></thead><tbody>
-                <?php foreach ($topReceitas as $idx => $row): ?><tr><td><?= $idx + 1 ?></td><td><?= h((string)$row['categoria']) ?></td><td><?= (int)$row['qtd'] ?></td><td><span class="fa-money in"><?= h(format_currency($row['valor'])) ?></span></td></tr><?php endforeach; ?>
-                <?php if (!$topReceitas): ?><tr><td colspan="4" class="fa-muted">Nenhuma receita no período.</td></tr><?php endif; ?>
-            </tbody></table></div>
-        </section>
-        <section class="fa-card fa-section">
-            <h2>Maiores Despesas</h2>
-            <div class="fa-table-wrap"><table class="fa-table"><thead><tr><th>#</th><th>Categoria</th><th>Lançamentos</th><th>Valor</th></tr></thead><tbody>
-                <?php foreach ($topDespesas as $idx => $row): ?><tr><td><?= $idx + 1 ?></td><td><?= h((string)$row['categoria']) ?></td><td><?= (int)$row['qtd'] ?></td><td><span class="fa-money out">-<?= h(format_currency($row['valor'])) ?></span></td></tr><?php endforeach; ?>
-                <?php if (!$topDespesas): ?><tr><td colspan="4" class="fa-muted">Nenhuma despesa no período.</td></tr><?php endif; ?>
-            </tbody></table></div>
-        </section>
-    </div>
-
-    <section class="fa-card fa-section" style="margin-top:1rem">
-        <h2>DRE por Categorias</h2>
-        <div class="fa-dre-list">
-            <?php foreach ($dre as $line): ?>
-                <?php
-                    $pct = $summary['receitas'] > 0 ? (((float)$line['value'] / $summary['receitas']) * 100) : 0;
-                    $details = is_array($line['details'] ?? null) ? $line['details'] : [];
-                    $hasDetails = !empty($details);
-                    $tag = $hasDetails ? 'details' : 'div';
-                    $class = 'fa-dre-item ' . (string)$line['nature'] . ($hasDetails ? ' expandable' : '');
-                ?>
-                <<?= $tag ?> class="<?= h($class) ?>">
-                    <?php if ($hasDetails): ?><summary><?php else: ?><div class="fa-dre-static"><?php endif; ?>
-                        <span class="fa-dre-arrow"><?= $hasDetails ? '▸' : '' ?></span>
-                        <span class="fa-dre-label <?= (int)$line['level'] > 0 ? 'indent' : '' ?>"><?= h((string)$line['label']) ?></span>
-                        <span class="fa-money <?= (float)$line['value'] < 0 ? 'out' : 'in' ?>"><?= h(format_currency($line['value'])) ?></span>
-                        <span><?= h(number_format($pct, 1, ',', '.')) ?>%</span>
-                    <?php if ($hasDetails): ?></summary><?php else: ?></div><?php endif; ?>
-                    <?php if ($hasDetails): ?>
-                        <div class="fa-dre-details">
-                            <table class="fa-dre-detail-table">
-                                <thead><tr><th>Categoria envolvida</th><th>Lançamentos</th><th>Valor</th></tr></thead>
-                                <tbody>
-                                    <?php foreach ($details as $detail): ?>
-                                        <tr>
-                                            <td><?= h((string)$detail['categoria']) ?></td>
-                                            <td><?= (int)$detail['qtd'] ?></td>
-                                            <td><span class="fa-money out">-<?= h(format_currency($detail['valor'])) ?></span></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                </<?= $tag ?>>
-            <?php endforeach; ?>
+            <section class="fa-card fa-section">
+                <h2>Leitura inteligente</h2>
+                <div class="fa-insights">
+                    <?php foreach ($insights as $insight): ?><div class="fa-insight"><?= h($insight) ?></div><?php endforeach; ?>
+                </div>
+            </section>
         </div>
-    </section>
+
+        <div class="fa-two">
+            <section class="fa-card fa-section">
+                <h2>Maiores Receitas</h2>
+                <div class="fa-table-wrap"><table class="fa-table"><thead><tr><th>#</th><th>Unidade</th><th>Lançamentos</th><th>Valor</th></tr></thead><tbody>
+                    <?php foreach ($topReceitas as $idx => $row): ?><tr><td><?= $idx + 1 ?></td><td><?= h((string)$row['categoria']) ?></td><td><?= (int)$row['qtd'] ?></td><td><span class="fa-money in"><?= h(format_currency($row['valor'])) ?></span></td></tr><?php endforeach; ?>
+                    <?php if (!$topReceitas): ?><tr><td colspan="4" class="fa-muted">Nenhuma receita no período.</td></tr><?php endif; ?>
+                </tbody></table></div>
+            </section>
+            <section class="fa-card fa-section">
+                <h2>Maiores Despesas</h2>
+                <div class="fa-table-wrap"><table class="fa-table"><thead><tr><th>#</th><th>Categoria</th><th>Lançamentos</th><th>Valor</th></tr></thead><tbody>
+                    <?php foreach ($topDespesas as $idx => $row): ?><tr><td><?= $idx + 1 ?></td><td><?= h((string)$row['categoria']) ?></td><td><?= (int)$row['qtd'] ?></td><td><span class="fa-money out">-<?= h(format_currency($row['valor'])) ?></span></td></tr><?php endforeach; ?>
+                    <?php if (!$topDespesas): ?><tr><td colspan="4" class="fa-muted">Nenhuma despesa no período.</td></tr><?php endif; ?>
+                </tbody></table></div>
+            </section>
+        </div>
+    <?php else: ?>
+        <section class="fa-card fa-section" style="margin-top:1rem">
+            <div class="fa-panel-head">
+                <h2>DRE por Categorias · <?= h(fa_month_label($month)) ?></h2>
+                <a class="fa-btn primary" href="<?= h(fa_url(['tab' => 'dre', 'export' => 'dre_pdf'])) ?>" target="_blank">Exportar PDF</a>
+            </div>
+            <?= fa_render_dre_list($dre, (float)$summary['receitas']) ?>
+        </section>
+    <?php endif; ?>
 </div>
 
 <script>
@@ -755,6 +853,7 @@ includeSidebar('Análise Financeira');
         const monthInput = form.querySelector('input[name="competencia"]');
         const dateBaseInput = form.querySelector('select[name="data_base"]');
         const statusInput = form.querySelector('select[name="status"]');
+        const tabInput = form.querySelector('input[name="tab"]');
         const competencia = monthInput ? monthInput.value : '';
         if (!/^\d{4}-\d{2}$/.test(competencia)) {
             return;
@@ -765,6 +864,8 @@ includeSidebar('Análise Financeira');
         url.searchParams.set('competencia', competencia);
         url.searchParams.set('data_base', dateBaseInput ? dateBaseInput.value : 'pagamento');
         url.searchParams.set('status', statusInput ? statusInput.value : 'todos');
+        url.searchParams.set('tab', tabInput ? tabInput.value : 'principal');
+        url.searchParams.delete('export');
         event.preventDefault();
         window.location.href = url.toString();
     });
