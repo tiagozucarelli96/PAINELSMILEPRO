@@ -785,6 +785,161 @@ function fa_investimentos(PDO $pdo, DateTimeImmutable $month, string $status): a
     return $result;
 }
 
+function fa_future_commitment_block(?string $category): array
+{
+    if (fa_in_category($category, [
+        'Aquisicao de equipamentos', 'Aquisição de equipamentos', 'Investimentos', 'Obras - Antiga e nova',
+        'Manutencao de equipamentos', 'Manutenção de equipamentos', 'Aluguel de maquinas',
+        'Financiamento Carro', 'Emprestimos', 'Empréstimos', 'Cartao de credito', 'Cartão de crédito',
+        'Anuidade de cartao', 'Anuidade de cartão', 'Juros', 'Iof', 'IOF', 'Taxas bancarias',
+        'Taxas Maquininhas'
+    ])) {
+        return ['key' => 'parcelamentos', 'label' => 'Parcelamentos assumidos'];
+    }
+    if (fa_in_category($category, [
+        'Aluguel', 'Sistemas em geral', 'Internet', 'Telefone', 'Telefone celular', 'Telefone fixo',
+        'Convenio medico', 'Assistencia Medica', 'Assistencia odontologica', 'Seguro Patrimonial',
+        'Contabilidade', 'Assistencia Juridica', 'Agua', 'Água e esgoto', 'Agua e esgoto',
+        'Luz', 'Energia eletrica', 'Energia elétrica', 'Salario', 'Salário', 'Pro-Labore'
+    ])) {
+        return ['key' => 'fixos', 'label' => 'Compromissos fixos mensais'];
+    }
+    return ['key' => 'outros', 'label' => 'Outros compromissos'];
+}
+
+function fa_future_commitments(PDO $pdo, DateTimeImmutable $month): array
+{
+    $firstFuture = $month->modify('first day of next month');
+    $futureEnd = $firstFuture->modify('+6 months');
+    $stmt = $pdo->prepare("
+        SELECT d.data_movimento,
+               TO_CHAR(d.data_movimento, 'YYYY-MM') AS mes,
+               COALESCE(NULLIF(TRIM(d.categoria), ''), 'Nao Informado') AS categoria,
+               COALESCE(NULLIF(TRIM(d.centro_custo), ''), 'Nao Informado') AS unidade,
+               COALESCE(NULLIF(TRIM(d.banco), ''), NULLIF(TRIM(d.conta), ''), 'Nao Informado') AS origem,
+               COALESCE(NULLIF(TRIM(d.descricao), ''), 'Sem descricao') AS descricao,
+               COALESCE(d.valor, 0) AS valor,
+               d.status
+        FROM financeiro_despesas d
+        WHERE d.status <> 'cancelado'
+          AND d.status NOT IN ('pago', 'conciliado')
+          AND d.data_movimento >= CAST(:start AS DATE)
+          AND d.data_movimento < CAST(:end AS DATE)
+        ORDER BY d.data_movimento ASC, d.valor DESC
+    ");
+    $stmt->execute([':start' => $firstFuture->format('Y-m-d'), ':end' => $futureEnd->format('Y-m-d')]);
+
+    $result = [
+        'total' => 0.0,
+        'next_30' => 0.0,
+        'heaviest_month' => '-',
+        'heaviest_value' => 0.0,
+        'monthly' => [],
+        'categorias' => [],
+        'origens' => [],
+        'lancamentos' => [],
+    ];
+
+    $cursor = $firstFuture;
+    while ($cursor < $futureEnd) {
+        $key = $cursor->format('Y-m');
+        $result['monthly'][$key] = [
+            'key' => $key,
+            'mes' => fa_month_label($cursor),
+            'parcelamentos' => 0.0,
+            'fixos' => 0.0,
+            'outros' => 0.0,
+            'total' => 0.0,
+        ];
+        $cursor = $cursor->modify('+1 month');
+    }
+
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        $monthKey = (string)($row['mes'] ?? '');
+        if (!isset($result['monthly'][$monthKey])) {
+            continue;
+        }
+
+        $category = (string)($row['categoria'] ?? 'Nao Informado');
+        $block = fa_future_commitment_block($category);
+        $value = (float)($row['valor'] ?? 0);
+        $origin = trim((string)($row['origem'] ?? '')) !== '' ? trim((string)$row['origem']) : 'Nao Informado';
+
+        $result['total'] += $value;
+        $result['monthly'][$monthKey][$block['key']] += $value;
+        $result['monthly'][$monthKey]['total'] += $value;
+
+        if (!isset($result['categorias'][$category])) {
+            $result['categorias'][$category] = ['nome' => $category, 'valor' => 0.0, 'qtd' => 0];
+        }
+        $result['categorias'][$category]['valor'] += $value;
+        $result['categorias'][$category]['qtd']++;
+
+        if (!isset($result['origens'][$origin])) {
+            $result['origens'][$origin] = ['nome' => $origin, 'valor' => 0.0, 'qtd' => 0];
+        }
+        $result['origens'][$origin]['valor'] += $value;
+        $result['origens'][$origin]['qtd']++;
+
+        $result['lancamentos'][] = [
+            'data' => (string)($row['data_movimento'] ?? ''),
+            'bloco' => (string)$block['label'],
+            'categoria' => $category,
+            'unidade' => (string)($row['unidade'] ?? 'Nao Informado'),
+            'origem' => $origin,
+            'descricao' => (string)($row['descricao'] ?? ''),
+            'status' => (string)($row['status'] ?? ''),
+            'valor' => $value,
+        ];
+    }
+
+    $monthly = array_values($result['monthly']);
+    foreach ($monthly as $index => $row) {
+        if ($index === 0) {
+            $result['next_30'] = (float)$row['total'];
+        }
+        if ((float)$row['total'] > $result['heaviest_value']) {
+            $result['heaviest_value'] = (float)$row['total'];
+            $result['heaviest_month'] = (string)$row['mes'];
+        }
+    }
+    $result['monthly'] = $monthly;
+
+    foreach (['categorias', 'origens'] as $key) {
+        $items = array_values($result[$key]);
+        usort($items, static fn(array $a, array $b): int => $b['valor'] <=> $a['valor']);
+        $result[$key] = $items;
+    }
+
+    return $result;
+}
+
+function fa_projection_metrics(PDO $pdo, DateTimeImmutable $month, string $dateBase, string $status): array
+{
+    $totals = ['receita_liquida' => 0.0, 'custos_variaveis' => 0.0, 'despesas_fixas' => 0.0, 'count' => 0];
+    for ($i = 0; $i < 3; $i++) {
+        $baseMonth = $month->modify("-{$i} months");
+        $start = $baseMonth->format('Y-m-01');
+        $end = $baseMonth->modify('+1 month')->format('Y-m-01');
+        $summary = fa_summary($pdo, $start, $end, $dateBase, $status);
+        $receitasLinhas = fa_receitas_por_linha($pdo, $start, $end, $dateBase, $status);
+        $despesasCategorias = fa_despesas_por_categoria($pdo, $start, $end, $status);
+        $dre = fa_build_dre($summary, $despesasCategorias, $receitasLinhas);
+
+        $totals['receita_liquida'] += fa_dre_line_value($dre, 'Receita Líquida');
+        $totals['custos_variaveis'] += abs(fa_dre_line_value($dre, 'Custos Operacionais'));
+        $totals['despesas_fixas'] += abs(fa_dre_line_value($dre, 'Despesas Operacionais')) + abs(fa_dre_line_value($dre, 'Resultado Financeiro'));
+        $totals['count']++;
+    }
+
+    $count = max(1, (int)$totals['count']);
+    return [
+        'receita_liquida_media' => $totals['receita_liquida'] / $count,
+        'custos_variaveis_medios' => $totals['custos_variaveis'] / $count,
+        'despesas_fixas_medias' => $totals['despesas_fixas'] / $count,
+    ];
+}
+
 function fa_build_dre(array $summary, array $despesasCategorias, array $receitasLinhas): array
 {
     $buckets = [];
@@ -1078,6 +1233,83 @@ function fa_render_investment_entries_table(array $rows): string
     return (string)ob_get_clean();
 }
 
+function fa_render_future_monthly_table(array $rows): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th>Mês</th><th>Parcelamentos assumidos</th><th>Fixos mensais</th><th>Outros</th><th>Total comprometido</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h((string)$row['mes']) ?></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['parcelamentos'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['fixos'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['outros'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['total'])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
+function fa_render_projection_table(array $rows): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th>Mês</th><th>Receita líquida média</th><th>Custos variáveis</th><th>Despesas fixas</th><th>Parcelas futuras</th><th>Caixa livre projetado</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h((string)$row['mes']) ?></td>
+                        <td><span class="fa-money in"><?= h(format_currency((float)$row['receita'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['custos'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['fixas'])) ?></span></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['parcelas'])) ?></span></td>
+                        <td><span class="fa-money <?= (float)$row['livre'] < 0 ? 'out' : 'in' ?>"><?= h(format_currency((float)$row['livre'])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
+function fa_render_future_entries_table(array $rows): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th>Vencimento</th><th>Bloco</th><th>Categoria</th><th>Unidade</th><th>Origem</th><th>Descrição</th><th>Status</th><th>Valor</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h(brDateOnly((string)$row['data'])) ?></td>
+                        <td><?= h((string)$row['bloco']) ?></td>
+                        <td><?= h((string)$row['categoria']) ?></td>
+                        <td><?= h((string)$row['unidade']) ?></td>
+                        <td><?= h((string)$row['origem']) ?></td>
+                        <td><?= h((string)$row['descricao']) ?></td>
+                        <td><?= h((string)$row['status']) ?></td>
+                        <td><span class="fa-money out">-<?= h(format_currency((float)$row['valor'])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (!$rows): ?><tr><td colspan="8" class="fa-muted">Sem compromissos futuros lançados para os próximos meses.</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
 function fa_render_dre_pdf_html(array $dre, float $receitas, DateTimeImmutable $month, string $dateBase, string $status): string
 {
     $rows = '';
@@ -1164,7 +1396,8 @@ $ticketsReceitas = fa_ticket_por_receitas($receitasUnidade);
 $receitasLinhas = fa_receitas_por_linha($pdo, $start, $end, $dateBase, $status);
 $topDespesas = fa_top_despesas($pdo, $start, $end, $status);
 $despesasCategorias = fa_despesas_por_categoria($pdo, $start, $end, $status);
-$endividamento = fa_endividamento($pdo, $start, $end, $status);
+$compromissosFuturos = fa_future_commitments($pdo, $month);
+$metricasProjecao = fa_projection_metrics($pdo, $month, $dateBase, $status);
 $investimentos = fa_investimentos($pdo, $month, $status);
 $dre = fa_build_dre($summary, $despesasCategorias, $receitasLinhas);
 $receitaBruta = fa_dre_line_value($dre, 'Receita Bruta');
@@ -1178,11 +1411,40 @@ $pontoEquilibrioLiquido = $margemContribuicaoPct > 0 ? ($despesasFixasEquilibrio
 $taxaReceitaLiquida = $receitaBruta > 0 ? ($receitaLiquida / $receitaBruta) : 0.0;
 $pontoEquilibrioBruto = $taxaReceitaLiquida > 0 ? ($pontoEquilibrioLiquido / $taxaReceitaLiquida) : 0.0;
 $distanciaEquilibrio = $receitaLiquida - $pontoEquilibrioLiquido;
-$comprometimentoDividas = $receitaLiquida > 0 ? (((float)$endividamento['total'] / $receitaLiquida) * 100) : 0.0;
 $investimentosGruposMes = ['Obras' => 0.0, 'Equipamentos' => 0.0, 'Investimentos' => 0.0, 'Reserva' => 0.0];
 foreach ($investimentos['grupos_mes'] as $grupoInvestimento) {
     $investimentosGruposMes[(string)$grupoInvestimento['nome']] = (float)$grupoInvestimento['valor'];
 }
+$reservaMinimaInvestimento = 20000.0;
+$projecaoCompromissos = [];
+$menorCaixaLivre3Meses = null;
+$melhorMesInvestimento = '-';
+$melhorCaixaLivre = null;
+foreach ($compromissosFuturos['monthly'] as $index => $row) {
+    $caixaLivre = (float)$metricasProjecao['receita_liquida_media']
+        - (float)$metricasProjecao['custos_variaveis_medios']
+        - (float)$metricasProjecao['despesas_fixas_medias']
+        - (float)$row['total'];
+    $projecaoCompromissos[] = [
+        'mes' => (string)$row['mes'],
+        'receita' => (float)$metricasProjecao['receita_liquida_media'],
+        'custos' => (float)$metricasProjecao['custos_variaveis_medios'],
+        'fixas' => (float)$metricasProjecao['despesas_fixas_medias'],
+        'parcelas' => (float)$row['total'],
+        'livre' => $caixaLivre,
+    ];
+    if ($index < 3) {
+        $menorCaixaLivre3Meses = $menorCaixaLivre3Meses === null ? $caixaLivre : min($menorCaixaLivre3Meses, $caixaLivre);
+    }
+    if ($melhorCaixaLivre === null || $caixaLivre > $melhorCaixaLivre) {
+        $melhorCaixaLivre = $caixaLivre;
+        $melhorMesInvestimento = (string)$row['mes'];
+    }
+}
+$capacidadeNovoInvestimento = max(0.0, ((float)($menorCaixaLivre3Meses ?? 0)) - $reservaMinimaInvestimento);
+$decisaoInvestimento = $capacidadeNovoInvestimento <= 0
+    ? 'Não investir agora'
+    : ($capacidadeNovoInvestimento < (float)$metricasProjecao['despesas_fixas_medias'] ? 'Evitar investimento grande' : 'Pode considerar investimento');
 
 if ($export === 'dre_pdf') {
     fa_output_dre_pdf($dre, (float)$summary['receitas'], $month, $dateBase, $status);
@@ -1287,7 +1549,7 @@ includeSidebar('Análise Financeira');
         <a class="fa-tab <?= $activeTab === 'margem' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'margem'])) ?>">Margem de contribuição</a>
         <a class="fa-tab <?= $activeTab === 'equilibrio' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'equilibrio'])) ?>">Ponto de equilíbrio</a>
         <a class="fa-tab <?= $activeTab === 'ticket' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'ticket'])) ?>">Ticket por unidade</a>
-        <a class="fa-tab <?= $activeTab === 'endividamento' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'endividamento'])) ?>">Endividamento</a>
+        <a class="fa-tab <?= $activeTab === 'endividamento' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'endividamento'])) ?>">Compromissos futuros</a>
         <a class="fa-tab <?= $activeTab === 'investimentos' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'investimentos'])) ?>">Investimentos</a>
     </nav>
 
@@ -1484,59 +1746,81 @@ includeSidebar('Análise Financeira');
     <?php elseif ($activeTab === 'endividamento'): ?>
         <section class="fa-card fa-section" style="margin-top:1rem">
             <div class="fa-panel-head">
-                <h2>Endividamento · <?= h(fa_month_label($month)) ?></h2>
+                <h2>Compromissos Futuros · <?= h(fa_month_label($month)) ?></h2>
             </div>
-            <p class="fa-muted">Relatório financeiro separado do DRE. Mostra o peso mensal de empréstimos, financiamentos, juros e IOF no caixa.</p>
+            <p class="fa-muted">Mostra quanto do caixa dos próximos meses já está comprometido e ajuda a decidir se dá para assumir novo investimento agora.</p>
             <div class="fa-margin-summary">
                 <div class="fa-margin-kpi">
-                    <span>Dívidas do mês</span>
-                    <strong class="out"><?= h(format_currency((float)$endividamento['total'])) ?></strong>
+                    <span>Parcelas futuras totais</span>
+                    <strong class="out"><?= h(format_currency((float)$compromissosFuturos['total'])) ?></strong>
                 </div>
                 <div class="fa-margin-kpi">
-                    <span>Principal/financiamento</span>
-                    <strong class="out"><?= h(format_currency((float)$endividamento['principal'])) ?></strong>
+                    <span>Próximos 30 dias</span>
+                    <strong class="out"><?= h(format_currency((float)$compromissosFuturos['next_30'])) ?></strong>
                 </div>
                 <div class="fa-margin-kpi">
-                    <span>Juros/IOF do mês</span>
-                    <strong class="out"><?= h(format_currency((float)$endividamento['juros'])) ?></strong>
+                    <span>Mês mais pesado</span>
+                    <strong><?= h((string)$compromissosFuturos['heaviest_month']) ?></strong>
+                    <span><?= h(format_currency((float)$compromissosFuturos['heaviest_value'])) ?></span>
                 </div>
                 <div class="fa-margin-kpi">
-                    <span>Comprometimento</span>
-                    <strong><?= h(number_format($comprometimentoDividas, 2, ',', '.')) ?>%</strong>
+                    <span>Capacidade novo investimento</span>
+                    <strong class="<?= $capacidadeNovoInvestimento <= 0 ? 'out' : '' ?>"><?= h(format_currency($capacidadeNovoInvestimento)) ?></strong>
                 </div>
             </div>
             <div class="fa-two">
                 <section>
-                    <h2>Categorias consideradas</h2>
-                    <?= fa_render_debt_summary_table($endividamento['categorias'], 'Categoria') ?>
+                    <h2>Compromisso por mês</h2>
+                    <?= fa_render_future_monthly_table($compromissosFuturos['monthly']) ?>
                 </section>
                 <section>
-                    <h2>Dívida por banco/conta</h2>
-                    <?= fa_render_debt_summary_table($endividamento['origens'], 'Banco/conta') ?>
+                    <h2>Leitura para decisão</h2>
+                    <div class="fa-formula-list">
+                        <div><strong><?= h($decisaoInvestimento) ?></strong><span>Capacidade calculada com menor caixa livre projetado dos próximos 3 meses menos reserva mínima de <?= h(format_currency($reservaMinimaInvestimento)) ?>.</span></div>
+                        <div><strong>Melhor janela</strong><span><?= h($melhorMesInvestimento) ?>, com caixa livre projetado de <?= h(format_currency((float)($melhorCaixaLivre ?? 0))) ?>.</span></div>
+                        <div><strong>Mês de atenção</strong><span><?= h((string)$compromissosFuturos['heaviest_month']) ?> concentra <?= h(format_currency((float)$compromissosFuturos['heaviest_value'])) ?> em compromissos futuros.</span></div>
+                    </div>
                 </section>
             </div>
             <div class="fa-two" style="margin-top:1rem">
                 <section>
-                    <h2>Resumo do comprometimento</h2>
+                    <h2>Capacidade de novo investimento</h2>
                     <?= fa_render_margin_table([
-                        ['Receita líquida do mês', $receitaLiquida],
-                        ['Parcelas de dívidas', (float)$endividamento['total']],
-                        ['Comprometimento', number_format($comprometimentoDividas, 2, ',', '.') . '%'],
+                        ['Receita líquida média mensal', (float)$metricasProjecao['receita_liquida_media']],
+                        ['Custos variáveis médios', (float)$metricasProjecao['custos_variaveis_medios']],
+                        ['Despesas fixas médias', (float)$metricasProjecao['despesas_fixas_medias']],
+                        ['Menor caixa livre próximos 3 meses', (float)($menorCaixaLivre3Meses ?? 0)],
+                        ['Reserva mínima desejada', $reservaMinimaInvestimento],
+                        ['Capacidade de novo investimento', $capacidadeNovoInvestimento],
                     ]) ?>
                 </section>
                 <section>
                     <h2>Regras usadas</h2>
                     <div class="fa-formula-list">
-                        <div><strong>Entra no Endividamento</strong><span>Emprestimos, Financiamento Carro, Juros e Iof</span></div>
-                        <div><strong>Principal</strong><span>Emprestimos + Financiamento Carro</span></div>
-                        <div><strong>Juros do mês</strong><span>Juros + Iof; estes também pesam no Resultado Financeiro do DRE</span></div>
-                        <div><strong>Comprometimento da receita</strong><span>Parcelas de dívidas ÷ Receita Líquida × 100</span></div>
+                        <div><strong>Caixa livre projetado</strong><span>Receita líquida média - custos variáveis médios - despesas fixas médias - parcelas futuras</span></div>
+                        <div><strong>Capacidade de investimento</strong><span>Menor caixa livre projetado dos próximos 3 meses - reserva mínima</span></div>
+                        <div><strong>Parcelamentos assumidos</strong><span>Cartão, empréstimos, financiamento, equipamentos, obras e compras parceladas</span></div>
+                        <div><strong>Compromissos fixos mensais</strong><span>Aluguel, sistemas, internet, telefone, saúde, contabilidade e estrutura fixa</span></div>
                     </div>
                 </section>
             </div>
             <div style="margin-top:1rem">
-                <h2>Lançamentos considerados</h2>
-                <?= fa_render_debt_entries_table($endividamento['lancamentos']) ?>
+                <h2>Caixa livre projetado</h2>
+                <?= fa_render_projection_table($projecaoCompromissos) ?>
+            </div>
+            <div class="fa-two" style="margin-top:1rem">
+                <section>
+                    <h2>Por categoria</h2>
+                    <?= fa_render_debt_summary_table($compromissosFuturos['categorias'], 'Categoria', 'Sem compromissos futuros lançados.') ?>
+                </section>
+                <section>
+                    <h2>Por banco/conta</h2>
+                    <?= fa_render_debt_summary_table($compromissosFuturos['origens'], 'Banco/conta', 'Sem compromissos futuros lançados.') ?>
+                </section>
+            </div>
+            <div style="margin-top:1rem">
+                <h2>Lançamentos futuros considerados</h2>
+                <?= fa_render_future_entries_table($compromissosFuturos['lancamentos']) ?>
             </div>
         </section>
     <?php else: ?>
