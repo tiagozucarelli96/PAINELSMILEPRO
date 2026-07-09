@@ -126,6 +126,62 @@ function financeiro_modo_label(string $forma): string
     ][$forma] ?? ucfirst(str_replace('_', ' ', $forma));
 }
 
+function financeiro_normalizar_unidade(?string $unidade): string
+{
+    $valor = trim((string)$unidade);
+    if ($valor === '') {
+        return '';
+    }
+    $upper = mb_strtoupper($valor, 'UTF-8');
+    $plain = strtr($upper, [
+        'Á' => 'A', 'À' => 'A', 'Â' => 'A', 'Ã' => 'A', 'Ä' => 'A',
+        'É' => 'E', 'È' => 'E', 'Ê' => 'E', 'Ë' => 'E',
+        'Í' => 'I', 'Ì' => 'I', 'Î' => 'I', 'Ï' => 'I',
+        'Ó' => 'O', 'Ò' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ö' => 'O',
+        'Ú' => 'U', 'Ù' => 'U', 'Û' => 'U', 'Ü' => 'U',
+        'Ç' => 'C',
+    ]);
+    $plain = preg_replace('/\s+/', ' ', $plain) ?: $plain;
+
+    if (in_array($plain, ['DIVERKIDS', 'DIVER KIDS'], true)) {
+        return 'DIVERKIDS';
+    }
+    if ($plain === 'LISBON 1' || $plain === 'LISBON I') {
+        return 'LISBON 1';
+    }
+    if (str_contains($plain, 'GARDEN')) {
+        return 'GARDEN';
+    }
+    if ($plain === 'CRISTAL') {
+        return 'CRISTAL';
+    }
+    if ($plain === 'GRUPO SMILE') {
+        return 'GRUPO SMILE';
+    }
+    if (in_array($plain, ['NAO INFORMADO', 'NÃO INFORMADO'], true)) {
+        return 'Não Informado';
+    }
+    return $valor;
+}
+
+function financeiro_unidade_sql(string $expr): string
+{
+    $raw = "TRIM(COALESCE({$expr}, ''))";
+    $norm = "REGEXP_REPLACE(UPPER({$raw}), '\\s+', ' ', 'g')";
+    return "
+        CASE
+            WHEN {$raw} = '' THEN ''
+            WHEN {$norm} IN ('DIVERKIDS', 'DIVER KIDS') THEN 'DIVERKIDS'
+            WHEN {$norm} IN ('LISBON 1', 'LISBON I') THEN 'LISBON 1'
+            WHEN {$norm} LIKE '%GARDEN%' THEN 'GARDEN'
+            WHEN {$norm} = 'CRISTAL' THEN 'CRISTAL'
+            WHEN {$norm} = 'GRUPO SMILE' THEN 'GRUPO SMILE'
+            WHEN {$norm} IN ('NAO INFORMADO', 'NÃO INFORMADO') THEN 'Não Informado'
+            ELSE {$raw}
+        END
+    ";
+}
+
 function financeiro_ofx_tag(string $block, string $tag): string
 {
     if (preg_match('/<' . preg_quote($tag, '/') . '>([^<\r\n]*)/i', $block, $m)) {
@@ -402,6 +458,7 @@ function financeiro_formatura_financeiro_exists(PDO $pdo): bool
 function financeiro_listar_receitas(PDO $pdo, array $filters, string $monthStart, string $monthEnd): array
 {
     eventos_financeiro_ensure_schema($pdo);
+    $eventoUnidadeSql = financeiro_unidade_sql("COALESCE(r.unidade, e.space_visivel)");
     $where = [
         "x.status <> 'cancelado'",
         "x.data_ref >= CAST(:month_start AS DATE)",
@@ -445,12 +502,13 @@ function financeiro_listar_receitas(PDO $pdo, array $filters, string $monthStart
                NULL::BIGINT AS formando_id,
                NULL::text AS responsavel,
                COALESCE(r.vencimento, r.created_at::date) AS data_ref,
-               COALESCE(r.unidade, e.space_visivel, '') AS unidade_busca
+               {$eventoUnidadeSql} AS unidade_busca
         FROM eventos_financeiro_receitas r
         LEFT JOIN logistica_eventos_espelho e ON e.id = r.evento_id
     "];
 
     if (financeiro_formatura_financeiro_exists($pdo)) {
+        $formaturaUnidadeSql = financeiro_unidade_sql("COALESCE(fin.unidade, e.space_visivel)");
         $sources[] = "
             SELECT fin.id,
                    fin.evento_id,
@@ -474,7 +532,7 @@ function financeiro_listar_receitas(PDO $pdo, array $filters, string $monthStart
                    fin.formando_id,
                    f.nome_formando AS responsavel,
                    COALESCE(fin.vencimento, fin.created_at::date) AS data_ref,
-                   COALESCE(fin.unidade, e.space_visivel, '') AS unidade_busca
+                   {$formaturaUnidadeSql} AS unidade_busca
             FROM eventos_formatura_financeiro fin
             JOIN eventos_formatura_formandos f ON f.id = fin.formando_id
             LEFT JOIN logistica_eventos_espelho e ON e.id = fin.evento_id
@@ -811,6 +869,7 @@ $filters = [
     'categoria' => trim((string)($_GET['categoria'] ?? '')),
     'q' => trim((string)($_GET['q'] ?? '')),
 ];
+$filters['unidade'] = financeiro_normalizar_unidade($filters['unidade']);
 $activeTab = (string)($_GET['tab'] ?? 'receitas');
 $activeTab = in_array($activeTab, ['receitas', 'despesas'], true) ? $activeTab : 'receitas';
 if (!empty($_SESSION['financeiro_ofx_preview'])) {
@@ -834,16 +893,18 @@ $despesas = financeiro_listar_despesas($pdo, $filters, $monthStart, $monthEnd);
 
 $unidades = [];
 try {
+    $receitaUnidadeSql = financeiro_unidade_sql("COALESCE(r.unidade, e.space_visivel)");
     $unidadesSql = "
-        SELECT DISTINCT COALESCE(r.unidade, e.space_visivel) AS nome
+        SELECT DISTINCT {$receitaUnidadeSql} AS nome
         FROM eventos_financeiro_receitas r
         LEFT JOIN logistica_eventos_espelho e ON e.id = r.evento_id
         WHERE TRIM(COALESCE(r.unidade, e.space_visivel, '')) <> ''
     ";
     if (financeiro_formatura_financeiro_exists($pdo)) {
+        $formaturaUnidadeSql = financeiro_unidade_sql("COALESCE(fin.unidade, e.space_visivel)");
         $unidadesSql .= "
             UNION
-            SELECT DISTINCT COALESCE(fin.unidade, e.space_visivel) AS nome
+            SELECT DISTINCT {$formaturaUnidadeSql} AS nome
             FROM eventos_formatura_financeiro fin
             LEFT JOIN logistica_eventos_espelho e ON e.id = fin.evento_id
             WHERE TRIM(COALESCE(fin.unidade, e.space_visivel, '')) <> ''
@@ -1048,7 +1109,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                             <?php
                             $status = (string)($receita['status'] ?? 'pendente');
                             $modo = (string)($receita['modo_pagamento'] ?? $receita['forma_pagamento'] ?? '');
-                            $unidade = (string)($receita['unidade'] ?? $receita['evento_unidade'] ?? '');
+                            $unidade = (string)($receita['unidade_busca'] ?? financeiro_normalizar_unidade((string)($receita['unidade'] ?? $receita['evento_unidade'] ?? '')));
                             if (($receita['origem_financeira'] ?? '') === 'formatura' && !empty($receita['formando_id'])) {
                                 $responsavelUrl = 'index.php?page=eventos_formatura&evento_id=' . (int)$receita['evento_id'] . '&formando_id=' . (int)$receita['formando_id'];
                             } else {
