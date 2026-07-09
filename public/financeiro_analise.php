@@ -474,8 +474,7 @@ includeSidebar('Análise Financeira');
         </div>
     </div>
 
-    <form class="fa-card fa-filters" action="index.php" method="get" data-fa-filter-form>
-        <input type="hidden" name="page" value="financeiro_analise">
+    <form class="fa-card fa-filters" action="financeiro_analise.php" method="get" data-fa-filter-form>
         <div class="fa-field">
             <label>Mês</label>
             <input type="month" name="competencia" value="<?= h($month->format('Y-m')) ?>">
@@ -521,9 +520,9 @@ includeSidebar('Análise Financeira');
     </div>
 
     <div class="fa-month">
-        <a href="index.php?page=financeiro_analise&competencia=<?= h($prev->format('Y-m')) ?>&data_base=<?= h($dateBase) ?>&status=<?= h($status) ?>">‹</a>
+        <a href="financeiro_analise.php?competencia=<?= h($prev->format('Y-m')) ?>&data_base=<?= h($dateBase) ?>&status=<?= h($status) ?>">‹</a>
         <span class="fa-month-title"><?= h(fa_month_label($month)) ?></span>
-        <a href="index.php?page=financeiro_analise&competencia=<?= h($next->format('Y-m')) ?>&data_base=<?= h($dateBase) ?>&status=<?= h($status) ?>">›</a>
+        <a href="financeiro_analise.php?competencia=<?= h($next->format('Y-m')) ?>&data_base=<?= h($dateBase) ?>&status=<?= h($status) ?>">›</a>
     </div>
 
     <div class="fa-grid">
@@ -624,8 +623,7 @@ includeSidebar('Análise Financeira');
             return;
         }
 
-        const url = new URL(form.getAttribute('action') || 'index.php', window.location.href);
-        url.searchParams.set('page', 'financeiro_analise');
+        const url = new URL(form.getAttribute('action') || 'financeiro_analise.php', window.location.href);
         url.searchParams.set('competencia', competencia);
         url.searchParams.set('data_base', dateBaseInput ? dateBaseInput.value : 'pagamento');
         url.searchParams.set('status', statusInput ? statusInput.value : 'todos');
