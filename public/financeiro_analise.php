@@ -605,6 +605,37 @@ function fa_render_dre_list(array $dre, float $receitas, bool $withDetails = tru
     return (string)ob_get_clean();
 }
 
+function fa_dre_line_value(array $dre, string $label): float
+{
+    foreach ($dre as $line) {
+        if ((string)($line['label'] ?? '') === $label) {
+            return (float)($line['value'] ?? 0);
+        }
+    }
+    return 0.0;
+}
+
+function fa_render_margin_table(array $rows): string
+{
+    ob_start();
+    ?>
+    <div class="fa-table-wrap">
+        <table class="fa-table">
+            <thead><tr><th>Item</th><th>Valor</th></tr></thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <td><?= h((string)$row[0]) ?></td>
+                        <td><span class="fa-money <?= (float)$row[1] < 0 ? 'out' : 'in' ?>"><?= h(is_string($row[1]) ? $row[1] : format_currency((float)$row[1])) ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    return (string)ob_get_clean();
+}
+
 function fa_render_dre_pdf_html(array $dre, float $receitas, DateTimeImmutable $month, string $dateBase, string $status): string
 {
     $rows = '';
@@ -670,7 +701,8 @@ $month = fa_parse_month($competenciaParam);
 $dateBase = fa_request_param('data_base') ?? 'pagamento';
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
 $status = fa_request_param('status') ?? 'todos';
-$activeTab = fa_request_param('tab') === 'dre' ? 'dre' : 'principal';
+$requestedTab = fa_request_param('tab') ?? 'principal';
+$activeTab = in_array($requestedTab, ['principal', 'dre', 'margem'], true) ? $requestedTab : 'principal';
 $export = fa_request_param('export') ?? '';
 
 $start = $month->format('Y-m-01');
@@ -687,6 +719,12 @@ $receitasLinhas = fa_receitas_por_linha($pdo, $start, $end, $dateBase, $status);
 $topDespesas = fa_top_despesas($pdo, $start, $end, $status);
 $despesasCategorias = fa_despesas_por_categoria($pdo, $start, $end, $status);
 $dre = fa_build_dre($summary, $despesasCategorias, $receitasLinhas);
+$receitaBruta = fa_dre_line_value($dre, 'Receita Bruta');
+$deducoesValor = abs(fa_dre_line_value($dre, 'Deduções'));
+$receitaLiquida = fa_dre_line_value($dre, 'Receita Líquida');
+$custosVariaveis = abs(fa_dre_line_value($dre, 'Custos Operacionais'));
+$margemContribuicao = fa_dre_line_value($dre, 'Margem de Contribuição');
+$margemContribuicaoPct = $receitaLiquida > 0 ? ($margemContribuicao / $receitaLiquida) * 100 : 0.0;
 
 if ($export === 'dre_pdf') {
     fa_output_dre_pdf($dre, (float)$summary['receitas'], $month, $dateBase, $status);
@@ -723,6 +761,7 @@ includeSidebar('Análise Financeira');
 <style>
 .fa-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.fa-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.fa-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.fa-sub{margin:.3rem 0 0;color:#64748b}.fa-actions{display:flex;gap:.65rem;flex-wrap:wrap}.fa-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;cursor:pointer}.fa-btn.primary{background:#1e3a8a;color:#fff}.fa-btn.green{background:#20c985;color:#fff}.fa-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07)}.fa-filters{margin:1rem 0;padding:1rem;display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:.8rem;align-items:end}.fa-field{display:grid;gap:.35rem}.fa-field label{font-weight:900;color:#475569;font-size:.82rem}.fa-field select,.fa-field input{border:1px solid #cbd5e1;border-radius:8px;padding:.65rem .75rem;font:inherit;background:#fff}.fa-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.fa-kpi{padding:1.1rem;border-left:4px solid #38bdf8}.fa-kpi.receita{border-color:#22c55e}.fa-kpi.despesa{border-color:#ef4444}.fa-kpi.resultado{border-color:#3b82f6}.fa-kpi.margem{border-color:#a855f7}.fa-kpi h3{margin:0 0 .8rem;text-transform:uppercase;color:#64748b;font-size:.82rem}.fa-kpi .value{font-size:1.55rem;font-weight:900;color:#1f2937}.fa-kpi .meta{margin-top:.35rem;color:#64748b;font-size:.84rem}.fa-delta{font-weight:900}.fa-delta.good{color:#16a34a}.fa-delta.bad{color:#dc2626}.fa-tabs{display:flex;justify-content:center;gap:.5rem;margin:1.2rem 0;flex-wrap:wrap}.fa-tab{border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;text-decoration:none;font-weight:900;padding:.72rem 1.2rem;min-width:120px;text-align:center}.fa-tab.active{background:#1e3a8a;border-color:#1e3a8a;color:#fff}.fa-panel-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}.fa-panel-head h2{margin:0;color:#1e3a8a;font-size:1.08rem}.fa-grid{display:grid;grid-template-columns:1.25fr .9fr;gap:1rem;margin-top:1rem}.fa-section{padding:1rem}.fa-section h2{margin:0 0 1rem;color:#1e3a8a;font-size:1.08rem}.fa-chart{display:grid;gap:.8rem}.fa-chart-row{display:grid;grid-template-columns:95px 1fr 110px;gap:.8rem;align-items:center}.fa-bar-track{height:28px;background:#eef2f7;border-radius:6px;overflow:hidden}.fa-bar{height:100%;min-width:2px}.fa-bar.receita{background:#22c55e}.fa-bar.despesa{background:#ef4444}.fa-bar.resultado{background:#3b82f6}.fa-table-wrap{overflow:auto}.fa-table{width:100%;border-collapse:collapse;min-width:620px}.fa-table th,.fa-table td{padding:.75rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.fa-table th{background:#f8fafc;color:#475569;text-transform:uppercase;font-size:.75rem}.fa-money{font-weight:900}.fa-money.out{color:#b42318}.fa-money.in{color:#15803d}.fa-dre-list{display:grid;gap:.55rem}.fa-dre-item{border:1px solid #e2e8f0;border-radius:8px;background:#fff;overflow:hidden}.fa-dre-item summary,.fa-dre-static{list-style:none;display:grid;grid-template-columns:1fr 160px 110px;gap:1rem;align-items:center;padding:.85rem 1rem}.fa-dre-item summary{cursor:pointer}.fa-dre-item summary::-webkit-details-marker{display:none}.fa-dre-item.expandable summary:before{content:'▸';font-weight:900;color:#64748b;margin-right:.5rem}.fa-dre-item.expandable[open] summary:before{content:'▾'}.fa-dre-item.total summary,.fa-dre-item.total .fa-dre-static,.fa-dre-item.result summary,.fa-dre-item.result .fa-dre-static{background:#eef6ff;font-weight:900}.fa-dre-item.title summary,.fa-dre-item.title .fa-dre-static{background:#f8fafc;font-weight:900;color:#475569}.fa-dre-label{display:flex;align-items:center;gap:.35rem;font-weight:900}.fa-dre-label.indent{padding-left:1.1rem;font-weight:800}.fa-dre-details{padding:.25rem 1rem 1rem 2.3rem;background:#fff}.fa-dre-detail-table{width:100%;border-collapse:collapse}.fa-dre-detail-table th,.fa-dre-detail-table td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left}.fa-dre-detail-table th{font-size:.72rem;color:#64748b;text-transform:uppercase}.fa-insights{display:grid;gap:.65rem}.fa-insight{border-left:4px solid #38bdf8;background:#f8fbff;border-radius:8px;padding:.75rem .9rem;font-weight:800;color:#334155}.fa-two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}.fa-muted{color:#64748b;font-size:.86rem}@media(max-width:1050px){.fa-summary,.fa-grid,.fa-two{grid-template-columns:1fr}.fa-filters{grid-template-columns:1fr 1fr}}@media(max-width:650px){.fa-page{padding:1rem}.fa-filters{grid-template-columns:1fr}.fa-chart-row{grid-template-columns:1fr}.fa-summary{grid-template-columns:1fr}.fa-dre-item summary,.fa-dre-static{grid-template-columns:1fr}.fa-dre-details{padding:.25rem .8rem .9rem}.fa-tab{flex:1}}
 .fa-dre-item summary,.fa-dre-static{grid-template-columns:24px minmax(0,1fr) 160px 110px}.fa-dre-item.expandable summary:before,.fa-dre-item.expandable[open] summary:before{content:none}.fa-dre-arrow{width:18px;height:18px;display:inline-grid;place-items:center;color:#64748b;font-weight:900;transition:transform .15s ease}.fa-dre-item[open] .fa-dre-arrow{transform:rotate(90deg)}.fa-dre-static .fa-dre-arrow{visibility:hidden}.fa-dre-item summary .fa-money,.fa-dre-static .fa-money{text-align:right}.fa-dre-item summary span:last-child,.fa-dre-static span:last-child{text-align:right}@media(max-width:650px){.fa-dre-item summary,.fa-dre-static{grid-template-columns:24px 1fr;gap:.45rem .75rem}.fa-dre-item summary .fa-money,.fa-dre-static .fa-money,.fa-dre-item summary span:last-child,.fa-dre-static span:last-child{text-align:left;grid-column:2}}
+.fa-margin-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8rem;margin-bottom:1rem}.fa-margin-kpi{border:1px solid #e2e8f0;border-radius:8px;padding:.9rem;background:#f8fbff}.fa-margin-kpi span{display:block;color:#64748b;font-size:.78rem;font-weight:900;text-transform:uppercase;margin-bottom:.45rem}.fa-margin-kpi strong{display:block;color:#15803d;font-size:1.2rem}.fa-margin-kpi strong.out{color:#b42318}.fa-formula-list{display:grid;gap:.55rem}.fa-formula-list div{border:1px solid #e2e8f0;border-radius:8px;padding:.75rem;background:#fff;display:grid;gap:.25rem}.fa-formula-list strong{color:#1e293b}.fa-formula-list span{color:#64748b}@media(max-width:900px){.fa-margin-summary{grid-template-columns:1fr 1fr}}@media(max-width:560px){.fa-margin-summary{grid-template-columns:1fr}}
 </style>
 
 <div class="fa-page">
@@ -787,6 +826,7 @@ includeSidebar('Análise Financeira');
     <nav class="fa-tabs" aria-label="Seções da análise financeira">
         <a class="fa-tab <?= $activeTab === 'principal' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'principal'])) ?>">Principal</a>
         <a class="fa-tab <?= $activeTab === 'dre' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'dre'])) ?>">DRE</a>
+        <a class="fa-tab <?= $activeTab === 'margem' ? 'active' : '' ?>" href="<?= h(fa_url(['tab' => 'margem'])) ?>">Margem de contribuição</a>
     </nav>
 
     <?php if ($activeTab === 'principal'): ?>
@@ -831,13 +871,72 @@ includeSidebar('Análise Financeira');
                 </tbody></table></div>
             </section>
         </div>
-    <?php else: ?>
+    <?php elseif ($activeTab === 'dre'): ?>
         <section class="fa-card fa-section" style="margin-top:1rem">
             <div class="fa-panel-head">
                 <h2>DRE por Categorias · <?= h(fa_month_label($month)) ?></h2>
                 <a class="fa-btn primary" href="<?= h(fa_url(['tab' => 'dre', 'export' => 'dre_pdf'])) ?>" target="_blank">Exportar PDF</a>
             </div>
             <?= fa_render_dre_list($dre, (float)$summary['receitas']) ?>
+        </section>
+    <?php else: ?>
+        <section class="fa-card fa-section" style="margin-top:1rem">
+            <div class="fa-panel-head">
+                <h2>Margem de Contribuição · <?= h(fa_month_label($month)) ?></h2>
+            </div>
+            <div class="fa-margin-summary">
+                <div class="fa-margin-kpi">
+                    <span>Receita Líquida</span>
+                    <strong><?= h(format_currency($receitaLiquida)) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Custos Variáveis</span>
+                    <strong class="out"><?= h(format_currency($custosVariaveis)) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Margem R$</span>
+                    <strong><?= h(format_currency($margemContribuicao)) ?></strong>
+                </div>
+                <div class="fa-margin-kpi">
+                    <span>Margem %</span>
+                    <strong><?= h(number_format($margemContribuicaoPct, 2, ',', '.')) ?>%</strong>
+                </div>
+            </div>
+            <div class="fa-two">
+                <section>
+                    <h2>Como é calculado</h2>
+                    <?= fa_render_margin_table([
+                        ['Receita Bruta', $receitaBruta],
+                        ['Deduções', $deducoesValor],
+                        ['Receita Líquida', $receitaLiquida],
+                        ['Custos Variáveis', $custosVariaveis],
+                        ['Margem de Contribuição', $margemContribuicao],
+                        ['Margem %', number_format($margemContribuicaoPct, 2, ',', '.') . '%'],
+                    ]) ?>
+                </section>
+                <section>
+                    <h2>Fórmulas</h2>
+                    <div class="fa-formula-list">
+                        <div><strong>Receita Bruta</strong><span>Soma das receitas</span></div>
+                        <div><strong>Receita Líquida</strong><span>Receita Bruta - impostos - taxas - devoluções</span></div>
+                        <div><strong>Custos Variáveis</strong><span>Soma dos custos diretamente ligados aos eventos</span></div>
+                        <div><strong>Margem R$</strong><span>Receita Líquida - Custos Variáveis</span></div>
+                        <div><strong>Margem %</strong><span>Margem ÷ Receita Líquida × 100</span></div>
+                    </div>
+                </section>
+            </div>
+            <div style="margin-top:1rem">
+                <h2>Custos Variáveis / Custos Operacionais</h2>
+                <div class="fa-dre-list">
+                    <?php foreach (['Alimentos e Bebidas', 'Fornecedores de Eventos', 'Decoração e Estrutura', 'Música e Atrações', 'Mão de Obra de Evento', 'Logística de Evento'] as $costLabel): ?>
+                        <?php foreach ($dre as $line): ?>
+                            <?php if ((string)$line['label'] === $costLabel): ?>
+                                <?= fa_render_dre_list([$line], (float)$summary['receitas']) ?>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </div>
+            </div>
         </section>
     <?php endif; ?>
 </div>
