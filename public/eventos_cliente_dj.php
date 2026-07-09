@@ -262,6 +262,48 @@ function eventos_cliente_order_value_key(string $field_id): string {
     return trim($field_id) . '__order';
 }
 
+function eventos_cliente_music_time_input_name(string $field_id, string $section, string $part): string {
+    return eventos_cliente_input_name('music_time_' . eventos_cliente_normalizar_identificador($part, 'part'), $field_id, $section);
+}
+
+function eventos_cliente_music_time_value_key(string $field_id, string $part): string {
+    return trim($field_id) . '__music_time_' . eventos_cliente_normalizar_identificador($part, 'part');
+}
+
+function eventos_cliente_music_time_normalize(string $value): string {
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    if (preg_match('/^\d{1,2}:\d{2}$/', $value)) {
+        [$minutes, $seconds] = explode(':', $value, 2);
+        return str_pad((string)((int)$minutes), 2, '0', STR_PAD_LEFT) . ':' . str_pad((string)((int)$seconds), 2, '0', STR_PAD_LEFT);
+    }
+    return '';
+}
+
+function eventos_cliente_field_usa_tempo_musica(array $field): bool {
+    $type = strtolower(trim((string)($field['type'] ?? '')));
+    if ($type !== 'textarea') {
+        return false;
+    }
+    $label = function_exists('mb_strtolower')
+        ? mb_strtolower(trim((string)($field['label'] ?? '')), 'UTF-8')
+        : strtolower(trim((string)($field['label'] ?? '')));
+    $targets = [
+        'música da entrada da debutante para o cerimonial',
+        'vai ter sapato, anel e etc',
+        'valsa. se for ter mais de uma',
+        'irá ter mais algum momento especial no cerimonial',
+    ];
+    foreach ($targets as $target) {
+        if (strpos($label, $target) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Identificador do grupo de momentos extras dentro de uma seção do schema.
  */
@@ -880,7 +922,21 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post, stri
         $values[$field_id] = $value;
         $answer = $display_value !== '' ? nl2br(eventos_cliente_e($display_value)) : '<em>Não informado</em>';
         $order_html = $order_value !== '' ? '<small>Ordem: ' . eventos_cliente_e($order_value) . '</small><br>' : '';
-        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $order_html . $answer . '</p>';
+        $music_time_html = '';
+        if (eventos_cliente_field_usa_tempo_musica($field)) {
+            $time_start = eventos_cliente_music_time_normalize((string)($post[eventos_cliente_music_time_input_name($field_id, $section, 'start')] ?? ''));
+            $time_end = eventos_cliente_music_time_normalize((string)($post[eventos_cliente_music_time_input_name($field_id, $section, 'end')] ?? ''));
+            $time_full = !empty($post[eventos_cliente_music_time_input_name($field_id, $section, 'full')]) ? '1' : '0';
+            $values[eventos_cliente_music_time_value_key($field_id, 'start')] = $time_start;
+            $values[eventos_cliente_music_time_value_key($field_id, 'end')] = $time_end;
+            $values[eventos_cliente_music_time_value_key($field_id, 'full')] = $time_full;
+            if ($time_full === '1') {
+                $music_time_html = '<br><small><strong>Tempo da música:</strong> Música inteira</small>';
+            } elseif ($time_start !== '' || $time_end !== '') {
+                $music_time_html = '<br><small><strong>Tempo da música:</strong> ' . eventos_cliente_e($time_start !== '' ? $time_start : '00:00') . ' até ' . eventos_cliente_e($time_end !== '' ? $time_end : '00:00') . '</small>';
+            }
+        }
+        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $order_html . $answer . $music_time_html . '</p>';
     }
 
     return [
@@ -1099,7 +1155,18 @@ function eventos_cliente_montar_visualizacao_schema(array $schema, array $values
             }
         }
         $upload_html = is_array($upload_field) ? $render_file_block($upload_field) : '';
-        $parts[] = '<div class="schema-field-card"><p><strong>' . eventos_cliente_e($label) . '</strong></p>' . $note_html . '<p>' . $order_html . $answer . '</p>' . $upload_html . '</div>';
+        $music_time_html = '';
+        if (eventos_cliente_field_usa_tempo_musica($field)) {
+            $time_start = trim((string)($values[eventos_cliente_music_time_value_key($field_id, 'start')] ?? ''));
+            $time_end = trim((string)($values[eventos_cliente_music_time_value_key($field_id, 'end')] ?? ''));
+            $time_full = trim((string)($values[eventos_cliente_music_time_value_key($field_id, 'full')] ?? '')) === '1';
+            if ($time_full) {
+                $music_time_html = '<br><small><strong>Tempo da música:</strong> Música inteira</small>';
+            } elseif ($time_start !== '' || $time_end !== '') {
+                $music_time_html = '<br><small><strong>Tempo da música:</strong> ' . eventos_cliente_e($time_start !== '' ? $time_start : '00:00') . ' até ' . eventos_cliente_e($time_end !== '' ? $time_end : '00:00') . '</small>';
+            }
+        }
+        $parts[] = '<div class="schema-field-card"><p><strong>' . eventos_cliente_e($label) . '</strong></p>' . $note_html . '<p>' . $order_html . $answer . $music_time_html . '</p>' . $upload_html . '</div>';
         $last_block_type = 'field';
     }
 
@@ -2125,6 +2192,55 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             background: #ffe4e6;
         }
 
+        .music-time-row {
+            margin: 0.85rem 1rem 0 1rem;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            background: #f8fbff;
+            padding: 0.7rem;
+        }
+
+        .music-time-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .music-time-input {
+            width: 5.4rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 0.48rem 0.55rem;
+            font-size: 0.9rem;
+            background: #ffffff;
+        }
+
+        .music-time-separator {
+            color: #475569;
+            font-size: 0.86rem;
+            font-weight: 600;
+        }
+
+        .music-time-full {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin-left: 0.15rem;
+            color: #334155;
+            font-size: 0.88rem;
+            font-weight: 700;
+        }
+
+        .music-time-full input {
+            width: 1rem;
+            height: 1rem;
+            accent-color: #2563eb;
+        }
+
         .schema-field-control,
         .schema-file-control {
             width: 100%;
@@ -3089,6 +3205,41 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
 
                             <?php if ($field_type === 'textarea'): ?>
                                 <textarea class="schema-field-control" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" rows="4"<?= $required_attr ?>><?= eventos_cliente_e($field_value) ?></textarea>
+                                <?php if (eventos_cliente_field_usa_tempo_musica($field)): ?>
+                                <?php
+                                    $music_time_start_key = eventos_cliente_music_time_value_key($field_raw_id, 'start');
+                                    $music_time_end_key = eventos_cliente_music_time_value_key($field_raw_id, 'end');
+                                    $music_time_full_key = eventos_cliente_music_time_value_key($field_raw_id, 'full');
+                                    $music_time_start_name = eventos_cliente_music_time_input_name($field_raw_id, $section_key, 'start');
+                                    $music_time_end_name = eventos_cliente_music_time_input_name($field_raw_id, $section_key, 'end');
+                                    $music_time_full_name = eventos_cliente_music_time_input_name($field_raw_id, $section_key, 'full');
+                                    $music_time_start_value = eventos_cliente_music_time_normalize((string)($section_values[$music_time_start_key] ?? ''));
+                                    $music_time_end_value = eventos_cliente_music_time_normalize((string)($section_values[$music_time_end_key] ?? ''));
+                                    $music_time_full_checked = trim((string)($section_values[$music_time_full_key] ?? '')) === '1';
+                                ?>
+                                <div class="music-time-row">
+                                    <span class="music-time-title">Tempo da música:</span>
+                                    <input class="music-time-input"
+                                           type="text"
+                                           inputmode="numeric"
+                                           pattern="[0-9]{1,2}:[0-9]{2}"
+                                           placeholder="00:00"
+                                           name="<?= eventos_cliente_e($music_time_start_name) ?>"
+                                           value="<?= eventos_cliente_e($music_time_start_value) ?>">
+                                    <span class="music-time-separator">até</span>
+                                    <input class="music-time-input"
+                                           type="text"
+                                           inputmode="numeric"
+                                           pattern="[0-9]{1,2}:[0-9]{2}"
+                                           placeholder="00:00"
+                                           name="<?= eventos_cliente_e($music_time_end_name) ?>"
+                                           value="<?= eventos_cliente_e($music_time_end_value) ?>">
+                                    <label class="music-time-full">
+                                        <input type="checkbox" name="<?= eventos_cliente_e($music_time_full_name) ?>" value="1"<?= $music_time_full_checked ? ' checked' : '' ?>>
+                                        Música Inteira
+                                    </label>
+                                </div>
+                                <?php endif; ?>
                             <?php elseif ($field_type === 'yesno'): ?>
                                 <select class="schema-field-control" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>"<?= $required_attr ?>>
                                     <option value="">Selecione...</option>
