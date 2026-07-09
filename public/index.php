@@ -677,6 +677,19 @@ if ($path && is_file($path)) {
   $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] = $_GET;
   $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] = (string)($_SERVER['QUERY_STRING'] ?? '');
   $GLOBALS['PAINEL_CURRENT_ROUTE_URI'] = (string)($_SERVER['REQUEST_URI'] ?? '');
+  if ($page === 'financeiro_analise') {
+    $routeQuery = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
+    if ($routeQuery !== '') {
+      parse_str(str_replace('&amp;', '&', $routeQuery), $routeQueryParams);
+      foreach (['competencia', 'data_base', 'status'] as $routeParamName) {
+        if (isset($routeQueryParams[$routeParamName]) && is_scalar($routeQueryParams[$routeParamName])) {
+          $_GET[$routeParamName] = (string)$routeQueryParams[$routeParamName];
+        }
+      }
+      $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] = $_GET;
+      $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] = http_build_query($_GET);
+    }
+  }
   require $path;
   exit;
 } else if ($path) {
