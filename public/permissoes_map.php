@@ -37,7 +37,6 @@ return [
     'cadastros_categorias_financeiras' => 'perm_cadastros',
     'financeiro' => 'perm_financeiro',
     'financeiro_cartoes' => ['perm_financeiro', 'perm_cadastros'],
-    'financeiro_classificar_pendencias' => 'perm_financeiro',
     'administrativo' => ['perm_administrativo', 'perm_vendas_administracao'],
     'administrativo_gestao_documentos' => 'perm_administrativo',
     'administrativo_juridico' => 'perm_administrativo',
