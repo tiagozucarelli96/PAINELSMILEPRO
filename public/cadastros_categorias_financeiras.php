@@ -362,14 +362,13 @@ includeSidebar('Categorias Financeiras');
         </div>
         <div class="cf-table-wrap">
             <table class="cf-table">
-                <thead><tr><th>Categoria</th><th>Grupo</th><th>Tipo</th><th>Ordem</th><th>Status</th><th>Acoes</th></tr></thead>
+                <thead><tr><th>Categoria</th><th>Grupo</th><th>Tipo</th><th>Status</th><th>Acoes</th></tr></thead>
                 <tbody>
                     <?php foreach ($categorias as $categoria): ?>
                         <tr>
                             <td><span class="cf-name"><?= cf_h((string)$categoria['nome']) ?></span><?php if (!empty($categoria['descricao'])): ?><div class="cf-muted"><?= cf_h((string)$categoria['descricao']) ?></div><?php endif; ?></td>
                             <td><?= cf_h((string)$categoria['grupo']) ?></td>
                             <td><span class="cf-pill type"><?= cf_h((string)$categoria['tipo']) ?></span></td>
-                            <td><?= (int)$categoria['ordem'] ?></td>
                             <td><span class="cf-pill <?= !empty($categoria['ativo']) ? 'on' : 'off' ?>"><?= !empty($categoria['ativo']) ? 'Ativa' : 'Inativa' ?></span></td>
                             <td>
                                 <div class="cf-row-actions">

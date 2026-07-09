@@ -17,8 +17,39 @@ if (empty($_SESSION['perm_financeiro']) && empty($_SESSION['perm_superadmin'])) 
     exit;
 }
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
+function fa_query_params(): array
+{
+    $params = $_GET;
+
+    $routeParams = $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] ?? null;
+    if (is_array($routeParams)) {
+        $params = array_merge($params, $routeParams);
+    }
+
+    foreach ([
+        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? ''),
+        (string)($_SERVER['QUERY_STRING'] ?? ''),
+        (string)(parse_url((string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ($_SERVER['REQUEST_URI'] ?? '')), PHP_URL_QUERY) ?? ''),
+    ] as $queryString) {
+        if ($queryString === '') {
+            continue;
+        }
+        parse_str(str_replace('&amp;', '&', $queryString), $parsed);
+        if (is_array($parsed)) {
+            $params = array_merge($params, $parsed);
+        }
+    }
+
+    return $params;
+}
+
 function fa_parse_month(string $value): DateTimeImmutable
 {
+    $value = trim($value);
     if (!preg_match('/^\d{4}-\d{2}$/', $value)) {
         $value = date('Y-m');
     }
@@ -373,10 +404,11 @@ function fa_build_dre(array $summary, array $despesasCategorias): array
     ];
 }
 
-$month = fa_parse_month((string)($_GET['competencia'] ?? date('Y-m')));
-$dateBase = (string)($_GET['data_base'] ?? 'pagamento');
+$queryParams = fa_query_params();
+$month = fa_parse_month((string)($queryParams['competencia'] ?? date('Y-m')));
+$dateBase = (string)($queryParams['data_base'] ?? 'pagamento');
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
-$status = (string)($_GET['status'] ?? 'todos');
+$status = (string)($queryParams['status'] ?? 'todos');
 
 $start = $month->format('Y-m-01');
 $end = $month->modify('+1 month')->format('Y-m-01');
