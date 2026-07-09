@@ -578,6 +578,59 @@ function eventos_cliente_normalizar_schema($raw): array {
 }
 
 /**
+ * Garante campo de abertura de pista nos formulários DJ já criados antes da melhoria.
+ */
+function eventos_cliente_schema_garantir_abertura_pista(array $schema): array {
+    if (empty($schema)) {
+        return $schema;
+    }
+
+    $target_id = 'abertura_de_pista';
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $field_id = trim((string)($field['id'] ?? ''));
+        $field_label = mb_strtolower(trim((string)($field['label'] ?? '')), 'UTF-8');
+        if ($field_id === $target_id || strpos($field_label, 'abertura de pista') !== false) {
+            return $schema;
+        }
+    }
+
+    $new_field = [
+        'id' => $target_id,
+        'type' => 'textarea',
+        'label' => 'Abertura de pista. Anexe o arquivo ou cite o link da música que deseja, coloque o tempo da música, caso deseje tempo específico de música.',
+        'required' => false,
+        'orderable' => false,
+        'allow_extra_moments' => false,
+        'options' => [],
+        'content_html' => '',
+        'default_value' => '',
+    ];
+
+    $result = [];
+    $inserted = false;
+    foreach ($schema as $field) {
+        $result[] = $field;
+        if (!is_array($field) || $inserted) {
+            continue;
+        }
+        $field_label = mb_strtolower(trim((string)($field['label'] ?? '')), 'UTF-8');
+        if (strpos($field_label, 'valsa. se for ter mais de uma') !== false) {
+            $result[] = $new_field;
+            $inserted = true;
+        }
+    }
+
+    if (!$inserted) {
+        $result[] = $new_field;
+    }
+
+    return $result;
+}
+
+/**
  * Garante a presença do campo de texto livre quando visível no portal.
  */
 function eventos_cliente_schema_garantir_texto_livre(array $schema, string $section, string $default_value = ''): array {
@@ -1035,6 +1088,16 @@ function eventos_cliente_montar_visualizacao_schema(array $schema, array $values
             $note_html .= '<div class="schema-field-help">' . $pending_note_html . '</div>';
         }
         $pending_notes = [];
+        if (!is_array($upload_field)) {
+            $field_anexos = eventos_cliente_filtrar_anexos_por_campo($anexos, $field_id);
+            if (!empty($field_anexos)) {
+                $upload_field = [
+                    'id' => $field_id,
+                    'label' => 'Anexos enviados neste campo',
+                    'type' => 'file',
+                ];
+            }
+        }
         $upload_html = is_array($upload_field) ? $render_file_block($upload_field) : '';
         $parts[] = '<div class="schema-field-card"><p><strong>' . eventos_cliente_e($label) . '</strong></p>' . $note_html . '<p>' . $order_html . $answer . '</p>' . $upload_html . '</div>';
         $last_block_type = 'field';
@@ -1152,6 +1215,10 @@ function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, strin
     }
     if (empty($form_schema) && !$legacy_text_portal_visible) {
         $content = '';
+    }
+
+    if ($section === 'dj_protocolo' && !empty($form_schema)) {
+        $form_schema = eventos_cliente_schema_garantir_abertura_pista($form_schema);
     }
 
     $form_values = eventos_cliente_extract_payload_from_html($content, $section);
@@ -1460,6 +1527,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                                     'form_field_id' => $field_raw_id,
                                 ];
                             }
+                        }
+                    }
+                    $schema_submit_count = count($schema_submit);
+                    for ($schema_upload_index = 0; $schema_upload_index < $schema_submit_count; $schema_upload_index++) {
+                        $field = is_array($schema_submit[$schema_upload_index] ?? null) ? (array)$schema_submit[$schema_upload_index] : [];
+                        $field_type = (string)($field['type'] ?? '');
+                        if (in_array($field_type, ['file', 'section', 'divider', 'note'], true)) {
+                            continue;
+                        }
+                        $next_field = is_array($schema_submit[$schema_upload_index + 1] ?? null) ? (array)$schema_submit[$schema_upload_index + 1] : [];
+                        if (($next_field['type'] ?? '') === 'file') {
+                            continue;
+                        }
+                        $field_raw_id = (string)($field['id'] ?? '');
+                        if ($field_raw_id === '') {
+                            continue;
+                        }
+                        $field_input = eventos_cliente_file_input_name($field_raw_id, $section_key);
+                        $field_uploads = eventos_cliente_normalizar_uploads($_FILES, $field_input);
+                        if (empty($field_uploads)) {
+                            continue;
+                        }
+                        $field_notes = eventos_cliente_normalizar_notas_upload($_POST[eventos_cliente_file_note_input_name($field_raw_id, $section_key)] ?? []);
+                        foreach ($field_uploads as $upload_index => $field_file) {
+                            $section_uploads[] = [
+                                'file' => $field_file,
+                                'note' => (string)($field_notes[$upload_index] ?? ''),
+                                'form_field_id' => $field_raw_id,
+                            ];
                         }
                     }
                     foreach ($schema_submit as $field) {
@@ -2955,6 +3051,12 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                                 $schema_index++;
                             } elseif ($field_type === 'file') {
                                 $upload_field = $field;
+                            } elseif (!in_array($field_type, ['section', 'divider', 'note'], true) && $field_raw_id !== '') {
+                                $upload_field = [
+                                    'id' => $field_raw_id,
+                                    'label' => 'Anexe aqui, caso tenha em arquivo',
+                                    'type' => 'file',
+                                ];
                             }
 
                             $upload_raw_id = is_array($upload_field) ? (string)($upload_field['id'] ?? '') : '';

@@ -975,6 +975,7 @@ function eventos_form_template_schema_protocolo_15anos(): array {
         ['type' => 'textarea', 'label' => 'Música da entrada da debutante para o cerimonial'],
         ['type' => 'textarea', 'label' => 'Vai ter sapato, anel e etc? Se sim, quais são as músicas desses momentos?'],
         ['type' => 'textarea', 'label' => 'Valsa. Se for ter mais de uma, descreva quem irá dançar e qual música.'],
+        ['type' => 'textarea', 'id' => 'abertura_de_pista', 'label' => 'Abertura de pista. Anexe o arquivo ou cite o link da música que deseja, coloque o tempo da música, caso deseje tempo específico de música.'],
         ['type' => 'textarea', 'label' => 'Irá ter mais algum momento especial no cerimonial? Cite o momento e a música.'],
 
         ['type' => 'section', 'label' => 'GOSTO MUSICAL / REPERTÓRIO'],
