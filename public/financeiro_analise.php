@@ -21,52 +21,39 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 
-function fa_query_params(): array
+function fa_request_param(string $name): ?string
 {
-    $params = $_GET;
-
-    $routeParams = $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] ?? null;
-    if (is_array($routeParams)) {
-        $params = array_merge($params, $routeParams);
+    if (isset($_GET[$name]) && is_scalar($_GET[$name])) {
+        return (string)$_GET[$name];
     }
 
-    foreach ([
+    $routeParams = $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] ?? null;
+    if (is_array($routeParams) && isset($routeParams[$name]) && is_scalar($routeParams[$name])) {
+        return (string)$routeParams[$name];
+    }
+
+    $querySources = [
         (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? ''),
         (string)($_SERVER['QUERY_STRING'] ?? ''),
-        (string)(parse_url((string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ($_SERVER['REQUEST_URI'] ?? '')), PHP_URL_QUERY) ?? ''),
-    ] as $queryString) {
+    ];
+
+    foreach ([
+        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ''),
+        (string)($_SERVER['REQUEST_URI'] ?? ''),
+        (string)($_SERVER['HTTP_X_ORIGINAL_URL'] ?? ''),
+        (string)($_SERVER['HTTP_X_REWRITE_URL'] ?? ''),
+    ] as $uriSource) {
+        if ($uriSource === '') {
+            continue;
+        }
+        $querySources[] = (string)(parse_url(str_replace('&amp;', '&', $uriSource), PHP_URL_QUERY) ?? '');
+    }
+
+    foreach ($querySources as $queryString) {
         if ($queryString === '') {
             continue;
         }
         parse_str(str_replace('&amp;', '&', $queryString), $parsed);
-        if (is_array($parsed)) {
-            $params = array_merge($params, $parsed);
-        }
-    }
-
-    return $params;
-}
-
-function fa_query_param_from_uri(string $name): ?string
-{
-    $sources = [
-        (string)($_SERVER['REQUEST_URI'] ?? ''),
-        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ''),
-        (string)($_SERVER['HTTP_X_ORIGINAL_URL'] ?? ''),
-        (string)($_SERVER['HTTP_X_REWRITE_URL'] ?? ''),
-    ];
-
-    foreach ($sources as $source) {
-        if ($source === '') {
-            continue;
-        }
-
-        $query = (string)(parse_url(str_replace('&amp;', '&', $source), PHP_URL_QUERY) ?? '');
-        if ($query === '') {
-            continue;
-        }
-
-        parse_str($query, $parsed);
         if (isset($parsed[$name]) && is_scalar($parsed[$name])) {
             return (string)$parsed[$name];
         }
@@ -432,12 +419,11 @@ function fa_build_dre(array $summary, array $despesasCategorias): array
     ];
 }
 
-$queryParams = fa_query_params();
-$competenciaParam = fa_query_param_from_uri('competencia') ?? (string)($queryParams['competencia'] ?? '');
+$competenciaParam = fa_request_param('competencia') ?? date('Y-m');
 $month = fa_parse_month($competenciaParam);
-$dateBase = (string)($queryParams['data_base'] ?? 'pagamento');
+$dateBase = fa_request_param('data_base') ?? 'pagamento';
 $dateBase = in_array($dateBase, ['pagamento', 'vencimento'], true) ? $dateBase : 'pagamento';
-$status = (string)($queryParams['status'] ?? 'todos');
+$status = fa_request_param('status') ?? 'todos';
 
 $start = $month->format('Y-m-01');
 $end = $month->modify('+1 month')->format('Y-m-01');
