@@ -134,65 +134,123 @@ function fa_category_bucket(?string $category): string
 {
     $category = trim((string)$category);
     if ($category === '') {
-        return 'Outras Despesas';
+        return 'Outras Despesas Operacionais';
     }
 
-    if (fa_in_category($category, ['IRPJ', 'Simples Nacional'])) {
+    if (fa_in_category($category, ['Distribuicao de lucros', 'Distribuição de lucros', 'Retirada de Lucros'])) {
+        return 'Sócios';
+    }
+    if (fa_in_category($category, ['Fundo de emergencia', 'Fundo de emergência'])) {
+        return 'Reservas';
+    }
+    if (fa_in_category($category, ['Empréstimos', 'Emprestimos', 'Financiamento Carro'])) {
+        return 'Empréstimos e Financiamentos';
+    }
+    if (fa_in_category($category, ['Aquisição de equipamentos', 'Aquisicao de equipamentos', 'Investimentos'])) {
+        return 'Investimentos/Patrimônio';
+    }
+    if (fa_in_category($category, ['Obras - Antiga e nova'])) {
+        return 'Obras e Expansão';
+    }
+
+    if (fa_in_category($category, ['Simples Nacional', 'Impostos'])) {
         return 'Impostos sobre vendas';
     }
     if (fa_in_category($category, ['Taxas bancarias', 'Taxas Cobrança', 'Taxas Cobranca', 'Taxas Maquininhas'])) {
-        return 'Taxa de cobrança';
+        return 'Taxas de recebimento';
     }
-    if (fa_in_category($category, ['Comissao de vendedores', 'Comissão de vendedores'])) {
-        return 'Comissões sobre vendas';
+    if (fa_in_category($category, ['Anuidade de cartao', 'Anuidade de cartão'])) {
+        return 'Anuidade/Taxas de cartão';
     }
     if (fa_in_category($category, ['Devolução Cliente', 'Devolucao Cliente'])) {
-        return 'Devolução de vendas';
-    }
-    if (fa_in_category($category, ['Agua', 'Água e esgoto', 'Agua e esgoto', 'Energia elétrica', 'Energia eletrica', 'Luz'])) {
-        return 'Agua e Luz';
+        return 'Devoluções';
     }
     if (fa_in_category($category, [
-        'Bebidas', 'Bolo', 'Custos Eventos', 'Decoração', 'Decoracao', 'DJ', 'Doces', 'Fornecedores',
-        'Frutas congeladas', 'Gelo', 'Hort Frut', 'Insumos', 'Mini Lanchinhos', 'Pão / Padaria',
-        'Pao / Padaria', 'Pao Padaria', 'Salgados', 'Toalhas', 'Aquisição de equipamentos',
-        'Aquisicao de equipamentos', 'Aquisição de materiais', 'Aquisicao de materiais'
+        'Bebidas', 'Bolo', 'Doces', 'Salgados', 'Mini Lanchinhos', 'Pão / Padaria',
+        'Pao / Padaria', 'Pao Padaria', 'Frutas congeladas', 'Gelo', 'Hort Frut', 'Insumos'
     ])) {
-        return 'Custo de Materiais';
+        return 'Alimentos e Bebidas';
     }
-    if (fa_in_category($category, ['Barmen', 'Freelancer', 'Free lancer', 'Free lance'])) {
-        return 'Freelancer';
+    if (fa_in_category($category, ['Fornecedores', 'Custos Eventos'])) {
+        return 'Fornecedores de Eventos';
     }
-    if (fa_in_category($category, ['Combustível', 'Combustivel', 'Passagem aéreas', 'Passagem aereas', 'Translado'])) {
-        return 'Transporte e Logística';
+    if (fa_in_category($category, ['Decoração', 'Decoracao', 'Toalhas'])) {
+        return 'Decoração e Estrutura';
     }
-    if (fa_in_category($category, ['Rescisões trabalhistas', 'Rescisoes trabalhistas', 'RH'])) {
-        return 'Rescisões Trabalhistas';
+    if (fa_in_category($category, ['DJ'])) {
+        return 'Música e Atrações';
     }
-    if (fa_in_category($category, ['Material de escritório', 'Material de escritorio'])) {
-        return 'Despesas Comerciais';
+    if (fa_in_category($category, ['Barmen', 'Freelancer', 'Free lancer', 'Free lance', 'Horas Extras'])) {
+        return 'Mão de Obra de Evento';
     }
-    if (fa_in_category($category, [
-        'Cartório', 'Cartorio', 'Iof', 'IR', 'Juros', 'Limpeza', 'Manutenção de equipamentos',
-        'Manutencao de equipamentos', 'Transportes (Uber e etc)'
-    ])) {
-        return 'Despesas Gerais';
-    }
-    if (fa_in_category($category, [
-        '13º Salário', '13o Salario', 'Aluguel', 'Assistencia Juridica', 'Beneficios (V.A., VT, VR)',
-        'Benefícios (V.A., VT, VR)', 'Bonificação Func.', 'Bonificacao Func.', 'Contabilidade',
-        'Financiamento Carro', 'INSS', 'Internet', 'IPTU', 'IPVA', 'Medicina do Trabalho', 'Pro-Labore',
-        'Publicidade', 'Salário', 'Salario', 'Salarios', 'Seguro Patrimonial', 'Sistemas em geral',
-        'Taxa de lixo', 'Telefone', 'Telefone celular', 'Telefone fixo', 'Vale Alimentação',
-        'Vale Alimentacao', 'Vale Transporte'
-    ])) {
-        return 'Despesas Fixas';
-    }
-    if (fa_in_category($category, ['Empréstimos', 'Emprestimos'])) {
-        return 'Despesas Financeiras';
+    if (fa_in_category($category, ['Combustível', 'Combustivel', 'Translado'])) {
+        return 'Logística de Evento';
     }
 
-    return 'Outras Despesas';
+    if (fa_in_category($category, ['Aluguel', 'Agua', 'Água e esgoto', 'Agua e esgoto', 'Energia elétrica', 'Energia eletrica', 'Luz'])) {
+        return 'Ocupação e Unidade';
+    }
+    if (fa_in_category($category, ['Contabilidade', 'Assistencia Juridica', 'Cartório', 'Cartorio', 'Material de escritório', 'Material de escritorio', 'Escritorio'])) {
+        return 'Administrativo';
+    }
+    if (fa_in_category($category, ['Sistemas em geral', 'Internet', 'Telefone', 'Telefone celular', 'Telefone fixo'])) {
+        return 'Sistemas e Comunicação';
+    }
+    if (fa_in_category($category, ['Manutenção', 'Manutencao', 'Manutenção de equipamentos', 'Manutencao de equipamentos', 'Limpeza', 'Aluguel de maquinas'])) {
+        return 'Manutenção e Limpeza';
+    }
+    if (fa_in_category($category, ['Publicidade', 'Comissao de vendedores', 'Comissão de vendedores'])) {
+        return 'Comercial/Marketing';
+    }
+    if (fa_in_category($category, ['Seguro Patrimonial', 'Medicina do Trabalho'])) {
+        return 'Seguros e Saúde Ocupacional';
+    }
+    if (fa_in_category($category, [
+        '13º Salário', '13o Salario', 'Beneficios (V.A., VT, VR)', 'Benefícios (V.A., VT, VR)',
+        'Bonificação Func.', 'Bonificacao Func.', 'Pro-Labore', 'RH', 'Salário', 'Salario', 'Salarios',
+        'Vale Alimentação', 'Vale Alimentacao', 'Vale Transporte'
+    ])) {
+        return 'Equipe Fixa';
+    }
+    if (fa_in_category($category, ['Rescisões trabalhistas', 'Rescisoes trabalhistas'])) {
+        return 'Rescisões';
+    }
+    if (fa_in_category($category, ['Treinamentos'])) {
+        return 'Treinamentos';
+    }
+    if (fa_in_category($category, ['Uber', 'Transportes (Uber e etc)', 'Passagem aéreas', 'Passagem aereas'])) {
+        return 'Transporte Administrativo';
+    }
+    if (fa_in_category($category, ['Convenio medico', 'Assistencia Medica', 'Assistencia odontologica'])) {
+        return 'Saúde/Benefícios';
+    }
+
+    if (fa_in_category($category, ['Juros', 'Iof', 'IR'])) {
+        return 'Despesas Financeiras';
+    }
+    if (fa_in_category($category, ['INSS'])) {
+        return 'INSS';
+    }
+
+    return 'Outras Despesas Operacionais';
+}
+
+function fa_revenue_bucket(?string $description, ?string $payment): string
+{
+    $descriptionNorm = fa_norm($description);
+    $paymentNorm = fa_norm($payment);
+
+    if (str_contains($descriptionNorm, 'DEGUST')) {
+        return 'Receita de Degustação';
+    }
+    if (str_contains($descriptionNorm, 'OUTROS') || str_contains($descriptionNorm, 'OUTRO')) {
+        return 'Outras Receitas Operacionais';
+    }
+    if (in_array($paymentNorm, ['BOLETO', 'CARTAO', 'CARTAO DE CREDITO', 'CARTAO DE DEBITO', 'COBRANCA', 'PIX', 'DINHEIRO', 'NAO INFORMADO'], true)) {
+        return 'Receita de Eventos';
+    }
+
+    return 'Receita de Eventos';
 }
 
 function fa_receita_data_expr(string $dateBase): string
@@ -323,6 +381,36 @@ function fa_top_receitas(PDO $pdo, string $start, string $end, string $dateBase,
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+function fa_receitas_por_linha(PDO $pdo, string $start, string $end, string $dateBase, string $status): array
+{
+    $receitaSql = fa_receita_sources($pdo, $dateBase);
+    $receitaStatus = fa_status_clause('r', $status, false);
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(NULLIF(descricao, ''), '') AS descricao,
+               COALESCE(NULLIF(forma_pagamento, ''), NULLIF(modo_pagamento, ''), '') AS pagamento,
+               COALESCE(SUM(valor), 0) AS valor,
+               COUNT(*) AS qtd
+        FROM ({$receitaSql}) r
+        WHERE {$receitaStatus}
+          AND data_ref >= CAST(:start AS DATE)
+          AND data_ref < CAST(:end AS DATE)
+        GROUP BY 1, 2
+    ");
+    $stmt->execute([':start' => $start, ':end' => $end]);
+
+    $lines = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        $bucket = fa_revenue_bucket((string)($row['descricao'] ?? ''), (string)($row['pagamento'] ?? ''));
+        if (!isset($lines[$bucket])) {
+            $lines[$bucket] = ['valor' => 0.0, 'qtd' => 0];
+        }
+        $lines[$bucket]['valor'] += (float)($row['valor'] ?? 0);
+        $lines[$bucket]['qtd'] += (int)($row['qtd'] ?? 0);
+    }
+
+    return $lines;
+}
+
 function fa_top_despesas(PDO $pdo, string $start, string $end, string $status): array
 {
     $despesaStatus = fa_status_clause('d', $status, true);
@@ -360,7 +448,7 @@ function fa_despesas_por_categoria(PDO $pdo, string $start, string $end, string 
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
-function fa_build_dre(array $summary, array $despesasCategorias): array
+function fa_build_dre(array $summary, array $despesasCategorias, array $receitasLinhas): array
 {
     $buckets = [];
     $bucketDetails = [];
@@ -380,14 +468,21 @@ function fa_build_dre(array $summary, array $despesasCategorias): array
         $bucketDetails[$bucket] = $items;
     }
 
-    $deducoes = ($buckets['Impostos sobre vendas'] ?? 0) + ($buckets['Taxa de cobrança'] ?? 0) + ($buckets['Comissões sobre vendas'] ?? 0) + ($buckets['Devolução de vendas'] ?? 0);
+    $receitaEventos = (float)($receitasLinhas['Receita de Eventos']['valor'] ?? 0);
+    $receitaDegustacao = (float)($receitasLinhas['Receita de Degustação']['valor'] ?? 0);
+    $outrasReceitasOperacionais = (float)($receitasLinhas['Outras Receitas Operacionais']['valor'] ?? 0);
+    $receitasClassificadas = $receitaEventos + $receitaDegustacao + $outrasReceitasOperacionais;
+    $receitaEventos += max(0, $summary['receitas'] - $receitasClassificadas);
+
+    $deducoes = ($buckets['Impostos sobre vendas'] ?? 0) + ($buckets['Taxas de recebimento'] ?? 0) + ($buckets['Devoluções'] ?? 0) + ($buckets['Anuidade/Taxas de cartão'] ?? 0);
     $receitaLiquida = $summary['receitas'] - $deducoes;
-    $custos = ($buckets['Agua e Luz'] ?? 0) + ($buckets['Custo de Materiais'] ?? 0) + ($buckets['Freelancer'] ?? 0) + ($buckets['Transporte e Logística'] ?? 0);
+    $custos = ($buckets['Alimentos e Bebidas'] ?? 0) + ($buckets['Fornecedores de Eventos'] ?? 0) + ($buckets['Decoração e Estrutura'] ?? 0) + ($buckets['Música e Atrações'] ?? 0) + ($buckets['Mão de Obra de Evento'] ?? 0) + ($buckets['Logística de Evento'] ?? 0);
     $margemContribuicao = $receitaLiquida - $custos;
-    $operacionais = ($buckets['Rescisões Trabalhistas'] ?? 0) + ($buckets['Despesas Comerciais'] ?? 0) + ($buckets['Despesas Gerais'] ?? 0) + ($buckets['Despesas Fixas'] ?? 0) + ($buckets['Outras Despesas'] ?? 0);
+    $operacionais = ($buckets['Ocupação e Unidade'] ?? 0) + ($buckets['Administrativo'] ?? 0) + ($buckets['Sistemas e Comunicação'] ?? 0) + ($buckets['Manutenção e Limpeza'] ?? 0) + ($buckets['Comercial/Marketing'] ?? 0) + ($buckets['Seguros e Saúde Ocupacional'] ?? 0) + ($buckets['Equipe Fixa'] ?? 0) + ($buckets['Rescisões'] ?? 0) + ($buckets['Treinamentos'] ?? 0) + ($buckets['Transporte Administrativo'] ?? 0) + ($buckets['Saúde/Benefícios'] ?? 0) + ($buckets['Outras Despesas Operacionais'] ?? 0);
     $lucroOperacional = $margemContribuicao - $operacionais;
-    $financeiras = $buckets['Despesas Financeiras'] ?? 0;
+    $financeiras = ($buckets['Despesas Financeiras'] ?? 0) + ($buckets['INSS'] ?? 0);
     $resultadoFinal = $lucroOperacional - $financeiras;
+    $foraDre = ($buckets['Sócios'] ?? 0) + ($buckets['Reservas'] ?? 0) + ($buckets['Empréstimos e Financiamentos'] ?? 0) + ($buckets['Investimentos/Patrimônio'] ?? 0) + ($buckets['Obras e Expansão'] ?? 0);
 
     $line = static function (string $label, string $nature, float $value, int $level = 0, string $bucket = '') use ($bucketDetails): array {
         return [
@@ -401,28 +496,47 @@ function fa_build_dre(array $summary, array $despesasCategorias): array
 
     return [
         $line('Receita Bruta', 'total', $summary['receitas']),
-        $line('Receita de Serviços', 'receita', $summary['receitas'], 1),
+        $line('Receita de Eventos', 'receita', $receitaEventos, 1),
+        $line('Receita de Degustação', 'receita', $receitaDegustacao, 1),
+        $line('Outras Receitas Operacionais', 'receita', $outrasReceitasOperacionais, 1),
         $line('Deduções', 'title', -$deducoes),
         $line('Impostos sobre vendas', 'despesa', -($buckets['Impostos sobre vendas'] ?? 0), 1, 'Impostos sobre vendas'),
-        $line('Taxa de cobrança', 'despesa', -($buckets['Taxa de cobrança'] ?? 0), 1, 'Taxa de cobrança'),
-        $line('Comissões sobre vendas', 'despesa', -($buckets['Comissões sobre vendas'] ?? 0), 1, 'Comissões sobre vendas'),
-        $line('Devolução de vendas', 'despesa', -($buckets['Devolução de vendas'] ?? 0), 1, 'Devolução de vendas'),
+        $line('Taxas de recebimento', 'despesa', -($buckets['Taxas de recebimento'] ?? 0), 1, 'Taxas de recebimento'),
+        $line('Devoluções', 'despesa', -($buckets['Devoluções'] ?? 0), 1, 'Devoluções'),
+        $line('Anuidade/Taxas de cartão', 'despesa', -($buckets['Anuidade/Taxas de cartão'] ?? 0), 1, 'Anuidade/Taxas de cartão'),
         $line('Receita Líquida', 'total', $receitaLiquida),
         $line('Custos Operacionais', 'title', -$custos),
-        $line('Agua e Luz', 'despesa', -($buckets['Agua e Luz'] ?? 0), 1, 'Agua e Luz'),
-        $line('Custo de Materiais', 'despesa', -($buckets['Custo de Materiais'] ?? 0), 1, 'Custo de Materiais'),
-        $line('Freelancer', 'despesa', -($buckets['Freelancer'] ?? 0), 1, 'Freelancer'),
-        $line('Transporte e Logística', 'despesa', -($buckets['Transporte e Logística'] ?? 0), 1, 'Transporte e Logística'),
+        $line('Alimentos e Bebidas', 'despesa', -($buckets['Alimentos e Bebidas'] ?? 0), 1, 'Alimentos e Bebidas'),
+        $line('Fornecedores de Eventos', 'despesa', -($buckets['Fornecedores de Eventos'] ?? 0), 1, 'Fornecedores de Eventos'),
+        $line('Decoração e Estrutura', 'despesa', -($buckets['Decoração e Estrutura'] ?? 0), 1, 'Decoração e Estrutura'),
+        $line('Música e Atrações', 'despesa', -($buckets['Música e Atrações'] ?? 0), 1, 'Música e Atrações'),
+        $line('Mão de Obra de Evento', 'despesa', -($buckets['Mão de Obra de Evento'] ?? 0), 1, 'Mão de Obra de Evento'),
+        $line('Logística de Evento', 'despesa', -($buckets['Logística de Evento'] ?? 0), 1, 'Logística de Evento'),
         $line('Margem de Contribuição', 'total', $margemContribuicao),
         $line('Despesas Operacionais', 'title', -$operacionais),
-        $line('Rescisões Trabalhistas', 'despesa', -($buckets['Rescisões Trabalhistas'] ?? 0), 1, 'Rescisões Trabalhistas'),
-        $line('Despesas Comerciais', 'despesa', -($buckets['Despesas Comerciais'] ?? 0), 1, 'Despesas Comerciais'),
-        $line('Despesas Gerais', 'despesa', -($buckets['Despesas Gerais'] ?? 0), 1, 'Despesas Gerais'),
-        $line('Despesas Fixas', 'despesa', -($buckets['Despesas Fixas'] ?? 0), 1, 'Despesas Fixas'),
-        $line('Outras Despesas', 'despesa', -($buckets['Outras Despesas'] ?? 0), 1, 'Outras Despesas'),
+        $line('Ocupação e Unidade', 'despesa', -($buckets['Ocupação e Unidade'] ?? 0), 1, 'Ocupação e Unidade'),
+        $line('Administrativo', 'despesa', -($buckets['Administrativo'] ?? 0), 1, 'Administrativo'),
+        $line('Sistemas e Comunicação', 'despesa', -($buckets['Sistemas e Comunicação'] ?? 0), 1, 'Sistemas e Comunicação'),
+        $line('Manutenção e Limpeza', 'despesa', -($buckets['Manutenção e Limpeza'] ?? 0), 1, 'Manutenção e Limpeza'),
+        $line('Comercial/Marketing', 'despesa', -($buckets['Comercial/Marketing'] ?? 0), 1, 'Comercial/Marketing'),
+        $line('Seguros e Saúde Ocupacional', 'despesa', -($buckets['Seguros e Saúde Ocupacional'] ?? 0), 1, 'Seguros e Saúde Ocupacional'),
+        $line('Equipe Fixa', 'despesa', -($buckets['Equipe Fixa'] ?? 0), 1, 'Equipe Fixa'),
+        $line('Rescisões', 'despesa', -($buckets['Rescisões'] ?? 0), 1, 'Rescisões'),
+        $line('Treinamentos', 'despesa', -($buckets['Treinamentos'] ?? 0), 1, 'Treinamentos'),
+        $line('Transporte Administrativo', 'despesa', -($buckets['Transporte Administrativo'] ?? 0), 1, 'Transporte Administrativo'),
+        $line('Saúde/Benefícios', 'despesa', -($buckets['Saúde/Benefícios'] ?? 0), 1, 'Saúde/Benefícios'),
+        $line('Outras Despesas Operacionais', 'despesa', -($buckets['Outras Despesas Operacionais'] ?? 0), 1, 'Outras Despesas Operacionais'),
         $line('Lucro Operacional', 'total', $lucroOperacional),
-        $line('Despesas Financeiras', 'despesa', -$financeiras, 1, 'Despesas Financeiras'),
+        $line('Resultado Financeiro', 'title', -$financeiras),
+        $line('Despesas Financeiras', 'despesa', -($buckets['Despesas Financeiras'] ?? 0), 1, 'Despesas Financeiras'),
+        $line('INSS', 'despesa', -($buckets['INSS'] ?? 0), 1, 'INSS'),
         $line('Resultado do Exercício', 'result', $resultadoFinal),
+        $line('Fora do DRE / Movimento de Caixa', 'title', -$foraDre),
+        $line('Sócios', 'despesa', -($buckets['Sócios'] ?? 0), 1, 'Sócios'),
+        $line('Reservas', 'despesa', -($buckets['Reservas'] ?? 0), 1, 'Reservas'),
+        $line('Empréstimos e Financiamentos', 'despesa', -($buckets['Empréstimos e Financiamentos'] ?? 0), 1, 'Empréstimos e Financiamentos'),
+        $line('Investimentos/Patrimônio', 'despesa', -($buckets['Investimentos/Patrimônio'] ?? 0), 1, 'Investimentos/Patrimônio'),
+        $line('Obras e Expansão', 'despesa', -($buckets['Obras e Expansão'] ?? 0), 1, 'Obras e Expansão'),
     ];
 }
 
@@ -442,9 +556,10 @@ $next = $month->modify('+1 month');
 $summary = fa_summary($pdo, $start, $end, $dateBase, $status);
 $previous = fa_summary($pdo, $prevStart, $prevEnd, $dateBase, $status);
 $topReceitas = fa_top_receitas($pdo, $start, $end, $dateBase, $status);
+$receitasLinhas = fa_receitas_por_linha($pdo, $start, $end, $dateBase, $status);
 $topDespesas = fa_top_despesas($pdo, $start, $end, $status);
 $despesasCategorias = fa_despesas_por_categoria($pdo, $start, $end, $status);
-$dre = fa_build_dre($summary, $despesasCategorias);
+$dre = fa_build_dre($summary, $despesasCategorias, $receitasLinhas);
 
 $deltaReceitas = fa_delta($summary['receitas'], $previous['receitas']);
 $deltaDespesas = fa_delta($summary['despesas'], $previous['despesas']);
