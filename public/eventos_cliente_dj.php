@@ -890,8 +890,39 @@ function eventos_cliente_filtrar_anexos_sem_campo(array $anexos): array {
 function eventos_cliente_montar_visualizacao_schema(array $schema, array $values, array $anexos, string $section = ''): string {
     $parts = [];
     $current_group_id = 'geral';
+    $pending_notes = [];
+    $last_block_type = '';
+    $schema_count = count($schema);
+    $render_file_block = static function (array $field) use ($anexos): string {
+        $field_id = trim((string)($field['id'] ?? ''));
+        $label = trim((string)($field['label'] ?? 'Anexos'));
+        $field_anexos = eventos_cliente_filtrar_anexos_por_campo($anexos, $field_id);
+        $items = '';
+        if (!empty($field_anexos)) {
+            foreach ($field_anexos as $anexo) {
+                $name = eventos_cliente_e((string)($anexo['original_name'] ?? 'arquivo'));
+                $url = trim((string)($anexo['public_url'] ?? ''));
+                $note = trim((string)($anexo['note'] ?? ''));
+                $status = !empty($anexo['is_draft']) ? 'Rascunho' : 'Enviado';
+                $link_html = $url !== ''
+                    ? '<a href="' . eventos_cliente_e($url) . '" target="_blank" rel="noopener noreferrer">' . $name . '</a>'
+                    : $name;
+                $meta = '<small>Status: ' . eventos_cliente_e($status) . '</small>';
+                if ($note !== '') {
+                    $meta .= '<br><small>Obs: ' . eventos_cliente_e($note) . '</small>';
+                }
+                $items .= '<li>' . $link_html . '<br>' . $meta . '</li>';
+            }
+        }
+        $attachments_html = $items !== ''
+            ? '<ul>' . $items . '</ul>'
+            : '<em>Nenhum arquivo anexado.</em>';
 
-    foreach ($schema as $field) {
+        return '<div class="schema-upload-box"><strong>' . eventos_cliente_e($label) . '</strong><br>' . $attachments_html . '</div>';
+    };
+
+    for ($schema_index = 0; $schema_index < $schema_count; $schema_index++) {
+        $field = $schema[$schema_index];
         if (!is_array($field)) {
             continue;
         }
@@ -900,10 +931,20 @@ function eventos_cliente_montar_visualizacao_schema(array $schema, array $values
         $label = trim((string)($field['label'] ?? 'Campo'));
 
         if ($field_type === 'divider') {
+            foreach ($pending_notes as $note_html) {
+                $parts[] = '<div class="schema-field-help">' . $note_html . '</div>';
+            }
+            $pending_notes = [];
+            $last_block_type = 'divider';
             $parts[] = '<hr>';
             continue;
         }
         if ($field_type === 'section') {
+            foreach ($pending_notes as $note_html) {
+                $parts[] = '<div class="schema-field-help">' . $note_html . '</div>';
+            }
+            $pending_notes = [];
+            $last_block_type = 'section';
             $parts[] = '<h3>' . eventos_cliente_e($label) . '</h3>';
             $current_group_id = eventos_cliente_extra_group_id($field_id);
             if (!empty($field['allow_extra_moments'])) {
@@ -940,37 +981,32 @@ function eventos_cliente_montar_visualizacao_schema(array $schema, array $values
         if ($field_type === 'note') {
             $note_html = eventos_cliente_note_html($field);
             if ($note_html !== '') {
-                $parts[] = '<div>' . $note_html . '</div>';
+                if ($last_block_type === 'section' || !empty($pending_notes)) {
+                    $pending_notes[] = $note_html;
+                } else {
+                    $parts[] = '<div class="schema-field-help">' . $note_html . '</div>';
+                }
             }
             continue;
         }
 
         if ($field_type === 'file') {
-            $field_anexos = eventos_cliente_filtrar_anexos_por_campo($anexos, $field_id);
-            $items = '';
-            if (!empty($field_anexos)) {
-                foreach ($field_anexos as $anexo) {
-                    $name = eventos_cliente_e((string)($anexo['original_name'] ?? 'arquivo'));
-                    $url = trim((string)($anexo['public_url'] ?? ''));
-                    $note = trim((string)($anexo['note'] ?? ''));
-                    $status = !empty($anexo['is_draft']) ? 'Rascunho' : 'Enviado';
-                    $link_html = $url !== ''
-                        ? '<a href="' . eventos_cliente_e($url) . '" target="_blank" rel="noopener noreferrer">' . $name . '</a>'
-                        : $name;
-                    $meta = '<small>Status: ' . eventos_cliente_e($status) . '</small>';
-                    if ($note !== '') {
-                        $meta .= '<br><small>Obs: ' . eventos_cliente_e($note) . '</small>';
-                    }
-                    $items .= '<li>' . $link_html . '<br>' . $meta . '</li>';
-                }
-            }
-            $attachments_html = $items !== ''
-                ? '<ul>' . $items . '</ul>'
-                : '<em>Nenhum arquivo anexado.</em>';
             $order = !empty($field['orderable']) ? trim((string)($values[eventos_cliente_order_value_key($field_id)] ?? '')) : '';
             $order_html = $order !== '' ? '<small>Ordem: ' . eventos_cliente_e($order) . '</small><br>' : '';
-            $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $order_html . $attachments_html . '</p>';
+            $note_html = '';
+            foreach ($pending_notes as $pending_note_html) {
+                $note_html .= '<div class="schema-field-help">' . $pending_note_html . '</div>';
+            }
+            $pending_notes = [];
+            $parts[] = '<div class="schema-field-card">' . $note_html . $order_html . $render_file_block($field) . '</div>';
+            $last_block_type = 'field';
             continue;
+        }
+
+        $upload_field = null;
+        if (isset($schema[$schema_index + 1]) && is_array($schema[$schema_index + 1]) && strtolower(trim((string)($schema[$schema_index + 1]['type'] ?? ''))) === 'file') {
+            $upload_field = $schema[$schema_index + 1];
+            $schema_index++;
         }
 
         $value = trim((string)($values[$field_id] ?? ''));
@@ -994,7 +1030,18 @@ function eventos_cliente_montar_visualizacao_schema(array $schema, array $values
         $answer = $display !== '' ? nl2br(eventos_cliente_e($display)) : '<em>Não informado</em>';
         $order = !empty($field['orderable']) ? trim((string)($values[eventos_cliente_order_value_key($field_id)] ?? '')) : '';
         $order_html = $order !== '' ? '<small>Ordem: ' . eventos_cliente_e($order) . '</small><br>' : '';
-        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $order_html . $answer . '</p>';
+        $note_html = '';
+        foreach ($pending_notes as $pending_note_html) {
+            $note_html .= '<div class="schema-field-help">' . $pending_note_html . '</div>';
+        }
+        $pending_notes = [];
+        $upload_html = is_array($upload_field) ? $render_file_block($upload_field) : '';
+        $parts[] = '<div class="schema-field-card"><p><strong>' . eventos_cliente_e($label) . '</strong></p>' . $note_html . '<p>' . $order_html . $answer . '</p>' . $upload_html . '</div>';
+        $last_block_type = 'field';
+    }
+
+    foreach ($pending_notes as $note_html) {
+        $parts[] = '<div class="schema-field-help">' . $note_html . '</div>';
     }
 
     return implode("\n", $parts);
@@ -1881,6 +1928,66 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             font-size: 0.9rem;
         }
 
+        .schema-field-card {
+            margin-bottom: 1rem;
+            border: 1px solid #dbe3ef;
+            border-radius: 10px;
+            background: #ffffff;
+            padding: 0.95rem;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+
+        .schema-field-card + .schema-field-card {
+            margin-top: 0.85rem;
+        }
+
+        .schema-field-label {
+            display: block;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 0.4rem;
+            line-height: 1.35;
+        }
+
+        .schema-field-help {
+            margin: 0 0 0.75rem 0;
+            color: #475569;
+            font-size: 0.86rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 0.6rem 0.7rem;
+        }
+
+        .schema-field-control,
+        .schema-file-control {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 0.6rem;
+            font-size: 0.92rem;
+            background: #fff;
+        }
+
+        textarea.schema-field-control {
+            resize: vertical;
+            min-height: 112px;
+        }
+
+        .schema-upload-box {
+            margin-top: 0.85rem;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 0.85rem;
+        }
+
+        .schema-upload-label {
+            display: block;
+            font-weight: 700;
+            color: #334155;
+            margin-bottom: 0.4rem;
+            font-size: 0.9rem;
+        }
+
         .extra-moments-box {
             margin: 0 0 1rem 0;
             border: 1px dashed #b9c8df;
@@ -2606,8 +2713,14 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                     $schema_form_group_id = 'geral';
                     $schema_order_counter = 0;
                 ?>
-                <?php foreach ($section_schema as $field): ?>
+                <?php
+                    $schema_pending_notes = [];
+                    $schema_last_block_type = '';
+                    $schema_fields_count = count($section_schema);
+                ?>
+                <?php for ($schema_index = 0; $schema_index < $schema_fields_count; $schema_index++): ?>
                     <?php
+                        $field = (array)$section_schema[$schema_index];
                         $field_raw_id = (string)($field['id'] ?? '');
                         $field_name = eventos_cliente_field_input_name($field_raw_id, $section_key);
                         $order_name = eventos_cliente_order_input_name($field_raw_id, $section_key);
@@ -2618,6 +2731,7 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                         $required = !empty($field['required']);
                         $orderable = !empty($field['orderable']);
                         $required_attr = $required ? ' required' : '';
+                        $field_type = (string)($field['type'] ?? '');
                         $field_attachments = eventos_cliente_filtrar_anexos_por_campo($section_anexos, $field_raw_id);
                         $file_required_attr = ($required && empty($field_attachments)) ? ' required' : '';
                         $field_default_value = isset($field['default_value']) ? (string)$field['default_value'] : '';
@@ -2631,10 +2745,23 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                             }
                         }
                     ?>
-                    <?php if (($field['type'] ?? '') === 'divider'): ?>
+                    <?php if ($field_type === 'divider'): ?>
+                        <?php foreach ($schema_pending_notes as $pending_note_html): ?>
+                        <div class="schema-field-help">
+                            <?= $pending_note_html ?>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php $schema_pending_notes = []; $schema_last_block_type = 'divider'; ?>
                         <hr style="margin: 1rem 0; border: 0; border-top: 1px solid #e2e8f0;">
-                    <?php elseif (($field['type'] ?? '') === 'section'): ?>
+                    <?php elseif ($field_type === 'section'): ?>
+                        <?php foreach ($schema_pending_notes as $pending_note_html): ?>
+                        <div class="schema-field-help">
+                            <?= $pending_note_html ?>
+                        </div>
+                        <?php endforeach; ?>
                         <?php
+                            $schema_pending_notes = [];
+                            $schema_last_block_type = 'section';
                             $schema_form_group_id = eventos_cliente_extra_group_id($field_raw_id);
                             $schema_order_counter = 0;
                             $extra_moments = eventos_cliente_momentos_extras_from_values($section_values, $schema_form_group_id);
@@ -2727,57 +2854,104 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                             </div>
                         </div>
                         <?php endif; ?>
-                    <?php elseif (($field['type'] ?? '') === 'note'): ?>
+                    <?php elseif ($field_type === 'note'): ?>
                         <?php $note_html = eventos_cliente_note_html($field); ?>
                         <?php if ($note_html !== ''): ?>
-                        <div style="margin: 0.2rem 0 0.9rem 0; color:#475569; font-size:0.9rem; background:#f8fafc; border:1px solid #dbe3ef; border-radius:8px; padding:0.65rem 0.75rem;">
-                            <?= $note_html ?>
-                        </div>
+                            <?php if ($schema_last_block_type === 'section' || !empty($schema_pending_notes)): ?>
+                                <?php $schema_pending_notes[] = $note_html; ?>
+                            <?php else: ?>
+                            <div class="schema-field-help">
+                                <?= $note_html ?>
+                            </div>
+                            <?php endif; ?>
                         <?php endif; ?>
                     <?php else: ?>
-                        <div style="margin-bottom: 1rem;">
+                        <?php
+                            $upload_field = null;
+                            if ($field_type !== 'file' && isset($section_schema[$schema_index + 1]) && (($section_schema[$schema_index + 1]['type'] ?? '') === 'file')) {
+                                $upload_field = (array)$section_schema[$schema_index + 1];
+                                $schema_index++;
+                            } elseif ($field_type === 'file') {
+                                $upload_field = $field;
+                            }
+
+                            $upload_raw_id = is_array($upload_field) ? (string)($upload_field['id'] ?? '') : '';
+                            $upload_file_name = is_array($upload_field) ? eventos_cliente_file_input_name($upload_raw_id, $section_key) : '';
+                            $upload_file_note_name = is_array($upload_field) ? eventos_cliente_file_note_input_name($upload_raw_id, $section_key) : '';
+                            $upload_file_note_target = $upload_file_name . 'Notes';
+                            $upload_label = is_array($upload_field) ? (string)($upload_field['label'] ?? 'Anexe aqui, caso tenha em arquivo') : '';
+                            $upload_required = is_array($upload_field) && !empty($upload_field['required']);
+                            $upload_attachments = is_array($upload_field) ? eventos_cliente_filtrar_anexos_por_campo($section_anexos, $upload_raw_id) : [];
+                            $upload_required_attr = ($upload_required && empty($upload_attachments)) ? ' required' : '';
+                        ?>
+                        <div class="schema-field-card">
                             <?php if ($orderable): ?>
                             <div class="orderable-row">
                                 <label for="<?= eventos_cliente_e($order_name) ?>">Ordem</label>
                                 <input type="number" min="1" inputmode="numeric" id="<?= eventos_cliente_e($order_name) ?>" name="<?= eventos_cliente_e($order_name) ?>" value="<?= eventos_cliente_e($field_order_value) ?>">
                             </div>
                             <?php endif; ?>
-                            <label style="display:block; font-weight:600; color:#334155; margin-bottom:0.35rem;" for="<?= eventos_cliente_e($field_name) ?>">
+                            <?php if ($field_type !== 'file'): ?>
+                            <label class="schema-field-label" for="<?= eventos_cliente_e($field_name) ?>">
                                 <?= eventos_cliente_e($label) ?><?= $required ? ' *' : '' ?>
                             </label>
 
-                            <?php if (($field['type'] ?? '') === 'textarea'): ?>
-                                <textarea id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" rows="4" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>><?= eventos_cliente_e($field_value) ?></textarea>
-                            <?php elseif (($field['type'] ?? '') === 'yesno'): ?>
-                                <select id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
+                            <?php foreach ($schema_pending_notes as $pending_note_html): ?>
+                            <div class="schema-field-help">
+                                <?= $pending_note_html ?>
+                            </div>
+                            <?php endforeach; ?>
+                            <?php $schema_pending_notes = []; ?>
+
+                            <?php if ($field_type === 'textarea'): ?>
+                                <textarea class="schema-field-control" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" rows="4"<?= $required_attr ?>><?= eventos_cliente_e($field_value) ?></textarea>
+                            <?php elseif ($field_type === 'yesno'): ?>
+                                <select class="schema-field-control" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>"<?= $required_attr ?>>
                                     <option value="">Selecione...</option>
                                     <option value="sim"<?= $field_value === 'sim' ? ' selected' : '' ?>>Sim</option>
                                     <option value="nao"<?= $field_value === 'nao' ? ' selected' : '' ?>>Não</option>
                                 </select>
-                            <?php elseif (($field['type'] ?? '') === 'select'): ?>
-                                <select id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
+                            <?php elseif ($field_type === 'select'): ?>
+                                <select class="schema-field-control" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>"<?= $required_attr ?>>
                                     <option value="">Selecione...</option>
                                     <?php foreach (($field['options'] ?? []) as $opt): ?>
                                         <?php $opt_value = (string)$opt; ?>
                                         <option value="<?= eventos_cliente_e($opt_value) ?>"<?= $field_value === $opt_value ? ' selected' : '' ?>><?= eventos_cliente_e($opt_value) ?></option>
                                     <?php endforeach; ?>
                                 </select>
-                            <?php elseif (($field['type'] ?? '') === 'file'): ?>
+                            <?php else: ?>
+                                <input class="schema-field-control" type="text" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" value="<?= eventos_cliente_e($field_value) ?>"<?= $required_attr ?>>
+                            <?php endif; ?>
+                            <?php endif; ?>
+
+                            <?php if (is_array($upload_field)): ?>
+                            <div class="schema-upload-box">
+                                <?php if ($field_type === 'file'): ?>
+                                    <?php foreach ($schema_pending_notes as $pending_note_html): ?>
+                                    <div class="schema-field-help">
+                                        <?= $pending_note_html ?>
+                                    </div>
+                                    <?php endforeach; ?>
+                                    <?php $schema_pending_notes = []; ?>
+                                <?php endif; ?>
+                                <label class="schema-upload-label" for="<?= eventos_cliente_e($upload_file_name) ?>">
+                                    <?= eventos_cliente_e($upload_label !== '' ? $upload_label : 'Anexe aqui, caso tenha em arquivo') ?><?= $upload_required ? ' *' : '' ?>
+                                </label>
                                 <input type="file"
-                                       id="<?= eventos_cliente_e($file_name) ?>"
-                                       name="<?= eventos_cliente_e($file_name) ?>[]"
+                                       class="schema-file-control"
+                                       id="<?= eventos_cliente_e($upload_file_name) ?>"
+                                       name="<?= eventos_cliente_e($upload_file_name) ?>[]"
                                        multiple
                                        accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
-                                       style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"
-                                       data-note-target="<?= eventos_cliente_e($file_note_target) ?>"
-                                       data-note-name="<?= eventos_cliente_e($file_note_name) ?>[]"
-                                       <?= $file_required_attr ?>>
-                                <div class="file-note-wrap" id="<?= eventos_cliente_e($file_note_target) ?>"></div>
-                                <?php if (!empty($field_attachments)): ?>
-                                <div class="attachments-list" style="margin-top:0.6rem;">
-                                    <h4 style="margin-bottom:0.45rem;">Arquivos deste campo</h4>
+                                       data-note-target="<?= eventos_cliente_e($upload_file_note_target) ?>"
+                                       data-note-name="<?= eventos_cliente_e($upload_file_note_name) ?>[]"
+                                       <?= $upload_required_attr ?>>
+                                <div class="file-note-wrap" id="<?= eventos_cliente_e($upload_file_note_target) ?>"></div>
+                                <?php if (!empty($upload_attachments)): ?>
+                                <div class="attachments-list">
+                                    <h4>Arquivos deste campo</h4>
                                     <ul>
-                                        <?php foreach ($field_attachments as $anexo): ?>
+                                        <?php foreach ($upload_attachments as $anexo): ?>
                                         <?php
                                             $can_delete_attachment = !$is_locked
                                                 && strtolower(trim((string)($anexo['uploaded_by_type'] ?? ''))) === 'cliente'
@@ -2811,11 +2985,16 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                                     </ul>
                                 </div>
                                 <?php endif; ?>
-                            <?php else: ?>
-                                <input type="text" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" value="<?= eventos_cliente_e($field_value) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
+                            </div>
                             <?php endif; ?>
                         </div>
+                        <?php $schema_last_block_type = 'field'; ?>
                     <?php endif; ?>
+                <?php endfor; ?>
+                <?php foreach ($schema_pending_notes as $pending_note_html): ?>
+                <div class="schema-field-help">
+                    <?= $pending_note_html ?>
+                </div>
                 <?php endforeach; ?>
                 <?php else: ?>
                 <?php $instructions = eventos_cliente_section_instructions($section_key); ?>
