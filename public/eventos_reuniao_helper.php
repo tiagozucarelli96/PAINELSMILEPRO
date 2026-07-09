@@ -973,10 +973,15 @@ function eventos_form_template_schema_protocolo_15anos(): array {
         ['type' => 'section', 'label' => 'Músicas'],
         ['type' => 'note', 'label' => 'Envie o link da música (YouTube) e o tempo de início. Exemplo: Valsa 0:20.'],
         ['type' => 'textarea', 'label' => 'Música da entrada da debutante para o cerimonial'],
+        ['type' => 'file', 'label' => 'Anexe aqui, caso tenha em arquivo'],
         ['type' => 'textarea', 'label' => 'Vai ter sapato, anel e etc? Se sim, quais são as músicas desses momentos?'],
+        ['type' => 'file', 'label' => 'Anexe aqui, caso tenha em arquivo'],
         ['type' => 'textarea', 'label' => 'Valsa. Se for ter mais de uma, descreva quem irá dançar e qual música.'],
+        ['type' => 'file', 'label' => 'Anexe aqui, caso tenha em arquivo'],
         ['type' => 'textarea', 'id' => 'abertura_de_pista', 'label' => 'Abertura de pista. Anexe o arquivo ou cite o link da música que deseja, coloque o tempo da música, caso deseje tempo específico de música.'],
+        ['type' => 'file', 'id' => 'abertura_de_pista_arquivo', 'label' => 'Anexe aqui, caso tenha em arquivo'],
         ['type' => 'textarea', 'label' => 'Irá ter mais algum momento especial no cerimonial? Cite o momento e a música.'],
+        ['type' => 'file', 'id' => 'momento_especial_arquivo', 'label' => 'Anexe aqui, caso tenha em arquivo'],
 
         ['type' => 'section', 'label' => 'GOSTO MUSICAL / REPERTÓRIO'],
         ['type' => 'textarea', 'label' => 'Qual ritmo(s) tocar?'],
@@ -1001,16 +1006,90 @@ function eventos_form_template_schema_protocolo_15anos(): array {
 }
 
 /**
- * Garante que o template padrão "protocolo 15 anos" exista no banco atual.
+ * Aplica migrações leves no modelo DJ 15 anos já salvo, sem reescrever campos existentes.
  */
-function eventos_form_template_seed_protocolo_15anos(PDO $pdo, int $user_id = 0, bool $force_update = false): array {
-    eventos_reuniao_ensure_schema($pdo);
+function eventos_form_template_schema_garantir_campos_dj_15anos(array $schema): array {
+    $schema = eventos_form_template_normalizar_schema($schema);
+    $has_abertura = false;
+    foreach ($schema as $field) {
+        $label = eventos_form_template_lower((string)($field['label'] ?? ''));
+        $id = (string)($field['id'] ?? '');
+        if ($id === 'abertura_de_pista' || eventos_form_template_contains($label, 'abertura de pista')) {
+            $has_abertura = true;
+            break;
+        }
+    }
 
-    $template_name = 'protocolo 15 anos';
-    $template_category = '15anos';
+    $result = [];
+    foreach ($schema as $index => $field) {
+        $result[] = $field;
+        $label = eventos_form_template_lower((string)($field['label'] ?? ''));
+        $type = strtolower((string)($field['type'] ?? ''));
+        $next = $schema[$index + 1] ?? null;
+        $next_type = is_array($next) ? strtolower((string)($next['type'] ?? '')) : '';
 
+        if (!$has_abertura && $type === 'textarea' && eventos_form_template_contains($label, 'valsa. se for ter mais de uma')) {
+            $result[] = [
+                'id' => 'abertura_de_pista',
+                'type' => 'textarea',
+                'label' => 'Abertura de pista. Anexe o arquivo ou cite o link da música que deseja, coloque o tempo da música, caso deseje tempo específico de música.',
+                'required' => false,
+                'orderable' => false,
+                'allow_extra_moments' => false,
+                'options' => [],
+                'content_html' => '',
+                'default_value' => '',
+            ];
+            $result[] = [
+                'id' => 'abertura_de_pista_arquivo',
+                'type' => 'file',
+                'label' => 'Anexe aqui, caso tenha em arquivo',
+                'required' => false,
+                'orderable' => false,
+                'allow_extra_moments' => false,
+                'options' => [],
+                'content_html' => '',
+                'default_value' => '',
+            ];
+            $has_abertura = true;
+            continue;
+        }
+
+        if ($type === 'textarea' && eventos_form_template_contains($label, 'abertura de pista') && $next_type !== 'file') {
+            $result[] = [
+                'id' => 'abertura_de_pista_arquivo',
+                'type' => 'file',
+                'label' => 'Anexe aqui, caso tenha em arquivo',
+                'required' => false,
+                'orderable' => false,
+                'allow_extra_moments' => false,
+                'options' => [],
+                'content_html' => '',
+                'default_value' => '',
+            ];
+        }
+
+        if ($type === 'textarea' && eventos_form_template_contains($label, 'irá ter mais algum momento especial') && $next_type !== 'file') {
+            $result[] = [
+                'id' => 'momento_especial_arquivo',
+                'type' => 'file',
+                'label' => 'Anexe aqui, caso tenha em arquivo',
+                'required' => false,
+                'orderable' => false,
+                'allow_extra_moments' => false,
+                'options' => [],
+                'content_html' => '',
+                'default_value' => '',
+            ];
+        }
+    }
+
+    return eventos_form_template_normalizar_schema($result);
+}
+
+function eventos_form_template_migrar_dj_15anos_existente(PDO $pdo, string $template_name, string $template_category, int $user_id = 0): ?array {
     $stmt = $pdo->prepare("
-        SELECT id
+        SELECT id, schema_json
         FROM eventos_form_templates
         WHERE lower(nome) = lower(:nome)
           AND categoria = :categoria
@@ -1021,13 +1100,72 @@ function eventos_form_template_seed_protocolo_15anos(PDO $pdo, int $user_id = 0,
         ':nome' => $template_name,
         ':categoria' => $template_category,
     ]);
-    $existing_id = (int)($stmt->fetchColumn() ?: 0);
+    $existing = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$existing) {
+        return null;
+    }
+
+    $existing_id = (int)($existing['id'] ?? 0);
+    $decoded = json_decode((string)($existing['schema_json'] ?? '[]'), true);
+    $current_schema = is_array($decoded) ? $decoded : [];
+    $normalized_schema = eventos_form_template_normalizar_schema($current_schema);
+    $migrated_schema = eventos_form_template_schema_garantir_campos_dj_15anos($current_schema);
+    if ($migrated_schema !== $normalized_schema) {
+        return eventos_form_template_salvar(
+            $pdo,
+            $template_name,
+            $template_category,
+            $migrated_schema,
+            $user_id,
+            $existing_id
+        );
+    }
+
+    return ['ok' => true, 'mode' => 'exists', 'template_id' => $existing_id];
+}
+
+/**
+ * Garante que o template padrão "protocolo 15 anos" exista no banco atual.
+ */
+function eventos_form_template_seed_protocolo_15anos(PDO $pdo, int $user_id = 0, bool $force_update = false): array {
+    eventos_reuniao_ensure_schema($pdo);
+
+    $template_name = 'protocolo 15 anos';
+    $template_category = '15anos';
+    $cerimonial_migration = eventos_form_template_migrar_dj_15anos_existente(
+        $pdo,
+        'Cerimonial 15 anos (DJ)',
+        $template_category,
+        $user_id
+    );
+
+    $stmt = $pdo->prepare("
+        SELECT id, schema_json
+        FROM eventos_form_templates
+        WHERE lower(nome) = lower(:nome)
+          AND categoria = :categoria
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':nome' => $template_name,
+        ':categoria' => $template_category,
+    ]);
+    $existing = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $existing_id = (int)($existing['id'] ?? 0);
 
     if ($existing_id > 0 && !$force_update) {
+        $protocol_migration = eventos_form_template_migrar_dj_15anos_existente($pdo, $template_name, $template_category, $user_id);
+        if (is_array($cerimonial_migration) && (($cerimonial_migration['mode'] ?? '') === 'updated')) {
+            return $cerimonial_migration;
+        }
+        if (is_array($protocol_migration)) {
+            return $protocol_migration;
+        }
         return ['ok' => true, 'mode' => 'exists', 'template_id' => $existing_id];
     }
 
-    $schema = eventos_form_template_schema_protocolo_15anos();
+    $schema = eventos_form_template_schema_garantir_campos_dj_15anos(eventos_form_template_schema_protocolo_15anos());
     return eventos_form_template_salvar(
         $pdo,
         $template_name,

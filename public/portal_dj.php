@@ -730,16 +730,26 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
 
     $principal = $links_filtrados[0];
     $principal_id = (int)($principal['id'] ?? 0);
+    $secao_resolvida = is_array($secao_fallback) ? $secao_fallback : [];
+    $content_atual = portal_dj_remover_texto_livre_legacy((string)($secao_resolvida['content_html'] ?? ''));
     $snapshot_html = portal_dj_remover_texto_livre_legacy((string)($principal['content_html_snapshot'] ?? ''));
-    if (trim($snapshot_html) === '' || empty($principal['submitted_at'])) {
+    $content_html = trim($content_atual) !== '' ? $content_atual : $snapshot_html;
+    if (trim($content_html) === '' || empty($principal['submitted_at'])) {
         return ['resolved' => false];
     }
 
-    $secao_resolvida = is_array($secao_fallback) ? $secao_fallback : [];
     $secao_resolvida['section'] = 'dj_protocolo';
-    $secao_resolvida['content_html'] = $snapshot_html;
-    $secao_resolvida['content_text'] = trim(strip_tags($snapshot_html));
-    if (array_key_exists('form_schema', $principal) && is_array($principal['form_schema'])) {
+    $secao_resolvida['content_html'] = $content_html;
+    $secao_resolvida['content_text'] = trim(strip_tags($content_html));
+    if (!empty($secao_resolvida['form_schema_json'])) {
+        $decoded_schema = json_decode((string)$secao_resolvida['form_schema_json'], true);
+        if (is_array($decoded_schema)) {
+            $secao_resolvida['form_schema_json'] = json_encode(
+                portal_dj_filtrar_schema_dj_sem_texto_livre($decoded_schema),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            ) ?: '[]';
+        }
+    } elseif (array_key_exists('form_schema', $principal) && is_array($principal['form_schema'])) {
         $secao_resolvida['form_schema_json'] = json_encode(
             portal_dj_filtrar_schema_dj_sem_texto_livre($principal['form_schema']),
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
@@ -748,7 +758,10 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
 
     $anexos = [];
     if ($principal_id > 0) {
-        $anexos = eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'dj_protocolo', $principal_id);
+        $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo');
+        if (empty($anexos)) {
+            $anexos = eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'dj_protocolo', $principal_id);
+        }
     }
 
     return [

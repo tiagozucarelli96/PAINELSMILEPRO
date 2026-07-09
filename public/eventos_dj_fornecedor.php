@@ -252,20 +252,24 @@ if ($token === '') {
         if (!$reuniao) {
             $error = 'Evento não encontrado.';
         } else {
-            $content = trim((string)($link['content_html_snapshot'] ?? ''));
+            $secao_dj = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
+            $content = is_array($secao_dj) ? trim((string)($secao_dj['content_html'] ?? '')) : '';
+            if ($content === '') {
+                $content = trim((string)($link['content_html_snapshot'] ?? ''));
+            }
             if ($content === '') {
                 $content = trim((string)($link['draft_content_html_snapshot'] ?? ''));
             }
-            $secao_dj = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
-            if ($content === '' && is_array($secao_dj)) {
-                $content = trim((string)($secao_dj['content_html'] ?? ''));
-            }
-            $schema = eventos_form_template_normalizar_schema(is_array($link['form_schema'] ?? null) ? $link['form_schema'] : []);
-            if (empty($schema) && is_array($secao_dj) && !empty($secao_dj['form_schema_json'])) {
+
+            $schema = [];
+            if (is_array($secao_dj) && !empty($secao_dj['form_schema_json'])) {
                 $decoded_schema = json_decode((string)$secao_dj['form_schema_json'], true);
                 if (is_array($decoded_schema)) {
                     $schema = eventos_form_template_normalizar_schema($decoded_schema);
                 }
+            }
+            if (empty($schema)) {
+                $schema = eventos_form_template_normalizar_schema(is_array($link['form_schema'] ?? null) ? $link['form_schema'] : []);
             }
             $values = dj_fornecedor_payload_values($content);
             if (empty($values)) {
@@ -274,9 +278,9 @@ if ($token === '') {
             if ($content === '' && empty($link['submitted_at'])) {
                 $error = 'O formulário ainda não foi enviado.';
             }
-            $anexos = eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'dj_protocolo', (int)($link['id'] ?? 0));
+            $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo');
             if (empty($anexos)) {
-                $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo');
+                $anexos = eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'dj_protocolo', (int)($link['id'] ?? 0));
             }
         }
     }
