@@ -43,6 +43,50 @@ function dj_fornecedor_payload_values(string $html): array {
     return $values;
 }
 
+function dj_fornecedor_html_to_text(string $html): string {
+    $text = preg_replace('/<br\s*\/?>/i', "\n", $html) ?? $html;
+    $text = preg_replace('/<\/p\s*>/i', "\n", $text) ?? $text;
+    $text = strip_tags($text);
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $text = str_replace(["\r\n", "\r"], "\n", $text);
+    $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+    return trim($text);
+}
+
+function dj_fornecedor_extrair_values_html_legado(string $html, array $schema): array {
+    $html = trim($html);
+    if ($html === '' || empty($schema)) {
+        return [];
+    }
+    $values = [];
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? '')));
+        if (in_array($type, ['section', 'note', 'divider', 'file'], true)) {
+            continue;
+        }
+        $field_id = trim((string)($field['id'] ?? ''));
+        $label = trim((string)($field['label'] ?? ''));
+        if ($field_id === '' || $label === '') {
+            continue;
+        }
+        $pattern = '#<p\b[^>]*>\s*<strong>\s*' . preg_quote($label, '#') . '\s*</strong>\s*<br\s*/?>(.*?)</p>#isu';
+        if (!preg_match($pattern, $html, $matches)) {
+            continue;
+        }
+        $value = dj_fornecedor_html_to_text((string)($matches[1] ?? ''));
+        $value = preg_replace('/^Ordem:\s*\d+\s*/i', '', $value) ?? $value;
+        $value = preg_replace('/Tempo da música:\s*(Música inteira|\d{1,2}:\d{2}\s+até\s+\d{1,2}:\d{2})/iu', '', $value) ?? $value;
+        $value = trim(str_replace('Arquivo anexado separadamente.', '', $value));
+        if ($value !== '' && strcasecmp($value, 'Não informado') !== 0) {
+            $values[$field_id] = $value;
+        }
+    }
+    return $values;
+}
+
 function dj_fornecedor_anexos_por_campo(array $anexos, string $field_id): array {
     $field_id = trim($field_id);
     if ($field_id === '') {
@@ -209,12 +253,31 @@ if ($token === '') {
             $error = 'Evento não encontrado.';
         } else {
             $content = trim((string)($link['content_html_snapshot'] ?? ''));
+            if ($content === '') {
+                $content = trim((string)($link['draft_content_html_snapshot'] ?? ''));
+            }
+            $secao_dj = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
+            if ($content === '' && is_array($secao_dj)) {
+                $content = trim((string)($secao_dj['content_html'] ?? ''));
+            }
+            $schema = eventos_form_template_normalizar_schema(is_array($link['form_schema'] ?? null) ? $link['form_schema'] : []);
+            if (empty($schema) && is_array($secao_dj) && !empty($secao_dj['form_schema_json'])) {
+                $decoded_schema = json_decode((string)$secao_dj['form_schema_json'], true);
+                if (is_array($decoded_schema)) {
+                    $schema = eventos_form_template_normalizar_schema($decoded_schema);
+                }
+            }
+            $values = dj_fornecedor_payload_values($content);
+            if (empty($values)) {
+                $values = dj_fornecedor_extrair_values_html_legado($content, $schema);
+            }
             if ($content === '' && empty($link['submitted_at'])) {
                 $error = 'O formulário ainda não foi enviado.';
             }
-            $schema = eventos_form_template_normalizar_schema(is_array($link['form_schema'] ?? null) ? $link['form_schema'] : []);
-            $values = dj_fornecedor_payload_values($content);
             $anexos = eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'dj_protocolo', (int)($link['id'] ?? 0));
+            if (empty($anexos)) {
+                $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo');
+            }
         }
     }
 }
