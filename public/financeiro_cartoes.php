@@ -298,7 +298,7 @@ try {
     $categorias = [];
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $action = (string)($_POST['action'] ?? '');
 
     if ($action === 'save_card') {
@@ -415,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && empty($_GET['preview'])) {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && empty($_GET['preview'])) {
     unset($_SESSION['fc_preview']);
 }
 
@@ -424,6 +424,38 @@ $faturasPorCartao = [];
 $stmt = $pdo->query("SELECT f.*, c.nome AS cartao_nome FROM financeiro_cartao_faturas f INNER JOIN financeiro_cartoes c ON c.id = f.cartao_id ORDER BY f.vencimento ASC");
 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $fatura) {
     $faturasPorCartao[(int)$fatura['cartao_id']][] = $fatura;
+}
+
+$today = date('Y-m-d');
+$cardStats = [];
+$totalAtivos = 0;
+$totalFaturas = 0;
+$totalFaturasValor = 0.0;
+foreach ($cartoes as $cartao) {
+    $cardId = (int)$cartao['id'];
+    if (!empty($cartao['ativo'])) {
+        $totalAtivos++;
+    }
+    $faturas = $faturasPorCartao[$cardId] ?? [];
+    $totalCartao = 0.0;
+    $proximaFatura = null;
+    foreach ($faturas as $fatura) {
+        $valor = (float)($fatura['total'] ?? 0);
+        $totalCartao += $valor;
+        $totalFaturas += 1;
+        $totalFaturasValor += $valor;
+        if ($proximaFatura === null && (string)$fatura['vencimento'] >= $today) {
+            $proximaFatura = $fatura;
+        }
+    }
+    if ($proximaFatura === null && !empty($faturas)) {
+        $proximaFatura = $faturas[count($faturas) - 1];
+    }
+    $cardStats[$cardId] = [
+        'qtd_faturas' => count($faturas),
+        'total' => $totalCartao,
+        'proxima' => $proximaFatura,
+    ];
 }
 $preview = is_array($_SESSION['fc_preview'] ?? null) ? $_SESSION['fc_preview'] : null;
 $previewItems = is_array($preview['items'] ?? null) ? $preview['items'] : [];
@@ -476,20 +508,27 @@ includeSidebar('Cartoes de Credito');
 ?>
 
 <style>
-.cc-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.cc-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.cc-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.cc-sub{margin:.3rem 0 0;color:#64748b}.cc-actions{display:flex;gap:.65rem;flex-wrap:wrap}.cc-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;font:inherit}.cc-btn.primary{background:#1e3a8a;color:#fff}.cc-btn.green{background:#20c985;color:#fff}.cc-alert{padding:.85rem 1rem;border-radius:8px;margin:1rem 0;font-weight:800}.cc-alert.success{background:#ecfdf5;color:#166534;border:1px solid #a7f3d0}.cc-alert.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.cc-grid{display:grid;grid-template-columns:1fr;gap:1rem;margin-top:1rem}.cc-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07);overflow:hidden}.cc-card summary{cursor:pointer;padding:1rem;background:#f8fbff;display:flex;justify-content:space-between;gap:1rem;align-items:center}.cc-card-title{font-weight:900;color:#1e293b}.cc-muted{color:#64748b;font-size:.88rem}.cc-table-wrap{overflow:auto}.cc-table{width:100%;border-collapse:collapse;min-width:900px}.cc-table th,.cc-table td{padding:.8rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.cc-table th{background:#f8fafc;color:#475569;font-size:.76rem;text-transform:uppercase}.cc-pill{display:inline-flex;border-radius:999px;padding:.22rem .55rem;font-size:.76rem;font-weight:900}.cc-pill.on{background:#dcfce7;color:#166534}.cc-pill.off{background:#fee2e2;color:#991b1b}.cc-money{font-weight:900;color:#b42318}.cc-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cc-small-btn{border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:.42rem .62rem;cursor:pointer;font-weight:800;color:#334155;text-decoration:none}.cc-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.cc-modal-backdrop.open{display:flex}.cc-modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.cc-modal-head{display:flex;justify-content:space-between;align-items:center;padding:1rem;border-bottom:1px solid #e2e8f0}.cc-modal-title{margin:0;font-size:1.15rem;color:#1e293b;font-weight:900}.cc-close{width:36px;height:36px;border:0;border-radius:999px;background:#f1f5f9;cursor:pointer;font-size:1.25rem}.cc-form{padding:1rem;display:grid;gap:.85rem}.cc-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.cc-field{display:grid;gap:.35rem}.cc-field.full{grid-column:1/-1}.cc-field label{font-weight:800;font-size:.84rem}.cc-field input,.cc-field select,.cc-field textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.68rem .78rem;font:inherit}.cc-field textarea{min-height:180px}.cc-preview{margin-top:1rem;border:1px solid #bae6fd;border-radius:10px;overflow:visible;background:#f0f9ff}.cc-preview-head{padding:1rem;border-bottom:1px solid #bae6fd;font-weight:900;color:#075985}.cc-duplicate{background:#fff7ed}.cc-footer{display:flex;justify-content:flex-end;padding:1rem;border-top:1px solid #e2e8f0}.cc-cat-field{min-width:260px}.cc-cat-combo{position:relative}.cc-cat-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.55rem .68rem;font:inherit;text-align:left;cursor:pointer}.cc-cat-trigger:after{content:'▾';color:#64748b;font-size:.78rem}.cc-cat-panel{position:absolute;z-index:90;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:280px;overflow:auto}.cc-cat-combo.open .cc-cat-panel{display:block}.cc-cat-search-wrap{position:relative;margin-bottom:.45rem}.cc-cat-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem;font:inherit}.cc-cat-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cc-cat-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cc-cat-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cc-cat-option:hover,.cc-cat-option.active{background:#334155;color:#fff}.cc-cat-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cc-cat-combo.disabled{opacity:.55;pointer-events:none}@media(max-width:760px){.cc-form-grid{grid-template-columns:1fr}.cc-page{padding:1rem}}
+.cc-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.cc-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.cc-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.cc-sub{margin:.3rem 0 0;color:#64748b}.cc-actions{display:flex;gap:.65rem;flex-wrap:wrap}.cc-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;font:inherit}.cc-btn.primary{background:#1e3a8a;color:#fff}.cc-btn.green{background:#20c985;color:#fff}.cc-alert{padding:.85rem 1rem;border-radius:8px;margin:1rem 0;font-weight:800}.cc-alert.success{background:#ecfdf5;color:#166534;border:1px solid #a7f3d0}.cc-alert.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.cc-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin:1.1rem 0}.cc-summary{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.06);padding:1rem;border-left:4px solid #38bdf8}.cc-summary.green{border-color:#22c55e}.cc-summary.red{border-color:#ef4444}.cc-summary h3{margin:0 0 .6rem;color:#64748b;font-size:.78rem;text-transform:uppercase}.cc-summary strong{display:block;color:#1e293b;font-size:1.35rem}.cc-summary span{display:block;color:#64748b;font-size:.84rem;margin-top:.25rem}.cc-toolbar{display:flex;justify-content:space-between;gap:1rem;align-items:end;margin:1rem 0}.cc-search{width:min(420px,100%);display:grid;gap:.35rem}.cc-search label{font-size:.82rem;font-weight:900;color:#475569}.cc-search input{border:1px solid #cbd5e1;border-radius:8px;padding:.68rem .8rem;font:inherit;background:#fff}.cc-count{font-weight:900;color:#64748b}.cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1rem;margin-top:1rem}.cc-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07);overflow:hidden}.cc-card[open]{grid-column:1/-1}.cc-card summary{cursor:pointer;padding:1rem;background:#f8fbff;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:center;list-style:none}.cc-card summary::-webkit-details-marker{display:none}.cc-card summary:before{content:'▸';font-weight:900;color:#64748b;margin-right:.5rem}.cc-card[open] summary:before{content:'▾'}.cc-card-title-row{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}.cc-card-title{font-weight:900;color:#1e293b}.cc-muted{color:#64748b;font-size:.88rem}.cc-card-meta{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.65rem}.cc-stat{display:inline-flex;align-items:center;gap:.25rem;border:1px solid #e2e8f0;background:#fff;border-radius:999px;padding:.24rem .55rem;color:#475569;font-size:.78rem;font-weight:800}.cc-table-wrap{overflow:auto}.cc-table{width:100%;border-collapse:collapse;min-width:900px}.cc-table th,.cc-table td{padding:.8rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.cc-table th{background:#f8fafc;color:#475569;font-size:.76rem;text-transform:uppercase}.cc-pill{display:inline-flex;border-radius:999px;padding:.22rem .55rem;font-size:.76rem;font-weight:900}.cc-pill.on{background:#dcfce7;color:#166534}.cc-pill.off{background:#fee2e2;color:#991b1b}.cc-money{font-weight:900;color:#b42318}.cc-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cc-card-body{padding:1rem;border-top:1px solid #e2e8f0;background:#fff}.cc-small-btn{border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:.42rem .62rem;cursor:pointer;font-weight:800;color:#334155;text-decoration:none}.cc-small-btn:hover{background:#f8fafc}.cc-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.cc-modal-backdrop.open{display:flex}.cc-modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.cc-modal-head{display:flex;justify-content:space-between;align-items:center;padding:1rem;border-bottom:1px solid #e2e8f0}.cc-modal-title{margin:0;font-size:1.15rem;color:#1e293b;font-weight:900}.cc-close{width:36px;height:36px;border:0;border-radius:999px;background:#f1f5f9;cursor:pointer;font-size:1.25rem}.cc-form{padding:1rem;display:grid;gap:.85rem}.cc-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.cc-field{display:grid;gap:.35rem}.cc-field.full{grid-column:1/-1}.cc-field label{font-weight:800;font-size:.84rem}.cc-field input,.cc-field select,.cc-field textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.68rem .78rem;font:inherit}.cc-field textarea{min-height:180px}.cc-preview{margin-top:1rem;border:1px solid #bae6fd;border-radius:10px;overflow:visible;background:#f0f9ff}.cc-preview-head{padding:1rem;border-bottom:1px solid #bae6fd;font-weight:900;color:#075985}.cc-duplicate{background:#fff7ed}.cc-footer{display:flex;justify-content:flex-end;padding:1rem;border-top:1px solid #e2e8f0}.cc-cat-field{min-width:260px}.cc-cat-combo{position:relative}.cc-cat-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.55rem .68rem;font:inherit;text-align:left;cursor:pointer}.cc-cat-trigger:after{content:'▾';color:#64748b;font-size:.78rem}.cc-cat-panel{position:absolute;z-index:90;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:280px;overflow:auto}.cc-cat-combo.open .cc-cat-panel{display:block}.cc-cat-search-wrap{position:relative;margin-bottom:.45rem}.cc-cat-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem;font:inherit}.cc-cat-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cc-cat-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cc-cat-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cc-cat-option:hover,.cc-cat-option.active{background:#334155;color:#fff}.cc-cat-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cc-cat-combo.disabled{opacity:.55;pointer-events:none}@media(max-width:1050px){.cc-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.cc-form-grid,.cc-summary-grid{grid-template-columns:1fr}.cc-page{padding:1rem}.cc-grid{grid-template-columns:1fr}.cc-toolbar{align-items:stretch;flex-direction:column}.cc-card summary{grid-template-columns:1fr}}
 </style>
 
 <main class="cc-page">
     <div class="cc-top">
-        <div><h1 class="cc-title">Cartoes de Credito</h1><p class="cc-sub">Cadastre cartoes, importe faturas e integre o total ao financeiro.</p></div>
+        <div><h1 class="cc-title">Cartões de Crédito</h1><p class="cc-sub">Cadastre cartões, importe faturas e integre o total ao financeiro.</p></div>
         <div class="cc-actions">
             <a class="cc-btn" href="index.php?page=financeiro">Financeiro</a>
             <button class="cc-btn green" type="button" data-open-modal="import-modal" onclick="ccOpenModal('import-modal')">Importar fatura</button>
-            <button class="cc-btn primary" type="button" data-open-modal="card-modal" onclick="ccOpenModal('card-modal')">Novo cartao</button>
+            <button class="cc-btn primary" type="button" data-open-modal="card-modal" onclick="ccOpenModal('card-modal')">Novo cartão</button>
         </div>
     </div>
     <?php foreach ($messages as $msg): ?><div class="cc-alert success"><?= h($msg) ?></div><?php endforeach; ?>
     <?php foreach ($errors as $err): ?><div class="cc-alert error"><?= h($err) ?></div><?php endforeach; ?>
+
+    <section class="cc-summary-grid">
+        <div class="cc-summary green"><h3>Cartões ativos</h3><strong><?= (int)$totalAtivos ?></strong><span><?= count($cartoes) ?> cadastrados</span></div>
+        <div class="cc-summary"><h3>Faturas importadas</h3><strong><?= (int)$totalFaturas ?></strong><span>parcelas e fechamentos salvos</span></div>
+        <div class="cc-summary red"><h3>Total em faturas</h3><strong><?= h(format_currency($totalFaturasValor)) ?></strong><span>somatório das faturas no sistema</span></div>
+        <div class="cc-summary"><h3>Integração</h3><strong>Financeiro</strong><span>total da fatura entra como despesa</span></div>
+    </section>
 
     <?php if ($previewItems): ?>
         <section class="cc-preview">
@@ -523,15 +562,34 @@ includeSidebar('Cartoes de Credito');
         </section>
     <?php endif; ?>
 
-    <div class="cc-grid">
+    <div class="cc-toolbar">
+        <div class="cc-search">
+            <label>Buscar cartão</label>
+            <input type="search" placeholder="Nome do cartão" data-card-search>
+        </div>
+        <div class="cc-count" data-card-count><?= count($cartoes) ?> cartão(ões)</div>
+    </div>
+
+    <div class="cc-grid" data-card-grid>
         <?php foreach ($cartoes as $cartao): ?>
-            <details class="cc-card">
-                <summary><span><span class="cc-card-title"><?= h((string)$cartao['nome']) ?></span><span class="cc-muted"> · vencimento dia <?= (int)$cartao['dia_vencimento'] ?></span></span><span class="cc-pill <?= !empty($cartao['ativo']) ? 'on' : 'off' ?>"><?= !empty($cartao['ativo']) ? 'Ativo' : 'Inativo' ?></span></summary>
-                <div style="padding:1rem"><div class="cc-row-actions"><button class="cc-small-btn" type="button" data-edit-card data-id="<?= (int)$cartao['id'] ?>" data-nome="<?= h((string)$cartao['nome']) ?>" data-dia="<?= (int)$cartao['dia_vencimento'] ?>">Editar</button><form method="post"><input type="hidden" name="action" value="toggle_card"><input type="hidden" name="id" value="<?= (int)$cartao['id'] ?>"><button class="cc-small-btn" type="submit"><?= !empty($cartao['ativo']) ? 'Desativar' : 'Ativar' ?></button></form></div></div>
-                <div class="cc-table-wrap"><table class="cc-table"><thead><tr><th>Fatura</th><th>Vencimento</th><th>Total</th><th>Acoes</th></tr></thead><tbody><?php foreach (($faturasPorCartao[(int)$cartao['id']] ?? []) as $fatura): ?><tr><td><?= h(date('m/Y', strtotime((string)$fatura['competencia']))) ?></td><td><?= h(brDateOnly((string)$fatura['vencimento'])) ?></td><td><span class="cc-money"><?= h(format_currency($fatura['total'])) ?></span></td><td><a class="cc-small-btn" href="index.php?page=financeiro_cartoes&fatura_id=<?= (int)$fatura['id'] ?>">Visualizar</a></td></tr><?php endforeach; ?><?php if (empty($faturasPorCartao[(int)$cartao['id']])): ?><tr><td colspan="4" class="cc-muted">Nenhuma fatura importada.</td></tr><?php endif; ?></tbody></table></div>
+            <?php $stats = $cardStats[(int)$cartao['id']] ?? ['qtd_faturas' => 0, 'total' => 0, 'proxima' => null]; $proxima = $stats['proxima']; ?>
+            <details class="cc-card" data-card-item data-card-name="<?= h(strtolower((string)$cartao['nome'])) ?>">
+                <summary>
+                    <span>
+                        <span class="cc-card-title-row"><span class="cc-card-title"><?= h((string)$cartao['nome']) ?></span><span class="cc-muted">vencimento dia <?= (int)$cartao['dia_vencimento'] ?></span></span>
+                        <span class="cc-card-meta">
+                            <span class="cc-stat"><?= (int)$stats['qtd_faturas'] ?> fatura(s)</span>
+                            <span class="cc-stat"><?= h(format_currency($stats['total'])) ?></span>
+                            <?php if ($proxima): ?><span class="cc-stat">Próxima: <?= h(brDateOnly((string)$proxima['vencimento'])) ?></span><?php endif; ?>
+                        </span>
+                    </span>
+                    <span class="cc-pill <?= !empty($cartao['ativo']) ? 'on' : 'off' ?>"><?= !empty($cartao['ativo']) ? 'Ativo' : 'Inativo' ?></span>
+                </summary>
+                <div class="cc-card-body"><div class="cc-row-actions"><button class="cc-small-btn" type="button" data-edit-card data-id="<?= (int)$cartao['id'] ?>" data-nome="<?= h((string)$cartao['nome']) ?>" data-dia="<?= (int)$cartao['dia_vencimento'] ?>">Editar</button><form method="post"><input type="hidden" name="action" value="toggle_card"><input type="hidden" name="id" value="<?= (int)$cartao['id'] ?>"><button class="cc-small-btn" type="submit"><?= !empty($cartao['ativo']) ? 'Desativar' : 'Ativar' ?></button></form></div></div>
+                <div class="cc-table-wrap"><table class="cc-table"><thead><tr><th>Fatura</th><th>Vencimento</th><th>Total</th><th>Ações</th></tr></thead><tbody><?php foreach (($faturasPorCartao[(int)$cartao['id']] ?? []) as $fatura): ?><tr><td><?= h(date('m/Y', strtotime((string)$fatura['competencia']))) ?></td><td><?= h(brDateOnly((string)$fatura['vencimento'])) ?></td><td><span class="cc-money"><?= h(format_currency($fatura['total'])) ?></span></td><td><a class="cc-small-btn" href="index.php?page=financeiro_cartoes&fatura_id=<?= (int)$fatura['id'] ?>">Visualizar</a></td></tr><?php endforeach; ?><?php if (empty($faturasPorCartao[(int)$cartao['id']])): ?><tr><td colspan="4" class="cc-muted">Nenhuma fatura importada.</td></tr><?php endif; ?></tbody></table></div>
             </details>
         <?php endforeach; ?>
-        <?php if (!$cartoes): ?><div class="cc-card" style="padding:1rem">Nenhum cartao cadastrado.</div><?php endif; ?>
+        <?php if (!$cartoes): ?><div class="cc-card" style="padding:1rem">Nenhum cartão cadastrado.</div><?php endif; ?>
     </div>
 </main>
 
@@ -596,6 +654,25 @@ document.querySelector('[data-cc-select-all]')?.addEventListener('change', (even
         }
     });
 });
+
+const cardSearch = document.querySelector('[data-card-search]');
+const cardCount = document.querySelector('[data-card-count]');
+const cardItems = Array.from(document.querySelectorAll('[data-card-item]'));
+function ccFilterCards() {
+    const term = (cardSearch?.value || '').trim().toLowerCase();
+    let visible = 0;
+    cardItems.forEach((card) => {
+        const show = term === '' || (card.dataset.cardName || '').includes(term);
+        card.style.display = show ? '' : 'none';
+        if (show) {
+            visible++;
+        }
+    });
+    if (cardCount) {
+        cardCount.textContent = `${visible} cartão(ões)`;
+    }
+}
+cardSearch?.addEventListener('input', ccFilterCards);
 
 document.querySelectorAll('[data-cc-cat-combo]').forEach((combo) => {
     const trigger = combo.querySelector('[data-cc-cat-trigger]');

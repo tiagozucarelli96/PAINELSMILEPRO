@@ -375,6 +375,8 @@ if (!empty($topDespesas[0]) && $summary['despesas'] > 0) {
 if ($summary['a_pagar'] > 0) {
     $insights[] = 'Existem ' . format_currency($summary['a_pagar']) . ' em despesas ainda pendentes no mês.';
 }
+
+includeSidebar('Análise Financeira');
 ?>
 
 <style>
@@ -504,3 +506,5 @@ if ($summary['a_pagar'] > 0) {
         </tbody></table></div>
     </section>
 </div>
+
+<?php endSidebar(); ?>
