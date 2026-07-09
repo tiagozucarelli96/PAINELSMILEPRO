@@ -1024,7 +1024,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
             <button class="btn btn-green" type="button" data-open-modal="despesa-modal">+ Nova despesa</button>
             <button class="btn btn-blue" type="button" data-open-modal="ofx-modal">Importar OFX</button>
             <a class="btn btn-slate" href="index.php?page=financeiro_cartoes">Cartão de crédito</a>
-            <a class="btn btn-slate" href="financeiro_analise.php?competencia=<?= h($month->format('Y-m')) ?>">Análise financeira</a>
+            <a class="btn btn-slate" href="index.php?page=financeiro_analise">Análise financeira</a>
         </div>
     </div>
 

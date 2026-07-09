@@ -657,23 +657,6 @@ if (!$file && $page) {
 }
 
 if ($path && is_file($path)) {
-  if ($_SERVER['REQUEST_METHOD'] === 'GET' && $page === 'financeiro_analise') {
-    $redirectQuery = [];
-    $routeQuery = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
-    if ($routeQuery !== '') {
-      parse_str(str_replace('&amp;', '&', $routeQuery), $redirectQuery);
-    }
-    $redirectQuery = array_merge($redirectQuery, $_GET);
-    unset($redirectQuery['page']);
-
-    $redirectUrl = 'financeiro_analise.php';
-    if (!empty($redirectQuery)) {
-      $redirectUrl .= '?' . http_build_query($redirectQuery);
-    }
-    header('Location: ' . $redirectUrl);
-    exit;
-  }
-
   $modalRoutePages = [
     'cadastros_contratos',
     'cadastros_pacotes_produtos',
