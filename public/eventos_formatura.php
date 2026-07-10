@@ -353,6 +353,8 @@ function eventos_formatura_calcular_formando(array $formando, array $config): ar
 
     return [
         'pessoas_por_mesa' => $pessoasPorMesa,
+        'valor_mesa' => $valorMesa,
+        'valor_convidado_adicional' => $valorAdicional,
         'capacidade_base' => $capacidadeBase,
         'convidados_adicionais' => $convidadosAdicionais,
         'valor_base_mesas' => $valorBaseMesas,
@@ -459,6 +461,10 @@ function eventos_formatura_mapa_tags(array $evento, array $formando, array $fina
     }
     $totalPago = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] === 'pago')));
     $saldo = max(0, $totalLancado - $totalPago);
+    $valorMesa = (float)($formando['valor_mesa'] ?? 0);
+    $valorConvidadoAdicional = (float)($formando['valor_convidado_adicional'] ?? 0);
+    $valorBaseMesas = (float)($formando['valor_base_mesas'] ?? 0);
+    $valorAdicionais = (float)($formando['valor_adicionais'] ?? 0);
 
     $parcelas = [];
     foreach ($financeiroFormando as $item) {
@@ -491,6 +497,7 @@ function eventos_formatura_mapa_tags(array $evento, array $formando, array $fina
         '#CIDADE#' => (string)($formando['cliente_cidade'] ?? ''),
         '#ESTADO#' => (string)($formando['cliente_estado'] ?? ''),
         '#NOME_EVENTO#' => (string)($evento['nome_evento'] ?? ''),
+        '#ID_EVENTO#' => (string)($evento['id'] ?? ''),
         '#DATA_EVENTO#' => eventos_formatura_data_br((string)($evento['data_evento'] ?? '')),
         '#HORARIO_EVENTO#' => $horario,
         '#LOCAL_EVENTO#' => (string)($evento['local_evento'] ?? ''),
@@ -503,6 +510,12 @@ function eventos_formatura_mapa_tags(array $evento, array $formando, array $fina
         '#NOME_FORMANDO#' => (string)($formando['nome_formando'] ?? ''),
         '#CONVIDADOS_FORMANDO#' => (string)($formando['convidados'] ?? '0'),
         '#MESAS_FORMANDO#' => (string)($formando['mesas'] ?? '0'),
+        '#VALOR_MESA#' => 'R$ ' . number_format($valorMesa, 2, ',', '.'),
+        '#PESSOAS_POR_MESA#' => (string)($formando['pessoas_por_mesa'] ?? '0'),
+        '#CONVIDADOS_ADICIONAIS#' => (string)($formando['convidados_adicionais'] ?? '0'),
+        '#VALOR_CONVIDADO_ADICIONAL#' => 'R$ ' . number_format($valorConvidadoAdicional, 2, ',', '.'),
+        '#VALOR_MESAS_FORMATURA#' => 'R$ ' . number_format($valorBaseMesas, 2, ',', '.'),
+        '#VALOR_ADICIONAIS_FORMATURA#' => 'R$ ' . number_format($valorAdicionais, 2, ',', '.'),
         '#RESPONSAVEL_FORMANDO#' => (string)($formando['cliente_nome'] ?? ''),
         '#VALOR_FORMANDO#' => 'R$ ' . number_format($totalLancado, 2, ',', '.'),
         '#PARCELAS_FORMANDO#' => $parcelasHtml,
