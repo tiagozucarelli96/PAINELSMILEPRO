@@ -279,24 +279,38 @@ function comercial_cadastro_cliente_value(string $key, ?array $clienteAtual = nu
 
 function comercial_cadastro_cliente_request_value(string $key, string $default = ''): string
 {
+    $candidateKeys = [$key, 'amp;' . $key];
+
     if (isset($_POST[$key]) && is_scalar($_POST[$key])) {
         return (string)$_POST[$key];
     }
-    if (isset($_GET[$key]) && is_scalar($_GET[$key])) {
-        return (string)$_GET[$key];
+    foreach ($candidateKeys as $candidateKey) {
+        if (isset($_GET[$candidateKey]) && is_scalar($_GET[$candidateKey])) {
+            return (string)$_GET[$candidateKey];
+        }
     }
-    if (
-        isset($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$key])
-        && is_scalar($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$key])
-    ) {
-        return (string)$GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$key];
+    foreach ($candidateKeys as $candidateKey) {
+        if (
+            isset($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$candidateKey])
+            && is_scalar($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$candidateKey])
+        ) {
+            return (string)$GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$candidateKey];
+        }
     }
 
     $queryString = (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? ($_SERVER['QUERY_STRING'] ?? ''));
+    $requestUriQuery = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
+    if ($requestUriQuery !== '' && $requestUriQuery !== $queryString) {
+        $queryString .= ($queryString !== '' ? '&' : '') . $requestUriQuery;
+    }
+
     if ($queryString !== '') {
-        parse_str(str_replace('&amp;', '&', $queryString), $queryParams);
-        if (isset($queryParams[$key]) && is_scalar($queryParams[$key])) {
-            return (string)$queryParams[$key];
+        $normalizedQueryString = html_entity_decode(urldecode($queryString), ENT_QUOTES, 'UTF-8');
+        parse_str(str_replace('&amp;', '&', $normalizedQueryString), $queryParams);
+        foreach ($candidateKeys as $candidateKey) {
+            if (isset($queryParams[$candidateKey]) && is_scalar($queryParams[$candidateKey])) {
+                return (string)$queryParams[$candidateKey];
+            }
         }
     }
 
@@ -320,7 +334,7 @@ $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario
 $search = trim(comercial_cadastro_cliente_request_value('search'));
 $clienteId = comercial_cadastro_cliente_request_id();
 $clienteAtual = comercial_cadastro_cliente_buscar($pdo, $clienteId);
-if (!$clienteAtual && $clienteId <= 0 && $search !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+if (!$clienteAtual && $search !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     $clienteAtual = comercial_cadastro_cliente_buscar_por_search($pdo, $search);
     if ($clienteAtual) {
         $clienteId = (int)$clienteAtual['id'];
