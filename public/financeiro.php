@@ -781,7 +781,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $check->execute([':id' => $id]);
                 $origemDespesa = (string)($check->fetchColumn() ?: '');
                 if ($origemDespesa === 'cartao_credito') {
-                    $errors[] = 'Faturas de cartao sao lancamentos automaticos e ficam disponiveis apenas para consulta.';
+                    $stmt = $pdo->prepare("
+                        UPDATE financeiro_despesas
+                        SET status = :status,
+                            updated_at = NOW()
+                        WHERE id = :id
+                          AND status <> 'cancelado'
+                    ");
+                    $stmt->execute([
+                        ':id' => $id,
+                        ':status' => $status,
+                    ]);
+                    $messages[] = 'Status da fatura atualizado com sucesso.';
                 } else {
                     $stmt = $pdo->prepare("
                         UPDATE financeiro_despesas
@@ -1515,10 +1526,10 @@ function resetDespesaModal() {
     document.getElementById('despesa-conta').value = '';
     document.getElementById('despesa-status').value = 'pendente';
     setCategoriaCombo(document.querySelector('#despesa-modal [data-cat-combo]'), '', 'Selecionar categoria');
-    setDespesaReadOnly(false);
+    setDespesaCardMode(false);
 }
 
-function setDespesaReadOnly(readOnly) {
+function setDespesaCardMode(cardMode) {
     const modal = document.getElementById('despesa-modal');
     const fields = [
         'despesa-descricao',
@@ -1526,31 +1537,31 @@ function setDespesaReadOnly(readOnly) {
         'despesa-valor',
         'despesa-banco',
         'despesa-conta',
-        'despesa-status',
     ];
     fields.forEach((id) => {
         const field = document.getElementById(id);
         if (!field) return;
-        if (field.tagName === 'SELECT') {
-            field.disabled = readOnly;
-        } else {
-            field.readOnly = readOnly;
-        }
+        field.readOnly = cardMode;
     });
+    const status = document.getElementById('despesa-status');
+    if (status) status.disabled = false;
     const combo = modal?.querySelector('[data-cat-combo]');
     const categoryHidden = modal?.querySelector('[data-cat-hidden]');
-    combo?.classList.toggle('disabled', readOnly);
-    if (categoryHidden) categoryHidden.disabled = readOnly;
+    combo?.classList.toggle('disabled', cardMode);
+    if (categoryHidden) categoryHidden.disabled = cardMode;
     const addLink = modal?.querySelector('.cat-add-link');
-    if (addLink) addLink.style.display = readOnly ? 'none' : '';
+    if (addLink) addLink.style.display = cardMode ? 'none' : '';
     const submit = document.getElementById('despesa-submit');
-    if (submit) submit.style.display = readOnly ? 'none' : '';
+    if (submit) {
+        submit.style.display = '';
+        submit.textContent = cardMode ? 'Salvar status' : 'Salvar despesa';
+    }
 }
 
 document.querySelectorAll('[data-edit-despesa]').forEach((button) => {
     button.addEventListener('click', () => {
         const isCartao = (button.dataset.origem || '') === 'cartao_credito';
-        document.getElementById('despesa-title').textContent = isCartao ? 'Consultar despesa' : 'Editar despesa';
+        document.getElementById('despesa-title').textContent = isCartao ? 'Status da fatura' : 'Editar despesa';
         document.getElementById('despesa-id').value = button.dataset.id || '0';
         document.getElementById('despesa-descricao').value = button.dataset.descricao || '';
         document.getElementById('despesa-data').value = button.dataset.data || '';
@@ -1559,7 +1570,7 @@ document.querySelectorAll('[data-edit-despesa]').forEach((button) => {
         document.getElementById('despesa-conta').value = button.dataset.conta || '';
         document.getElementById('despesa-status').value = button.dataset.status || 'pendente';
         setCategoriaCombo(document.querySelector('#despesa-modal [data-cat-combo]'), button.dataset.categoria || '', 'Selecionar categoria');
-        setDespesaReadOnly(isCartao);
+        setDespesaCardMode(isCartao);
         document.getElementById('despesa-modal')?.classList.add('open');
     });
 });
