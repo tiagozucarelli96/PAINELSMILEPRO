@@ -777,30 +777,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Informe a data da despesa.';
         } else {
             if ($id > 0) {
-                $stmt = $pdo->prepare("
-                    UPDATE financeiro_despesas
-                    SET data_movimento = :data_movimento,
-                        descricao = :descricao,
-                        valor = :valor,
-                        banco = :banco,
-                        conta = :conta,
-                        categoria = :categoria,
-                        status = :status,
-                        updated_at = NOW()
-                    WHERE id = :id
-                      AND status <> 'cancelado'
-                ");
-                $stmt->execute([
-                    ':id' => $id,
-                    ':data_movimento' => $data,
-                    ':descricao' => $descricao,
-                    ':valor' => $valor,
-                    ':banco' => trim((string)($_POST['banco'] ?? '')) ?: null,
-                    ':conta' => trim((string)($_POST['conta'] ?? '')) ?: null,
-                    ':categoria' => trim((string)($_POST['categoria'] ?? '')) ?: null,
-                    ':status' => $status,
-                ]);
-                $messages[] = 'Despesa atualizada com sucesso.';
+                $check = $pdo->prepare("SELECT origem FROM financeiro_despesas WHERE id = :id LIMIT 1");
+                $check->execute([':id' => $id]);
+                $origemDespesa = (string)($check->fetchColumn() ?: '');
+                if ($origemDespesa === 'cartao_credito') {
+                    $errors[] = 'Faturas de cartao sao lancamentos automaticos e ficam disponiveis apenas para consulta.';
+                } else {
+                    $stmt = $pdo->prepare("
+                        UPDATE financeiro_despesas
+                        SET data_movimento = :data_movimento,
+                            descricao = :descricao,
+                            valor = :valor,
+                            banco = :banco,
+                            conta = :conta,
+                            categoria = :categoria,
+                            status = :status,
+                            updated_at = NOW()
+                        WHERE id = :id
+                          AND status <> 'cancelado'
+                    ");
+                    $stmt->execute([
+                        ':id' => $id,
+                        ':data_movimento' => $data,
+                        ':descricao' => $descricao,
+                        ':valor' => $valor,
+                        ':banco' => trim((string)($_POST['banco'] ?? '')) ?: null,
+                        ':conta' => trim((string)($_POST['conta'] ?? '')) ?: null,
+                        ':categoria' => trim((string)($_POST['categoria'] ?? '')) ?: null,
+                        ':status' => $status,
+                    ]);
+                    $messages[] = 'Despesa atualizada com sucesso.';
+                }
             } else {
                 $stmt = $pdo->prepare("
                     INSERT INTO financeiro_despesas
@@ -826,15 +833,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'delete_despesa') {
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
-            $stmt = $pdo->prepare("
-                UPDATE financeiro_despesas
-                SET status = 'cancelado',
-                    updated_at = NOW()
-                WHERE id = :id
-                  AND status <> 'cancelado'
-            ");
-            $stmt->execute([':id' => $id]);
-            $messages[] = 'Despesa removida da listagem.';
+            $check = $pdo->prepare("SELECT origem FROM financeiro_despesas WHERE id = :id LIMIT 1");
+            $check->execute([':id' => $id]);
+            $origemDespesa = (string)($check->fetchColumn() ?: '');
+            if ($origemDespesa === 'cartao_credito') {
+                $errors[] = 'Faturas de cartao sao lancamentos automaticos e nao podem ser removidas pelo financeiro.';
+            } else {
+                $stmt = $pdo->prepare("
+                    UPDATE financeiro_despesas
+                    SET status = 'cancelado',
+                        updated_at = NOW()
+                    WHERE id = :id
+                      AND status <> 'cancelado'
+                ");
+                $stmt->execute([':id' => $id]);
+                $messages[] = 'Despesa removida da listagem.';
+            }
         }
     }
 
@@ -1106,7 +1120,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
 .filter-button{height:43px}.table-wrap{overflow:auto;border:1px solid #e2e8f0;border-radius:8px}.finance-table{width:100%;border-collapse:collapse;background:#fff;min-width:1060px}.finance-table th{background:#64727f;color:#fff;text-align:left;padding:.85rem;font-size:.8rem;text-transform:uppercase}.finance-table td{border-bottom:1px solid #e2e8f0;padding:.85rem;vertical-align:middle}
 .badge{display:inline-flex;border-radius:999px;padding:.28rem .65rem;font-size:.76rem;font-weight:900}.badge-pendente{background:#fef3c7;color:#92400e}.badge-pago,.badge-conciliado{background:#dcfce7;color:#166534}.badge-vencido{background:#fee2e2;color:#991b1b}.badge-cancelado{background:#e2e8f0;color:#475569}.badge-receita{background:#58c786;color:#fff}.badge-despesa{background:#e05a43;color:#fff}
 .wallet{font-weight:900;color:#475569}.wallet small{display:block;color:#64748b;font-weight:700;margin-top:.25rem}.muted{color:#64748b;font-size:.88rem}.money{font-weight:900;color:#374151}.money.out{color:#b42318}.event-name{font-weight:900;color:#1d4ed8}.event-meta{display:block;color:#64748b;font-size:.82rem;margin-top:.25rem}
-.row-actions{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap}.icon-action{width:34px;height:34px;border:0;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-weight:900;color:#fff}.icon-action.edit{background:#f4c44e}.icon-action.delete{background:#e05a43}
+.row-actions{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap}.icon-action{width:34px;height:34px;border:0;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-weight:900;color:#fff}.icon-action.edit{background:#f4c44e}.icon-action.view{background:#5ebfd4}.icon-action.delete{background:#e05a43}
 .ofx-preview{border:1px solid #bae6fd;background:#f0f9ff;border-radius:10px;margin-bottom:1rem;overflow:hidden}.ofx-preview-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;padding:1rem;border-bottom:1px solid #bae6fd}.ofx-preview-title{margin:0;color:#075985;font-size:1.05rem;font-weight:900}.ofx-preview-meta{color:#0f766e;font-weight:800;font-size:.86rem}.ofx-preview-actions{display:flex;gap:.6rem;flex-wrap:wrap}.ofx-table{width:100%;border-collapse:collapse;min-width:1180px;background:#fff}.ofx-table th,.ofx-table td{border-bottom:1px solid #e2e8f0;padding:.72rem;text-align:left;vertical-align:middle}.ofx-table th{background:#e0f2fe;color:#075985;font-size:.76rem;text-transform:uppercase}.ofx-table tr.duplicate{background:#fff7ed}.ofx-table input[type="text"],.ofx-table select{padding:.55rem .62rem;border-radius:7px}.ofx-status{display:inline-flex;border-radius:999px;padding:.24rem .55rem;font-size:.74rem;font-weight:900;background:#dcfce7;color:#166534}.ofx-status.warn{background:#fed7aa;color:#9a3412}.ofx-status.info{background:#e0f2fe;color:#075985}.ofx-small{display:block;color:#64748b;font-size:.78rem;margin-top:.25rem}.ofx-editable-desc{min-width:260px}
 .cat-combo-field{display:grid;gap:.25rem}.cat-label-row{display:flex;justify-content:space-between;gap:.6rem;align-items:center}.cat-add-link{font-size:.82rem;font-weight:900;color:#2878b8;text-decoration:none}.cat-combo{position:relative;min-width:230px}.cat-combo-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.72rem .78rem;font:inherit;text-align:left;cursor:pointer}.cat-combo-trigger:after{content:'▾';color:#64748b;font-size:.8rem}.cat-combo-panel{position:absolute;z-index:80;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:280px;overflow:auto}.cat-combo.open .cat-combo-panel{display:block}.cat-combo-search-wrap{position:relative;margin-bottom:.45rem}.cat-combo-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem!important}.cat-combo-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cat-combo-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cat-combo-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cat-combo-option:hover,.cat-combo-option.active{background:#334155;color:#fff}.cat-combo-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cat-combo.disabled{opacity:.55;pointer-events:none}
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.modal-backdrop.open{display:flex}
@@ -1349,7 +1363,10 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                         <thead><tr><th>Data</th><th>Descricao</th><th>Origem</th><th>Valor</th><th>Categoria/Banco</th><th>Status</th><th>Ações</th></tr></thead>
                         <tbody>
                         <?php foreach ($despesas as $despesa): ?>
-                            <?php $status = (string)($despesa['status'] ?? 'pendente'); ?>
+                            <?php
+                            $status = (string)($despesa['status'] ?? 'pendente');
+                            $isCartaoDespesa = (string)($despesa['origem'] ?? '') === 'cartao_credito';
+                            ?>
                             <tr>
                                 <td><strong><?= h(brDateOnly((string)$despesa['data_movimento'])) ?></strong></td>
                                 <td><?= h((string)$despesa['descricao']) ?></td>
@@ -1360,11 +1377,12 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                 <td>
                                     <div class="row-actions">
                                         <button
-                                            class="icon-action edit"
+                                            class="icon-action <?= $isCartaoDespesa ? 'view' : 'edit' ?>"
                                             type="button"
-                                            title="Editar"
+                                            title="<?= $isCartaoDespesa ? 'Consultar' : 'Editar' ?>"
                                             data-edit-despesa
                                             data-id="<?= (int)$despesa['id'] ?>"
+                                            data-origem="<?= h((string)($despesa['origem'] ?? '')) ?>"
                                             data-descricao="<?= h((string)$despesa['descricao']) ?>"
                                             data-data="<?= h((string)$despesa['data_movimento']) ?>"
                                             data-valor="<?= h((string)$despesa['valor']) ?>"
@@ -1372,12 +1390,14 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                             data-conta="<?= h((string)($despesa['conta'] ?? '')) ?>"
                                             data-categoria="<?= h((string)($despesa['categoria'] ?? '')) ?>"
                                             data-status="<?= h($status) ?>"
-                                        >✎</button>
-                                        <form method="post" onsubmit="return confirm('Remover esta despesa da listagem?');">
-                                            <input type="hidden" name="action" value="delete_despesa">
-                                            <input type="hidden" name="id" value="<?= (int)$despesa['id'] ?>">
-                                            <button class="icon-action delete" type="submit" title="Excluir">🗑</button>
-                                        </form>
+                                        ><?= $isCartaoDespesa ? '👁' : '✎' ?></button>
+                                        <?php if (!$isCartaoDespesa): ?>
+                                            <form method="post" onsubmit="return confirm('Remover esta despesa da listagem?');">
+                                                <input type="hidden" name="action" value="delete_despesa">
+                                                <input type="hidden" name="id" value="<?= (int)$despesa['id'] ?>">
+                                                <button class="icon-action delete" type="submit" title="Excluir">🗑</button>
+                                            </form>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
@@ -1419,7 +1439,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
             </div>
             <div class="modal-actions">
                 <button class="btn btn-ghost" type="button" data-close-modal>Cancelar</button>
-                <button class="btn btn-green" type="submit">Salvar despesa</button>
+                <button class="btn btn-green" type="submit" id="despesa-submit">Salvar despesa</button>
             </div>
         </form>
     </div>
@@ -1495,11 +1515,42 @@ function resetDespesaModal() {
     document.getElementById('despesa-conta').value = '';
     document.getElementById('despesa-status').value = 'pendente';
     setCategoriaCombo(document.querySelector('#despesa-modal [data-cat-combo]'), '', 'Selecionar categoria');
+    setDespesaReadOnly(false);
+}
+
+function setDespesaReadOnly(readOnly) {
+    const modal = document.getElementById('despesa-modal');
+    const fields = [
+        'despesa-descricao',
+        'despesa-data',
+        'despesa-valor',
+        'despesa-banco',
+        'despesa-conta',
+        'despesa-status',
+    ];
+    fields.forEach((id) => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        if (field.tagName === 'SELECT') {
+            field.disabled = readOnly;
+        } else {
+            field.readOnly = readOnly;
+        }
+    });
+    const combo = modal?.querySelector('[data-cat-combo]');
+    const categoryHidden = modal?.querySelector('[data-cat-hidden]');
+    combo?.classList.toggle('disabled', readOnly);
+    if (categoryHidden) categoryHidden.disabled = readOnly;
+    const addLink = modal?.querySelector('.cat-add-link');
+    if (addLink) addLink.style.display = readOnly ? 'none' : '';
+    const submit = document.getElementById('despesa-submit');
+    if (submit) submit.style.display = readOnly ? 'none' : '';
 }
 
 document.querySelectorAll('[data-edit-despesa]').forEach((button) => {
     button.addEventListener('click', () => {
-        document.getElementById('despesa-title').textContent = 'Editar despesa';
+        const isCartao = (button.dataset.origem || '') === 'cartao_credito';
+        document.getElementById('despesa-title').textContent = isCartao ? 'Consultar despesa' : 'Editar despesa';
         document.getElementById('despesa-id').value = button.dataset.id || '0';
         document.getElementById('despesa-descricao').value = button.dataset.descricao || '';
         document.getElementById('despesa-data').value = button.dataset.data || '';
@@ -1508,6 +1559,7 @@ document.querySelectorAll('[data-edit-despesa]').forEach((button) => {
         document.getElementById('despesa-conta').value = button.dataset.conta || '';
         document.getElementById('despesa-status').value = button.dataset.status || 'pendente';
         setCategoriaCombo(document.querySelector('#despesa-modal [data-cat-combo]'), button.dataset.categoria || '', 'Selecionar categoria');
+        setDespesaReadOnly(isCartao);
         document.getElementById('despesa-modal')?.classList.add('open');
     });
 });
