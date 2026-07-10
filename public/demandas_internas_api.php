@@ -505,6 +505,141 @@ function demandasInternasNotificarAtualizacaoWhatsapp(PDO $pdo, int $demandaId, 
     }
 }
 
+function demandasInternasStatusLabel(string $status): string
+{
+    return [
+        'aberta' => 'Aberta',
+        'em_andamento' => 'Em andamento',
+        'aguardando' => 'Aguardando',
+        'resolvida' => 'Resolvida',
+        'encerrada' => 'Encerrada',
+        'cancelada' => 'Cancelada',
+    ][$status] ?? ucfirst(str_replace('_', ' ', $status));
+}
+
+function demandasInternasPrioridadeLabel(string $prioridade): string
+{
+    return [
+        'baixa' => 'Baixa',
+        'normal' => 'Normal',
+        'alta' => 'Alta',
+        'urgente' => 'Urgente',
+    ][$prioridade] ?? ucfirst($prioridade);
+}
+
+function demandasInternasFormatarData(?string $data): string
+{
+    $data = trim((string)$data);
+    if ($data === '') {
+        return 'Sem prazo';
+    }
+
+    try {
+        return (new DateTimeImmutable($data))->format('d/m/Y');
+    } catch (Throwable $e) {
+        return $data;
+    }
+}
+
+function demandasInternasNotificarMudancaAdministrativa(PDO $pdo, int $demandaId, int $autorId, array $antes, array $depois, bool $encerramentoDireto = false): void
+{
+    try {
+        if (!$depois) {
+            return;
+        }
+
+        $destinatarios = demandasInternasUsuariosDestino(
+            $pdo,
+            (string)($depois['responsavel_tipo'] ?? 'usuario'),
+            (int)($depois['responsavel_id'] ?? 0),
+            (string)($depois['responsavel_setor'] ?? '')
+        );
+
+        $criadorId = (int)($depois['criador_id'] ?? 0);
+        if ($criadorId > 0) {
+            $destinatarios[] = ['id' => $criadorId];
+        }
+
+        $destinatariosPorId = [];
+        foreach ($destinatarios as $destinatario) {
+            $id = (int)($destinatario['id'] ?? 0);
+            if ($id > 0 && $id !== $autorId) {
+                $destinatariosPorId[$id] = ['id' => $id];
+            }
+        }
+
+        if (!$destinatariosPorId && empty($depois['enviar_jordao'])) {
+            return;
+        }
+
+        $tituloDemanda = trim((string)($depois['titulo'] ?? 'Demanda interna'));
+        $url = demandasInternasBuildUrl($demandaId);
+        $linhasAlteracoes = [];
+
+        $statusAntes = (string)($antes['status'] ?? '');
+        $statusDepois = (string)($depois['status'] ?? '');
+        if ($encerramentoDireto || ($statusAntes !== '' && $statusAntes !== $statusDepois)) {
+            $linhasAlteracoes[] = '• Status: ' . demandasInternasStatusLabel($statusAntes) . ' → ' . demandasInternasStatusLabel($statusDepois);
+        }
+
+        $prioridadeAntes = (string)($antes['prioridade'] ?? '');
+        $prioridadeDepois = (string)($depois['prioridade'] ?? '');
+        if (!$encerramentoDireto && $prioridadeAntes !== '' && $prioridadeAntes !== $prioridadeDepois) {
+            $linhasAlteracoes[] = '• Prioridade: ' . demandasInternasPrioridadeLabel($prioridadeAntes) . ' → ' . demandasInternasPrioridadeLabel($prioridadeDepois);
+        }
+
+        $prazoAntes = (string)($antes['prazo'] ?? '');
+        $prazoDepois = (string)($depois['prazo'] ?? '');
+        if (!$encerramentoDireto && $prazoAntes !== $prazoDepois) {
+            $linhasAlteracoes[] = '• Prazo: ' . demandasInternasFormatarData($prazoAntes) . ' → ' . demandasInternasFormatarData($prazoDepois);
+        }
+
+        if (!$linhasAlteracoes) {
+            return;
+        }
+
+        $foiEncerrada = in_array($statusDepois, ['encerrada', 'cancelada'], true);
+        $titulo = $foiEncerrada ? 'Demanda encerrada' : 'Demanda atualizada';
+        $icone = $foiEncerrada ? '✅' : '🔄';
+        $whatsappMensagem = trim(
+            "{$icone} *{$titulo}!*\n\n" .
+            "📝 *Demanda:* {$tituloDemanda}\n" .
+            "🔎 *Código:* #{$demandaId}\n\n" .
+            "*Alterações:*\n" . implode("\n", $linhasAlteracoes) . "\n\n" .
+            "➡️ Acesse a demanda pelo painel:\n{$url}"
+        );
+
+        $dispatcher = new NotificationDispatcher($pdo);
+        if ($destinatariosPorId) {
+            $resultado = $dispatcher->dispatch(array_values($destinatariosPorId), [
+                'tipo' => $foiEncerrada ? 'demanda_interna_encerrada' : 'demanda_interna_alterada',
+                'referencia_id' => $demandaId,
+                'titulo' => $titulo,
+                'mensagem' => $titulo . ': ' . $tituloDemanda,
+                'url_destino' => $url,
+                'push_titulo' => $titulo,
+                'push_mensagem' => $tituloDemanda,
+                'whatsapp_mensagem' => $whatsappMensagem,
+            ], [
+                'internal' => true,
+                'push' => true,
+                'whatsapp' => true,
+            ]);
+            error_log('[DEMANDAS INTERNAS] Notificações alteração #' . $demandaId . ': ' . json_encode($resultado, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        }
+
+        if (!empty($depois['enviar_jordao'])
+            && (string)($depois['responsavel_tipo'] ?? '') === 'usuario'
+            && demandasInternasUsuarioEhGustavo($pdo, (int)($depois['responsavel_id'] ?? 0))
+        ) {
+            $okJordao = $dispatcher->sendWhatsappDirect('+5512981497097', $whatsappMensagem, 'Jordão');
+            error_log('[DEMANDAS INTERNAS] Cópia WhatsApp Jordão alteração #' . $demandaId . ': ' . ($okJordao ? 'enviada' : 'falhou'));
+        }
+    } catch (Throwable $e) {
+        error_log('[DEMANDAS INTERNAS] Falha ao notificar alteração da demanda #' . $demandaId . ': ' . $e->getMessage());
+    }
+}
+
 function demandasInternasNotificarMencoes(PDO $pdo, int $demandaId, array $destinatarios, int $autorId, bool $isNovaDemanda): void
 {
     $destinatarios = array_values(array_unique(array_filter(array_map('intval', $destinatarios), static fn($id) => $id > 0 && $id !== $autorId)));
@@ -921,17 +1056,19 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
     $prioridade = (string)($_POST['prioridade'] ?? 'normal');
     $prazo = trim((string)($_POST['prazo'] ?? ''));
     $enviarJordao = !empty($_POST['enviar_jordao']);
+
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM demandas_internas
+        WHERE id = :id
+        LIMIT 1
+    ");
+    $stmt->execute([':id' => $id]);
+    $demandaAntes = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
     if ($enviarJordao) {
-        $stmt = $pdo->prepare("
-            SELECT responsavel_tipo, responsavel_id
-            FROM demandas_internas
-            WHERE id = :id
-            LIMIT 1
-        ");
-        $stmt->execute([':id' => $id]);
-        $demandaAtual = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        $enviarJordao = ($demandaAtual['responsavel_tipo'] ?? '') === 'usuario'
-            && demandasInternasUsuarioEhGustavo($pdo, (int)($demandaAtual['responsavel_id'] ?? 0));
+        $enviarJordao = ($demandaAntes['responsavel_tipo'] ?? '') === 'usuario'
+            && demandasInternasUsuarioEhGustavo($pdo, (int)($demandaAntes['responsavel_id'] ?? 0));
     }
     $encerradaEm = in_array($status, ['encerrada', 'cancelada'], true) ? 'NOW()' : 'NULL';
 
@@ -957,6 +1094,12 @@ function demandasInternasUpdate(PDO $pdo, int $userId, bool $isAdmin): void
     ]);
 
     demandasInternasLog($pdo, $id, $userId, 'demanda_alterada', 'Status, prazo, prioridade ou cópia ao Jordão alterado.');
+    $demandaDepois = $demandaAntes;
+    $demandaDepois['status'] = $status;
+    $demandaDepois['prioridade'] = $prioridade;
+    $demandaDepois['prazo'] = $prazo;
+    $demandaDepois['enviar_jordao'] = $enviarJordao;
+    demandasInternasNotificarMudancaAdministrativa($pdo, $id, $userId, $demandaAntes, $demandaDepois);
     demandasInternasJson(['success' => true]);
 }
 
@@ -966,6 +1109,15 @@ function demandasInternasClose(PDO $pdo, int $userId, bool $isAdmin): void
     if ($id <= 0 || !demandasInternasUserCanAccess($pdo, $id, $userId, $isAdmin)) {
         demandasInternasJson(['success' => false, 'error' => 'Demanda não encontrada.'], 404);
     }
+
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM demandas_internas
+        WHERE id = :id
+        LIMIT 1
+    ");
+    $stmt->execute([':id' => $id]);
+    $demandaAntes = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
     $stmt = $pdo->prepare("
         UPDATE demandas_internas
@@ -979,6 +1131,9 @@ function demandasInternasClose(PDO $pdo, int $userId, bool $isAdmin): void
 
     if ($stmt->rowCount() > 0) {
         demandasInternasLog($pdo, $id, $userId, 'demanda_encerrada', 'Demanda encerrada e arquivada.');
+        $demandaDepois = $demandaAntes;
+        $demandaDepois['status'] = 'encerrada';
+        demandasInternasNotificarMudancaAdministrativa($pdo, $id, $userId, $demandaAntes, $demandaDepois, true);
     }
 
     demandasInternasJson(['success' => true]);
