@@ -277,11 +277,48 @@ function comercial_cadastro_cliente_value(string $key, ?array $clienteAtual = nu
     return $default;
 }
 
+function comercial_cadastro_cliente_request_value(string $key, string $default = ''): string
+{
+    if (isset($_POST[$key]) && is_scalar($_POST[$key])) {
+        return (string)$_POST[$key];
+    }
+    if (isset($_GET[$key]) && is_scalar($_GET[$key])) {
+        return (string)$_GET[$key];
+    }
+    if (
+        isset($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$key])
+        && is_scalar($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$key])
+    ) {
+        return (string)$GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'][$key];
+    }
+
+    $queryString = (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? ($_SERVER['QUERY_STRING'] ?? ''));
+    if ($queryString !== '') {
+        parse_str(str_replace('&amp;', '&', $queryString), $queryParams);
+        if (isset($queryParams[$key]) && is_scalar($queryParams[$key])) {
+            return (string)$queryParams[$key];
+        }
+    }
+
+    return $default;
+}
+
+function comercial_cadastro_cliente_request_id(): int
+{
+    foreach (['id', 'cliente_id', 'edit_id'] as $key) {
+        $value = comercial_cadastro_cliente_request_value($key);
+        if ($value !== '') {
+            return max(0, (int)$value);
+        }
+    }
+    return 0;
+}
+
 comercial_cadastro_cliente_ensure_schema($pdo);
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
-$search = trim((string)($_GET['search'] ?? ''));
-$clienteId = (int)($_GET['id'] ?? $_GET['edit_id'] ?? $_POST['id'] ?? 0);
+$search = trim(comercial_cadastro_cliente_request_value('search'));
+$clienteId = comercial_cadastro_cliente_request_id();
 $clienteAtual = comercial_cadastro_cliente_buscar($pdo, $clienteId);
 if (!$clienteAtual && $clienteId <= 0 && $search !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     $clienteAtual = comercial_cadastro_cliente_buscar_por_search($pdo, $search);
@@ -642,6 +679,14 @@ includeSidebar('Cadastro do cliente');
     border-radius: 12px;
     padding: 0.85rem;
     background: #fbfdff;
+    color: inherit;
+    display: block;
+    text-decoration: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cliente-list-item:hover {
+    border-color: #bfdbfe;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
 }
 .cliente-list-name {
     color: #1e293b;
@@ -788,7 +833,10 @@ includeSidebar('Cadastro do cliente');
                     <div class="cliente-empty">Nenhum cliente cadastrado ainda.</div>
                 <?php else: ?>
                     <?php foreach ($clientes as $cliente): ?>
-                        <div class="cliente-list-item">
+                        <?php
+                        $clienteHref = 'index.php?page=comercial_cadastro_cliente&id=' . (int)$cliente['id'];
+                        ?>
+                        <a class="cliente-list-item" href="<?= comercial_cadastro_cliente_e($clienteHref) ?>">
                             <div class="cliente-list-name"><?= comercial_cadastro_cliente_e((string)$cliente['nome_completo']) ?></div>
                             <div class="cliente-list-meta">
                                 <?= comercial_cadastro_cliente_e((string)$cliente['documento_tipo']) ?> <?= comercial_cadastro_cliente_e((string)$cliente['documento_numero']) ?><br>
@@ -800,7 +848,7 @@ includeSidebar('Cadastro do cliente');
                                     Responsável: <?= comercial_cadastro_cliente_e((string)$cliente['responsavel_nome']) ?>
                                 <?php endif; ?>
                             </div>
-                        </div>
+                        </a>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>

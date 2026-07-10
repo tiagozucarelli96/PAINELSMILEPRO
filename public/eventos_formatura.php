@@ -31,6 +31,15 @@ function eventos_formatura_money($value): float
     return eventos_financeiro_money($value);
 }
 
+function eventos_formatura_config_padrao(): array
+{
+    return [
+        'pessoas_por_mesa' => 8,
+        'valor_mesa' => 0.0,
+        'valor_convidado_adicional' => 0.0,
+    ];
+}
+
 function eventos_formatura_ensure_schema(PDO $pdo): void
 {
     static $done = false;
@@ -89,6 +98,24 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_invoice_url TEXT NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payload JSONB NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pago_em TIMESTAMP NULL");
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS eventos_formatura_config (
+            evento_id BIGINT PRIMARY KEY REFERENCES logistica_eventos_espelho(id) ON DELETE CASCADE,
+            pessoas_por_mesa INTEGER NOT NULL DEFAULT 8,
+            valor_mesa NUMERIC(12,2) NOT NULL DEFAULT 0,
+            valor_convidado_adicional NUMERIC(12,2) NOT NULL DEFAULT 0,
+            created_by INTEGER NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    ");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS pessoas_por_mesa INTEGER NOT NULL DEFAULT 8");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS valor_mesa NUMERIC(12,2) NOT NULL DEFAULT 0");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NOT NULL DEFAULT 0");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS created_by INTEGER NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
 
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_formandos_evento ON eventos_formatura_formandos(evento_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_formatura_formandos_cliente ON eventos_formatura_formandos(cliente_cadastro_id)");
@@ -289,6 +316,62 @@ function eventos_formatura_formandos(PDO $pdo, int $eventoId): array
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+function eventos_formatura_config(PDO $pdo, int $eventoId): array
+{
+    $config = eventos_formatura_config_padrao();
+    $stmt = $pdo->prepare("
+        SELECT pessoas_por_mesa, valor_mesa, valor_convidado_adicional
+        FROM eventos_formatura_config
+        WHERE evento_id = :evento_id
+        LIMIT 1
+    ");
+    $stmt->execute([':evento_id' => $eventoId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return $config;
+    }
+
+    return [
+        'pessoas_por_mesa' => max(0, (int)($row['pessoas_por_mesa'] ?? $config['pessoas_por_mesa'])),
+        'valor_mesa' => (float)($row['valor_mesa'] ?? 0),
+        'valor_convidado_adicional' => (float)($row['valor_convidado_adicional'] ?? 0),
+    ];
+}
+
+function eventos_formatura_calcular_formando(array $formando, array $config): array
+{
+    $mesas = max(0, (int)($formando['mesas'] ?? 0));
+    $convidados = max(0, (int)($formando['convidados'] ?? 0));
+    $pessoasPorMesa = max(0, (int)($config['pessoas_por_mesa'] ?? 0));
+    $valorMesa = max(0.0, (float)($config['valor_mesa'] ?? 0));
+    $valorAdicional = max(0.0, (float)($config['valor_convidado_adicional'] ?? 0));
+    $capacidadeBase = $mesas * $pessoasPorMesa;
+    $convidadosAdicionais = max(0, $convidados - $capacidadeBase);
+    $valorBaseMesas = $mesas * $valorMesa;
+    $valorAdicionais = $convidadosAdicionais * $valorAdicional;
+    $valorCalculado = $valorBaseMesas + $valorAdicionais;
+
+    return [
+        'pessoas_por_mesa' => $pessoasPorMesa,
+        'capacidade_base' => $capacidadeBase,
+        'convidados_adicionais' => $convidadosAdicionais,
+        'valor_base_mesas' => $valorBaseMesas,
+        'valor_adicionais' => $valorAdicionais,
+        'valor_calculado' => $valorCalculado,
+        'valor_lancado_display' => $valorCalculado > 0 ? $valorCalculado : (float)($formando['total_lancado'] ?? 0),
+        'calculo_configurado' => $pessoasPorMesa > 0 && ($valorMesa > 0 || $valorAdicional > 0),
+    ];
+}
+
+function eventos_formatura_aplicar_config(array $formandos, array $config): array
+{
+    foreach ($formandos as &$formando) {
+        $formando += eventos_formatura_calcular_formando($formando, $config);
+    }
+    unset($formando);
+    return $formandos;
+}
+
 function eventos_formatura_financeiro(PDO $pdo, int $eventoId): array
 {
     $stmt = $pdo->prepare("
@@ -371,6 +454,9 @@ function eventos_formatura_public_url(string $path): string
 function eventos_formatura_mapa_tags(array $evento, array $formando, array $financeiroFormando, array $itensContratados = []): array
 {
     $totalLancado = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] !== 'cancelado')));
+    if (!empty($formando['valor_lancado_display'])) {
+        $totalLancado = (float)$formando['valor_lancado_display'];
+    }
     $totalPago = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] === 'pago')));
     $saldo = max(0, $totalLancado - $totalPago);
 
@@ -671,11 +757,45 @@ if ($tipoEvento !== 'formatura') {
 }
 $eventoUnidade = trim((string)($evento['space_visivel'] ?? ''));
 $unidades = eventos_formatura_unidades($pdo, $eventoUnidade);
+$formaturaConfig = eventos_formatura_config($pdo, $eventoId);
 
 $requestMethod = (string)($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
 if ($requestMethod === 'POST') {
     $action = (string)($_POST['action'] ?? '');
+
+    if ($action === 'save_config') {
+        $pessoasPorMesa = max(0, (int)($_POST['pessoas_por_mesa'] ?? 0));
+        $valorMesa = max(0.0, eventos_formatura_money($_POST['valor_mesa'] ?? 0));
+        $valorAdicional = max(0.0, eventos_formatura_money($_POST['valor_convidado_adicional'] ?? 0));
+
+        if ($pessoasPorMesa <= 0) {
+            $errors[] = 'Informe a quantidade de pessoas por mesa.';
+        }
+
+        if (empty($errors)) {
+            $stmt = $pdo->prepare("
+                INSERT INTO eventos_formatura_config
+                    (evento_id, pessoas_por_mesa, valor_mesa, valor_convidado_adicional, created_by, updated_at)
+                VALUES
+                    (:evento_id, :pessoas_por_mesa, :valor_mesa, :valor_convidado_adicional, :created_by, NOW())
+                ON CONFLICT (evento_id) DO UPDATE
+                SET pessoas_por_mesa = EXCLUDED.pessoas_por_mesa,
+                    valor_mesa = EXCLUDED.valor_mesa,
+                    valor_convidado_adicional = EXCLUDED.valor_convidado_adicional,
+                    updated_at = NOW()
+            ");
+            $stmt->execute([
+                ':evento_id' => $eventoId,
+                ':pessoas_por_mesa' => $pessoasPorMesa,
+                ':valor_mesa' => $valorMesa,
+                ':valor_convidado_adicional' => $valorAdicional,
+                ':created_by' => $userId > 0 ? $userId : null,
+            ]);
+            $_SESSION['eventos_formatura_message'] = 'Configurações financeiras da formatura salvas.';
+            eventos_formatura_redirect($eventoId);
+        }
+    }
 
     if ($action === 'save_formando') {
         $formandoId = (int)($_POST['formando_id'] ?? 0);
@@ -813,6 +933,7 @@ if ($requestMethod === 'POST') {
         }
 
         if (empty($errors) && is_array($formandoDocumento ?? null) && is_array($modeloDocumento ?? null)) {
+            $formandoDocumento += eventos_formatura_calcular_formando($formandoDocumento, $formaturaConfig);
             $stmtFin = $pdo->prepare("
                 SELECT *
                 FROM eventos_formatura_financeiro
@@ -959,7 +1080,7 @@ if (!empty($_SESSION['eventos_formatura_message'])) {
 }
 
 $clientes = eventos_formatura_clientes($pdo);
-$formandos = eventos_formatura_formandos($pdo, $eventoId);
+$formandos = eventos_formatura_aplicar_config(eventos_formatura_formandos($pdo, $eventoId), $formaturaConfig);
 $financeiro = eventos_formatura_financeiro($pdo, $eventoId);
 $formandoFinanceiroId = (int)($_GET['formando_id'] ?? 0);
 $mostrarNovaCobranca = (string)($_GET['nova_cobranca'] ?? '') === '1';
@@ -1001,7 +1122,7 @@ if ($formandoFinanceiro) {
 
 $totalConvidados = array_sum(array_map(static fn($item) => (int)$item['convidados'], $formandos));
 $totalMesas = array_sum(array_map(static fn($item) => (int)$item['mesas'], $formandos));
-$totalLancado = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiro, static fn($item) => (string)$item['status'] !== 'cancelado')));
+$totalLancado = array_sum(array_map(static fn($item) => (float)($item['valor_lancado_display'] ?? $item['total_lancado'] ?? 0), $formandos));
 $totalPago = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiro, static fn($item) => (string)$item['status'] === 'pago')));
 
 includeSidebar('Formatura');
@@ -1104,6 +1225,21 @@ includeSidebar('Formatura');
     min-width: 230px;
     color: #475569;
     font-weight: 750;
+}
+.formatura-calc-note {
+    margin: 0 1.4rem 1rem;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    background: #fffbeb;
+    color: #92400e;
+    font-weight: 750;
+}
+.formatura-calc-note span {
+    display: block;
+    margin-top: 0.25rem;
+    color: #64748b;
+    font-weight: 700;
 }
 .formatura-receita-card {
     margin: 0 1.4rem 1.2rem;
@@ -1453,7 +1589,8 @@ includeSidebar('Formatura');
 
     <?php if ($formandoFinanceiro): ?>
         <?php
-        $financeiroFormandoLancado = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] !== 'cancelado')));
+        $financeiroFormandoLancadoManual = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] !== 'cancelado')));
+        $financeiroFormandoLancado = (float)($formandoFinanceiro['valor_lancado_display'] ?? $financeiroFormandoLancadoManual);
         $financeiroFormandoPago = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiroFormando, static fn($item) => (string)$item['status'] === 'pago')));
         $financeiroFormandoSaldo = max(0, $financeiroFormandoLancado - $financeiroFormandoPago);
         ?>
@@ -1478,6 +1615,15 @@ includeSidebar('Formatura');
                     <span>Saldo: <strong>R$ <?= number_format($financeiroFormandoSaldo, 2, ',', '.') ?></strong></span>
                 </div>
             </div>
+            <?php if (!empty($formandoFinanceiro['calculo_configurado'])): ?>
+                <div class="formatura-calc-note">
+                    <?= (int)$formandoFinanceiro['mesas'] ?> mesa(s) x R$ <?= number_format((float)$formaturaConfig['valor_mesa'], 2, ',', '.') ?>
+                    <?php if ((int)$formandoFinanceiro['convidados_adicionais'] > 0): ?>
+                        + <?= (int)$formandoFinanceiro['convidados_adicionais'] ?> convidado(s) adicional(is) x R$ <?= number_format((float)$formaturaConfig['valor_convidado_adicional'], 2, ',', '.') ?>
+                    <?php endif; ?>
+                    <span>As cobranças continuam sendo geradas manualmente.</span>
+                </div>
+            <?php endif; ?>
 
             <?php if ($mostrarNovaCobranca): ?>
                 <div class="formatura-receita-card">
@@ -1631,7 +1777,7 @@ includeSidebar('Formatura');
             <button type="button" class="formatura-btn formatura-btn--primary" id="btnNovoFormando">👥 Cadastrar Formando</button>
             <button type="button" class="formatura-btn formatura-btn--info" disabled>🖨️ Imprimir Formandos</button>
             <button type="button" class="formatura-btn formatura-btn--warning" disabled>📊 Relatório de Pagamentos</button>
-            <button type="button" class="formatura-btn formatura-btn--dark" disabled>⚙️ Configurações</button>
+            <button type="button" class="formatura-btn formatura-btn--dark" id="btnFormaturaConfig">⚙️ Configurações</button>
             <input class="formatura-search" id="formaturaBusca" type="search" placeholder="Pesquisar...">
         </div>
 
@@ -1652,7 +1798,8 @@ includeSidebar('Formatura');
                     <tbody>
                         <?php foreach ($formandos as $formando): ?>
                             <?php
-                            $saldo = (float)$formando['total_lancado'] - (float)$formando['total_pago'];
+                            $valorLancadoDisplay = (float)($formando['valor_lancado_display'] ?? $formando['total_lancado']);
+                            $saldo = $valorLancadoDisplay - (float)$formando['total_pago'];
                             $rowSearch = strtolower(implode(' ', [
                                 $formando['nome_formando'] ?? '',
                                 $formando['cliente_nome'] ?? '',
@@ -1678,7 +1825,10 @@ includeSidebar('Formatura');
                                     <div class="formatura-muted"><?= (int)$formando['mesas'] ?> mesas</div>
                                 </td>
                                 <td>
-                                    <strong>R$ <?= number_format((float)$formando['total_lancado'], 2, ',', '.') ?></strong>
+                                    <strong>R$ <?= number_format($valorLancadoDisplay, 2, ',', '.') ?></strong>
+                                    <?php if (!empty($formando['calculo_configurado'])): ?>
+                                        <div class="formatura-muted"><?= (int)$formando['mesas'] ?> mesa(s)<?= (int)$formando['convidados_adicionais'] > 0 ? ' + ' . (int)$formando['convidados_adicionais'] . ' adicional(is)' : '' ?></div>
+                                    <?php endif; ?>
                                     <div class="formatura-muted">Pago: R$ <?= number_format((float)$formando['total_pago'], 2, ',', '.') ?></div>
                                     <div class="formatura-muted">Saldo: R$ <?= number_format($saldo, 2, ',', '.') ?></div>
                                 </td>
@@ -1712,6 +1862,45 @@ includeSidebar('Formatura');
     </section>
 
     <?php endif; ?>
+</div>
+
+<div class="formatura-modal" id="modalFormaturaConfig" aria-hidden="true">
+    <div class="formatura-modal-dialog">
+        <div class="formatura-modal-head">
+            <h3>Configurações financeiras</h3>
+            <button type="button" class="formatura-close" data-close-modal>×</button>
+        </div>
+        <form method="post">
+            <div class="formatura-modal-body">
+                <input type="hidden" name="action" value="save_config">
+                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                <div class="formatura-grid">
+                    <div class="formatura-field">
+                        <label for="configPessoasMesa">Pessoas por mesa</label>
+                        <input id="configPessoasMesa" name="pessoas_por_mesa" type="number" min="1" step="1" value="<?= (int)$formaturaConfig['pessoas_por_mesa'] ?>" required>
+                    </div>
+                    <div class="formatura-field">
+                        <label for="configValorMesa">Valor da mesa</label>
+                        <input id="configValorMesa" name="valor_mesa" type="text" inputmode="decimal" value="<?= eventos_formatura_e(number_format((float)$formaturaConfig['valor_mesa'], 2, ',', '.')) ?>" placeholder="0,00" required>
+                    </div>
+                    <div class="formatura-field">
+                        <label for="configValorAdicional">Valor por convidado adicional</label>
+                        <input id="configValorAdicional" name="valor_convidado_adicional" type="text" inputmode="decimal" value="<?= eventos_formatura_e(number_format((float)$formaturaConfig['valor_convidado_adicional'], 2, ',', '.')) ?>" placeholder="0,00" required>
+                    </div>
+                    <div class="formatura-field">
+                        <label>Cálculo</label>
+                        <div class="cliente-preview">
+                            Mesas x valor da mesa. Convidados acima da capacidade das mesas entram como adicional.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="formatura-modal-actions">
+                <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
+                <button type="submit" class="formatura-btn formatura-btn--primary">Salvar configurações</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <div class="formatura-modal" id="modalFormando" aria-hidden="true">
@@ -1808,7 +1997,12 @@ document.querySelectorAll('.formatura-modal').forEach((modal) => {
 });
 
 const modalFormando = document.getElementById('modalFormando');
+const modalFormaturaConfig = document.getElementById('modalFormaturaConfig');
 const formFormando = document.getElementById('formFormando');
+
+document.getElementById('btnFormaturaConfig')?.addEventListener('click', () => {
+    openModal(modalFormaturaConfig);
+});
 
 document.getElementById('btnNovoFormando')?.addEventListener('click', () => {
     formFormando.reset();
