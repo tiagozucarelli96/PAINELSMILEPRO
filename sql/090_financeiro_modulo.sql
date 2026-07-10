@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS financeiro_despesas (
     origem VARCHAR(30) NOT NULL DEFAULT 'manual',
     ofx_fitid VARCHAR(180) NULL,
     ofx_payload JSONB NULL,
+    import_hash VARCHAR(180) NULL,
+    import_origem VARCHAR(60) NULL,
     created_by INTEGER NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -32,6 +34,16 @@ CREATE INDEX IF NOT EXISTS idx_financeiro_despesas_ofx_fitid
 
 ALTER TABLE IF EXISTS financeiro_despesas
     ADD COLUMN IF NOT EXISTS destinatario VARCHAR(180) NULL;
+
+ALTER TABLE IF EXISTS financeiro_despesas
+    ADD COLUMN IF NOT EXISTS import_hash VARCHAR(180) NULL;
+
+ALTER TABLE IF EXISTS financeiro_despesas
+    ADD COLUMN IF NOT EXISTS import_origem VARCHAR(60) NULL;
+
+CREATE INDEX IF NOT EXISTS idx_financeiro_despesas_import_hash
+    ON financeiro_despesas(import_hash)
+    WHERE import_hash IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS financeiro_ofx_descricoes (
     id BIGSERIAL PRIMARY KEY,

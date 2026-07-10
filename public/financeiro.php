@@ -57,6 +57,9 @@ function financeiro_ensure_schema(PDO $pdo): void
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_financeiro_despesas_status ON financeiro_despesas(status)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_financeiro_despesas_ofx_fitid ON financeiro_despesas(banco, conta, ofx_fitid) WHERE ofx_fitid IS NOT NULL");
     $pdo->exec("ALTER TABLE IF EXISTS financeiro_despesas ADD COLUMN IF NOT EXISTS destinatario VARCHAR(180) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS financeiro_despesas ADD COLUMN IF NOT EXISTS import_hash VARCHAR(180) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS financeiro_despesas ADD COLUMN IF NOT EXISTS import_origem VARCHAR(60) NULL");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_financeiro_despesas_import_hash ON financeiro_despesas(import_hash) WHERE import_hash IS NOT NULL");
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS financeiro_categorias (
             id BIGSERIAL PRIMARY KEY,
@@ -298,6 +301,8 @@ function financeiro_ofx_duplicate(PDO $pdo, array $item, string $banco, string $
           AND COALESCE(conta, '') = COALESCE(:conta, '')
           AND (
             (ofx_fitid IS NOT NULL AND ofx_fitid = :ofx_fitid)
+            OR (import_hash IS NOT NULL AND import_hash = :ofx_fitid)
+            OR (ofx_payload IS NOT NULL AND ofx_payload->>'fitid' = :ofx_fitid)
             OR (
                 data_movimento = :data_movimento
                 AND ABS(valor - :valor) < 0.01
@@ -315,6 +320,90 @@ function financeiro_ofx_duplicate(PDO $pdo, array $item, string $banco, string $
         ':descricao' => $item['descricao'],
     ]);
     return (bool)$stmt->fetchColumn();
+}
+
+function financeiro_ofx_indica_pagamento_cartao(array $item): bool
+{
+    $texto = financeiro_normalizar_descricao((string)($item['descricao'] ?? ''));
+    if ($texto === '') {
+        return false;
+    }
+    foreach (['FATURA CARTAO', 'FATURA DE CARTAO', 'PAGAMENTO CARTAO', 'PAGTO CARTAO', 'PGTO CARTAO', 'CARTAO CREDITO', 'CARTAO DE CREDITO'] as $needle) {
+        if (str_contains($texto, $needle)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function financeiro_ofx_cartao_match(PDO $pdo, array $item): ?array
+{
+    if (($item['tipo'] ?? '') !== 'despesa' || !financeiro_ofx_indica_pagamento_cartao($item)) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT d.id,
+               d.data_movimento,
+               d.descricao,
+               d.valor,
+               d.status,
+               f.id AS fatura_id,
+               c.nome AS cartao_nome,
+               ABS(d.data_movimento - CAST(:data AS DATE)) AS dias_distancia
+        FROM financeiro_despesas d
+        LEFT JOIN financeiro_cartao_faturas f ON f.despesa_id = d.id
+        LEFT JOIN financeiro_cartoes c ON c.id = f.cartao_id
+        WHERE d.status <> 'cancelado'
+          AND COALESCE(d.origem, '') = 'cartao_credito'
+          AND COALESCE(d.categoria, '') = 'Cartao de credito'
+          AND ABS(d.valor - :valor) < 0.05
+          AND d.data_movimento BETWEEN CAST(:data AS DATE) - INTERVAL '10 days'
+                                  AND CAST(:data AS DATE) + INTERVAL '10 days'
+        ORDER BY
+          CASE WHEN d.status IN ('pendente', 'pago') THEN 0 ELSE 1 END,
+          ABS(d.data_movimento - CAST(:data AS DATE)) ASC,
+          d.id ASC
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':data' => $item['data'],
+        ':valor' => $item['valor'],
+    ]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function financeiro_conciliar_fatura_cartao(PDO $pdo, array $item, array $match, string $banco, string $conta): void
+{
+    $payload = $item;
+    $payload['matched_fatura_id'] = $match['fatura_id'] ?? null;
+    $payload['matched_despesa_id'] = $match['id'] ?? null;
+
+    $stmt = $pdo->prepare("
+        UPDATE financeiro_despesas
+        SET data_movimento = :data_movimento,
+            banco = :banco,
+            conta = :conta,
+            status = 'conciliado',
+            origem = 'cartao_credito',
+            import_hash = :import_hash,
+            import_origem = 'ofx',
+            ofx_payload = CAST(:payload AS JSONB),
+            destinatario = :destinatario,
+            updated_at = NOW()
+        WHERE id = :id
+          AND status <> 'cancelado'
+    ");
+    $stmt->execute([
+        ':id' => (int)$match['id'],
+        ':data_movimento' => $item['data'],
+        ':banco' => $banco !== '' ? $banco : null,
+        ':conta' => $conta !== '' ? $conta : null,
+        ':import_hash' => $item['fitid'],
+        ':payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ':destinatario' => trim((string)($item['destinatario'] ?? '')) ?: null,
+    ]);
 }
 
 function financeiro_salvar_descricao_banco(PDO $pdo, array $item, string $banco, string $conta): void
@@ -776,6 +865,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $item['destinatario'] = (string)($suggestionRow['destinatario'] ?? $item['destinatario'] ?? '');
                 $item['sugestao_match'] = (string)($suggestion['match'] ?? '');
                 $item['duplicado'] = financeiro_ofx_duplicate($pdo, $item, $banco, $conta);
+                $item['cartao_match'] = $item['duplicado'] ? null : financeiro_ofx_cartao_match($pdo, $item);
+                if (is_array($item['cartao_match'] ?? null)) {
+                    $item['categoria_sugerida'] = 'Cartao de credito';
+                    $item['sugestao_match'] = 'fatura_cartao';
+                }
                 $item['recorrencia_sugerida'] = (($normalizedCounts[(string)$item['descricao_normalizada']] ?? 0) > 1);
                 $items[] = $item;
             }
@@ -810,6 +904,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $banco = trim((string)($preview['banco'] ?? ''));
         $conta = trim((string)($preview['conta'] ?? ''));
         $imported = 0;
+        $matched = 0;
         $blocked = 0;
 
         if (!$items) {
@@ -824,17 +919,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $item = $items[$idx];
                 $item['descricao'] = trim((string)($descricoes[$idx] ?? $item['descricao']));
                 $categoria = trim((string)($categoriasPost[$idx] ?? $item['categoria_sugerida'] ?? ''));
+                $cartaoMatch = is_array($item['cartao_match'] ?? null) ? $item['cartao_match'] : financeiro_ofx_cartao_match($pdo, $item);
 
                 if (($item['tipo'] ?? '') !== 'despesa' || financeiro_ofx_duplicate($pdo, $item, $banco, $conta)) {
                     $blocked++;
                     continue;
                 }
 
+                if ($cartaoMatch) {
+                    financeiro_conciliar_fatura_cartao($pdo, $item, $cartaoMatch, $banco, $conta);
+                    $matched++;
+                    continue;
+                }
+
                 $stmt = $pdo->prepare("
                     INSERT INTO financeiro_despesas
-                        (data_movimento, descricao, valor, banco, conta, categoria, centro_custo, status, origem, ofx_fitid, ofx_payload, destinatario, created_by)
+                        (data_movimento, descricao, valor, banco, conta, categoria, centro_custo, status, origem, ofx_fitid, ofx_payload, destinatario, import_hash, import_origem, created_by)
                     VALUES
-                        (:data_movimento, :descricao, :valor, :banco, :conta, :categoria, :centro_custo, 'conciliado', 'ofx', :ofx_fitid, CAST(:payload AS JSONB), :destinatario, :created_by)
+                        (:data_movimento, :descricao, :valor, :banco, :conta, :categoria, :centro_custo, 'conciliado', 'ofx', :ofx_fitid, CAST(:payload AS JSONB), :destinatario, :import_hash, 'ofx', :created_by)
                 ");
                 $stmt->execute([
                     ':data_movimento' => $item['data'],
@@ -847,13 +949,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':ofx_fitid' => $item['fitid'],
                     ':payload' => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                     ':destinatario' => trim((string)($item['destinatario'] ?? '')) ?: null,
+                    ':import_hash' => $item['fitid'],
                     ':created_by' => $userId > 0 ? $userId : null,
                 ]);
                 financeiro_atualizar_aprendizado($pdo, $item, $banco, $conta, $categoria);
                 $imported++;
             }
             unset($_SESSION['financeiro_ofx_preview']);
-            $messages[] = $imported . ' despesa(s) importada(s) do OFX. ' . $blocked . ' transacao(oes) bloqueada(s) por duplicidade ou tipo incompatível.';
+            $messages[] = $imported . ' despesa(s) importada(s) do OFX. ' . $matched . ' fatura(s) de cartao conciliada(s). ' . $blocked . ' transacao(oes) bloqueada(s) por duplicidade ou tipo incompatível.';
         }
     }
 }
@@ -1169,6 +1272,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                         <?php
                                         $isDespesa = (string)($item['tipo'] ?? '') === 'despesa';
                                         $isDuplicate = !empty($item['duplicado']);
+                                        $cartaoMatch = is_array($item['cartao_match'] ?? null) ? $item['cartao_match'] : null;
                                         $canImport = $isDespesa && !$isDuplicate;
                                         $suggestedCategory = (string)($item['categoria_sugerida'] ?? '');
                                         ?>
@@ -1185,6 +1289,9 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                                 <?php endif; ?>
                                                 <?php if (!empty($item['recorrencia_sugerida'])): ?>
                                                     <span class="ofx-small">Possivel recorrencia no arquivo</span>
+                                                <?php endif; ?>
+                                                <?php if ($cartaoMatch): ?>
+                                                    <span class="ofx-small">Vai conciliar: <?= h((string)$cartaoMatch['descricao']) ?></span>
                                                 <?php endif; ?>
                                             </td>
                                             <td><span class="money <?= $isDespesa ? 'out' : '' ?>"><?= h(format_currency($item['valor'])) ?></span><span class="ofx-small"><?= h((string)$item['tipo']) ?></span></td>
@@ -1211,7 +1318,7 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                                     </div>
                                                 </div>
                                                 <?php if (!empty($item['sugestao_match'])): ?>
-                                                    <span class="ofx-small">Sugestao <?= h((string)$item['sugestao_match']) ?></span>
+                                                    <span class="ofx-small"><?= $cartaoMatch ? 'Identificado como fatura de cartao' : 'Sugestao ' . h((string)$item['sugestao_match']) ?></span>
                                                 <?php endif; ?>
                                             </td>
                                             <td>
@@ -1219,6 +1326,8 @@ label{font-weight:800;color:#475569;font-size:.84rem}input,select,textarea{width
                                                     <span class="ofx-status warn">Possivel duplicidade</span>
                                                 <?php elseif (!$isDespesa): ?>
                                                     <span class="ofx-status info">Nao e despesa</span>
+                                                <?php elseif ($cartaoMatch): ?>
+                                                    <span class="ofx-status info">Conciliar fatura</span>
                                                 <?php else: ?>
                                                     <span class="ofx-status">Pronto para importar</span>
                                                 <?php endif; ?>
