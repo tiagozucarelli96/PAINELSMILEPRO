@@ -6,6 +6,32 @@
 
 require_once __DIR__ . '/core/helpers.php';
 
+function eventos_financeiro_table_exists(PDO $pdo, string $table): bool
+{
+    $stmt = $pdo->prepare("
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = current_schema() AND table_name = :table
+        )
+    ");
+    $stmt->execute([':table' => $table]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function eventos_financeiro_column_exists(PDO $pdo, string $table, string $column): bool
+{
+    $stmt = $pdo->prepare("
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = :table AND column_name = :column
+        )
+    ");
+    $stmt->execute([':table' => $table, ':column' => $column]);
+    return (bool)$stmt->fetchColumn();
+}
+
 function eventos_financeiro_ensure_schema(PDO $pdo): void
 {
     static $done = false;
@@ -129,13 +155,50 @@ function eventos_financeiro_split_parcelas(float $valorTotal, int $parcelas): ar
 
 function eventos_financeiro_evento(PDO $pdo, int $eventoId): ?array
 {
+    $hasHoraFim = eventos_financeiro_column_exists($pdo, 'logistica_eventos_espelho', 'hora_fim');
+    $hasClienteCadastro = eventos_financeiro_column_exists($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
+    $hasClientes = eventos_financeiro_table_exists($pdo, 'comercial_cadastro_clientes');
+    $selectHoraFim = $hasHoraFim ? "COALESCE(TO_CHAR(e.hora_fim, 'HH24:MI'), '') AS hora_fim," : "'' AS hora_fim,";
+    $selectClienteId = $hasClienteCadastro ? "COALESCE(e.cliente_cadastro_id, 0) AS cliente_cadastro_id," : "0 AS cliente_cadastro_id,";
+    $joinCliente = ($hasClienteCadastro && $hasClientes) ? "LEFT JOIN comercial_cadastro_clientes c ON c.id = e.cliente_cadastro_id" : "";
+    $clienteExpr = static function (string $column) use ($pdo, $hasClientes): string {
+        if (!$hasClientes || !eventos_financeiro_column_exists($pdo, 'comercial_cadastro_clientes', $column)) {
+            return "''";
+        }
+        return "COALESCE(NULLIF(TRIM(c.{$column}), ''), '')";
+    };
+    $clienteSelects = ($hasClienteCadastro && $hasClientes) ? "
+               {$clienteExpr('nome_completo')} AS cliente_nome,
+               {$clienteExpr('email')} AS cliente_email,
+               {$clienteExpr('telefone_whatsapp')} AS cliente_telefone,
+               {$clienteExpr('documento_tipo')} AS cliente_documento_tipo,
+               {$clienteExpr('documento_numero')} AS cliente_documento_numero,
+               {$clienteExpr('rg')} AS cliente_rg,
+    " : "
+               '' AS cliente_nome,
+               '' AS cliente_email,
+               '' AS cliente_telefone,
+               '' AS cliente_documento_tipo,
+               '' AS cliente_documento_numero,
+               '' AS cliente_rg,
+    ";
+
     $stmt = $pdo->prepare("
-        SELECT id, me_event_id, data_evento::text AS data_evento, COALESCE(TO_CHAR(hora_inicio, 'HH24:MI'), '') AS hora_inicio,
-               COALESCE(nome_evento, 'Evento') AS nome_evento, COALESCE(localevento, 'Local não informado') AS local_evento,
-               COALESCE(space_visivel, 'Não mapeado') AS space_visivel, COALESCE(unidade_interna_id, 0) AS unidade_interna_id,
-               COALESCE(convidados, 0) AS convidados
-        FROM logistica_eventos_espelho
-        WHERE id = :id
+        SELECT e.id,
+               e.me_event_id,
+               {$selectClienteId}
+               {$clienteSelects}
+               e.data_evento::text AS data_evento,
+               COALESCE(TO_CHAR(e.hora_inicio, 'HH24:MI'), '') AS hora_inicio,
+               {$selectHoraFim}
+               COALESCE(e.nome_evento, 'Evento') AS nome_evento,
+               COALESCE(e.localevento, 'Local não informado') AS local_evento,
+               COALESCE(e.space_visivel, 'Não mapeado') AS space_visivel,
+               COALESCE(e.unidade_interna_id, 0) AS unidade_interna_id,
+               COALESCE(e.convidados, 0) AS convidados
+        FROM logistica_eventos_espelho e
+        {$joinCliente}
+        WHERE e.id = :id
         LIMIT 1
     ");
     $stmt->execute([':id' => $eventoId]);
@@ -230,9 +293,10 @@ function eventos_financeiro_salvar_pedido_detalhado(
     $valorAdicional = round(max(0, $valorAdicional), 2);
     $desconto = round(max(0, $desconto), 2);
 
+    $pacote = [];
     if ($pacoteId > 0) {
         $stmt = $pdo->prepare("
-            SELECT nome, descricao,
+            SELECT nome, descricao, categoria, COALESCE(pessoas_base, 0) AS pessoas_base,
                    COALESCE(valor_pacote, valor_venda, 0) AS valor_padrao,
                    COALESCE(valor_convidado_adicional, 0) AS adicional_padrao
             FROM logistica_pacotes_evento
@@ -258,7 +322,14 @@ function eventos_financeiro_salvar_pedido_detalhado(
     if ($descricao === '') {
         return ['ok' => false, 'error' => 'Informe a descrição ou selecione um pacote.'];
     }
-    $valor = round(max(0, ($valorBase * $quantidade) + $valorAdicional - $desconto), 2);
+    $pacoteCategoria = trim((string)($pacote['categoria'] ?? ''));
+    $pessoasBase = max(0, (int)($pacote['pessoas_base'] ?? 0));
+    if (strcasecmp($pacoteCategoria, 'Pacote') === 0 && $pessoasBase > 0) {
+        $convidadosAdicionais = max(0, $quantidade - $pessoasBase);
+        $valor = round(max(0, $valorBase + ($convidadosAdicionais * $valorAdicional) - $desconto), 2);
+    } else {
+        $valor = round(max(0, ($valorBase * $quantidade) + $valorAdicional - $desconto), 2);
+    }
     if ($valor <= 0) {
         return ['ok' => false, 'error' => 'Informe um valor maior que zero.'];
     }

@@ -171,11 +171,78 @@ function eventos_financeiro_badge_status(string $status): string
     ][$status] ?? $status;
 }
 
+function eventos_financeiro_format_weekday(string $date): string
+{
+    if ($date === '') {
+        return '';
+    }
+    try {
+        $day = (int)(new DateTimeImmutable($date))->format('w');
+    } catch (Throwable $e) {
+        return '';
+    }
+    return ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][$day] ?? '';
+}
+
+function eventos_financeiro_format_time(array $evento): string
+{
+    $inicio = trim((string)($evento['hora_inicio'] ?? ''));
+    $fim = trim((string)($evento['hora_fim'] ?? ''));
+    if ($inicio === '') {
+        return 'Não informado';
+    }
+    return $fim !== '' ? "{$inicio} às {$fim}" : $inicio;
+}
+
+function eventos_financeiro_user_initials(): string
+{
+    $name = trim((string)($_SESSION['nome'] ?? $_SESSION['usuario_nome'] ?? $_SESSION['name'] ?? $_SESSION['email'] ?? ''));
+    if ($name === '') {
+        return 'TI';
+    }
+    $parts = preg_split('/\s+/', $name) ?: [];
+    $first = mb_substr((string)($parts[0] ?? ''), 0, 1, 'UTF-8');
+    $second = count($parts) > 1 ? mb_substr((string)end($parts), 0, 1, 'UTF-8') : '';
+    return mb_strtoupper($first . $second, 'UTF-8') ?: 'TI';
+}
+
+$clienteCadastroId = (int)($evento['cliente_cadastro_id'] ?? 0);
+$clienteNome = trim((string)($evento['cliente_nome'] ?? ''));
+if ($clienteNome === '') {
+    $clienteNome = 'Cliente não identificado';
+}
+$clienteCadastroHref = $clienteCadastroId > 0
+    ? 'index.php?page=comercial_cadastro_cliente&id=' . $clienteCadastroId
+    : 'index.php?page=comercial_clientes_cadastrados';
+$clienteEmail = trim((string)($evento['cliente_email'] ?? ''));
+$clienteTelefone = trim((string)($evento['cliente_telefone'] ?? ''));
+$clienteDocumentoTipo = trim((string)($evento['cliente_documento_tipo'] ?? ''));
+$clienteDocumentoNumero = trim((string)($evento['cliente_documento_numero'] ?? ''));
+$clienteRg = trim((string)($evento['cliente_rg'] ?? ''));
+$eventoData = (string)($evento['data_evento'] ?? '');
+$eventoWeekday = eventos_financeiro_format_weekday($eventoData);
+$eventoHorario = eventos_financeiro_format_time($evento);
+$eventoInitials = eventos_financeiro_user_initials();
+
 includeSidebar('Financeiro do Evento');
 ?>
 
 <style>
 .finance-page{max-width:1500px;margin:0 auto;padding:1.5rem;background:#f7f9fc;color:#334155}
+.finance-layout{display:grid;grid-template-columns:minmax(280px,330px) minmax(0,1fr);gap:1.25rem;align-items:start}
+.finance-main{min-width:0}
+.finance-event-card{position:sticky;top:1rem;background:#fff;border:1px solid #dbe3ef;border-radius:16px;box-shadow:0 18px 42px rgba(15,23,42,.08);padding:1.2rem}
+.finance-event-title{margin:0 0 1rem;text-align:center;color:#df5f4e;font-size:1.5rem;font-weight:900}
+.finance-event-avatar{width:128px;height:128px;border-radius:999px;margin:0 auto 1rem;background:#cbd5e1;position:relative}
+.finance-event-avatar::before{content:"";position:absolute;top:28px;left:50%;width:42px;height:42px;border-radius:999px;background:#fff;transform:translateX(-50%)}
+.finance-event-avatar::after{content:"";position:absolute;left:50%;bottom:28px;width:74px;height:42px;border-radius:42px 42px 18px 18px;background:#fff;transform:translateX(-50%)}
+.finance-event-summary{text-align:center;color:#475569;font-size:1rem;line-height:1.45;margin-bottom:1rem}
+.finance-event-initials{width:46px;height:46px;border-radius:999px;margin:.9rem auto 0;background:#2f7d32;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;box-shadow:0 10px 20px rgba(47,125,50,.25)}
+.finance-info-block{background:#f8fafc;border-left:4px solid #58c786;border-radius:10px;padding:.9rem;margin-top:.8rem;color:#334155;line-height:1.45}
+.finance-info-block--place{background:#f3fbf2}
+.finance-info-block--client{border-left-color:#5ebfd4}
+.finance-info-label{display:block;font-weight:900;color:#1f2937;margin-bottom:.35rem}
+.finance-client-link{color:#1f77b4;font-weight:900;text-decoration:none}
 .finance-top{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:1rem}
 .finance-title{margin:0;font-size:1.85rem;color:#1e3a8a;font-weight:900}
 .finance-subtitle{margin:.25rem 0 0;color:#64748b}
@@ -200,25 +267,60 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.modal-backdrop.open{display:flex}
 .modal{width:min(1040px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(15,23,42,.28)}
 .modal-header{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:1rem 1.15rem;border-bottom:1px solid #e2e8f0}.modal-title{margin:0;color:#1e293b;font-weight:900}.modal-close{width:38px;height:38px;border:0;border-radius:999px;background:#f1f5f9;color:#334155;font-size:1.25rem;cursor:pointer}
-.modal-body{padding:1rem;display:grid;gap:1rem}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.9rem}.field.full{grid-column:1/-1}.choice-row{display:flex;gap:.65rem;flex-wrap:wrap}.choice{border:1px solid #dbe3ef;background:#fff;border-radius:999px;padding:.62rem .9rem;font-weight:900;cursor:pointer}.choice.active{background:#1e3a8a;color:#fff;border-color:#1e3a8a}.pedido-modal-grid{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:1rem;align-items:start}.pedido-side{background:#fff8db;border-left:4px solid #f4c44e;border-radius:12px;padding:1rem;position:sticky;top:0}.pedido-side h3{margin:0 0 .7rem;color:#374151;font-size:1rem}.detail-preview{border:1px solid #dbe3ef;background:#f8fafc;border-radius:10px;padding:.75rem;min-height:92px;max-height:180px;overflow:auto;color:#475569}
+.modal-body{padding:1rem;display:grid;gap:1rem}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.9rem}.field.full{grid-column:1/-1}.choice-row{display:flex;gap:.65rem;flex-wrap:wrap}.choice{border:1px solid #dbe3ef;background:#fff;border-radius:999px;padding:.62rem .9rem;font-weight:900;cursor:pointer}.choice.active{background:#1e3a8a;color:#fff;border-color:#1e3a8a}.pedido-modal-grid{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:1rem;align-items:start}.pedido-side{background:#fff8db;border-left:4px solid #f4c44e;border-radius:12px;padding:1rem;position:sticky;top:0}.pedido-side h3{margin:0 0 .7rem;color:#374151;font-size:1rem}.pedido-details-editor textarea{min-height:260px}
 .parcelas-box{border:1px solid #dbe3ef;border-radius:12px;padding:1rem;background:#f8fafc}.parcelas-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:.8rem}.parcelas-table{width:100%;border-collapse:collapse}.parcelas-table th{font-size:.76rem;text-transform:uppercase;color:#64748b;text-align:left;padding:.4rem}.parcelas-table td{padding:.4rem}.parcelas-table input{padding:.58rem .65rem}
 .modal-actions{display:flex;justify-content:flex-end;gap:.7rem;padding:1rem;border-top:1px solid #e2e8f0}
 .hidden{display:none!important}
-@media(max-width:1050px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid{grid-template-columns:1fr}.pedido-modal-grid{grid-template-columns:1fr}.pedido-side{position:static}}
+@media(max-width:1050px){.finance-layout{grid-template-columns:1fr}.finance-event-card{position:static}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid{grid-template-columns:1fr}.pedido-modal-grid{grid-template-columns:1fr}.pedido-side{position:static}}
 @media(max-width:650px){.summary-grid{grid-template-columns:1fr}.finance-top{align-items:flex-start;flex-direction:column}.tab-panel{padding:1rem .75rem}.tabs{padding:.75rem .75rem 0}}
 </style>
 
 <div class="finance-page">
-    <div class="finance-top">
-        <div>
-            <h1 class="finance-title">Financeiro do Evento</h1>
-            <p class="finance-subtitle"><?= h((string)$evento['nome_evento']) ?> · <?= h((string)$evento['space_visivel']) ?></p>
-        </div>
-        <a class="btn btn-yellow" href="index.php?page=agenda_eventos&evento_id=<?= (int)$eventoId ?>">← Voltar ao evento</a>
-    </div>
+    <div class="finance-layout">
+        <aside class="finance-event-card">
+            <h2 class="finance-event-title"><?= h((string)$evento['nome_evento']) ?></h2>
+            <div class="finance-event-avatar" aria-hidden="true"></div>
 
-    <?php foreach ($errors as $error): ?><div class="alert alert-error"><?= h($error) ?></div><?php endforeach; ?>
-    <?php foreach ($messages as $message): ?><div class="alert alert-success"><?= h($message) ?></div><?php endforeach; ?>
+            <div class="finance-event-summary">
+                <div>★ <?= h((string)$evento['space_visivel']) ?></div>
+                <div>● <?= (int)($evento['convidados'] ?? 0) ?> participantes</div>
+                <div class="finance-event-initials"><?= h($eventoInitials) ?></div>
+            </div>
+
+            <div class="finance-info-block">
+                <span class="finance-info-label">📅 <?= h(brDateOnly($eventoData)) ?></span>
+                <?php if ($eventoWeekday !== ''): ?><div><?= h($eventoWeekday) ?></div><?php endif; ?>
+                <div><strong>Horário:</strong> <?= h($eventoHorario) ?></div>
+                <div><strong>Local:</strong> <?= h((string)$evento['local_evento']) ?></div>
+            </div>
+
+            <div class="finance-info-block finance-info-block--place">
+                <span class="finance-info-label">📍 Local do Evento</span>
+                <div><?= h((string)$evento['local_evento']) ?></div>
+                <div><?= h((string)$evento['space_visivel']) ?></div>
+            </div>
+
+            <div class="finance-info-block finance-info-block--client">
+                <span class="finance-info-label">ℹ️ Dados do Cliente</span>
+                <div>👤 <a class="finance-client-link" href="<?= h($clienteCadastroHref) ?>"><?= h($clienteNome) ?></a></div>
+                <?php if ($clienteEmail !== ''): ?><div>✉️ <?= h($clienteEmail) ?></div><?php endif; ?>
+                <?php if ($clienteTelefone !== ''): ?><div>☎ <?= h($clienteTelefone) ?></div><?php endif; ?>
+                <?php if ($clienteDocumentoNumero !== ''): ?><div><?= h($clienteDocumentoTipo !== '' ? $clienteDocumentoTipo : 'Documento') ?>: <?= h($clienteDocumentoNumero) ?></div><?php endif; ?>
+                <?php if ($clienteRg !== ''): ?><div>RG: <?= h($clienteRg) ?></div><?php endif; ?>
+            </div>
+        </aside>
+
+        <main class="finance-main">
+            <div class="finance-top">
+                <div>
+                    <h1 class="finance-title">Financeiro do Evento</h1>
+                    <p class="finance-subtitle"><?= h((string)$evento['nome_evento']) ?> · <?= h((string)$evento['space_visivel']) ?></p>
+                </div>
+                <a class="btn btn-yellow" href="index.php?page=agenda_eventos&evento_id=<?= (int)$eventoId ?>">← Voltar ao evento</a>
+            </div>
+
+            <?php foreach ($errors as $error): ?><div class="alert alert-error"><?= h($error) ?></div><?php endforeach; ?>
+            <?php foreach ($messages as $message): ?><div class="alert alert-success"><?= h($message) ?></div><?php endforeach; ?>
 
     <div class="summary-grid">
         <div class="summary-card contratado"><h3>Contratado</h3><div class="value"><?= h(format_currency($resumo['contratado'])) ?></div><div class="hint">Soma dos pedidos</div></div>
@@ -350,7 +452,9 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
             </div>
             <div class="pedido-total-bar">TOTAL CONTRATADO: <?= h(format_currency($resumo['contratado'])) ?></div>
         </div>
-    </section>
+            </section>
+        </main>
+    </div>
 </div>
 
 <div class="modal-backdrop" id="pedido-modal" role="dialog" aria-modal="true" aria-labelledby="pedido-title">
@@ -378,8 +482,7 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
                         <div class="field"><label>Valor Base</label><input name="valor_base" id="pedido-valor-base" inputmode="decimal" placeholder="R$ 0,00"></div>
                         <div class="field"><label>Convidado adicional / valor adicional</label><input name="valor_adicional" id="pedido-valor-adicional" inputmode="decimal" placeholder="R$ 0,00"></div>
                         <div class="field"><label>Desconto</label><input name="desconto" id="pedido-desconto" inputmode="decimal" placeholder="R$ 0,00"></div>
-                        <div class="field full"><label>Detalhes cadastrados</label><textarea name="detalhes_html" id="pedido-detalhes" placeholder="Detalhes do pacote, serviço ou produto"></textarea></div>
-                        <div class="field full"><label>Prévia dos detalhes</label><div class="detail-preview" id="pedido-detail-preview">Selecione um item para carregar os detalhes cadastrados.</div></div>
+                        <div class="field full pedido-details-editor"><label>Prévia dos detalhes</label><textarea name="detalhes_html" id="pedido-detalhes" placeholder="Detalhes do pacote, serviço ou produto"></textarea></div>
                     </div>
                     <aside class="pedido-side">
                         <h3>Resumo</h3>
@@ -454,6 +557,7 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js"></script>
 <script>
 function moneyToNumber(value) {
     let raw = String(value || '').replace(/R\$/g, '').trim();
@@ -480,6 +584,7 @@ document.querySelectorAll('.tab-btn').forEach((button) => {
 });
 
 const pacotesFinanceiro = <?= json_encode($pacotesJson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const eventoConvidados = <?= (int)($evento['convidados'] ?? 0) ?>;
 const pacoteMap = new Map(pacotesFinanceiro.map((item) => [String(item.id), item]));
 const pedidoModal = document.getElementById('pedido-modal');
 const pedidoForm = document.getElementById('pedido-modal-form');
@@ -492,8 +597,39 @@ const pedidoValorAdicional = document.getElementById('pedido-valor-adicional');
 const pedidoDesconto = document.getElementById('pedido-desconto');
 const pedidoDataVenda = document.getElementById('pedido-data-venda');
 const pedidoDetalhes = document.getElementById('pedido-detalhes');
-const pedidoDetailPreview = document.getElementById('pedido-detail-preview');
 const pedidoTitle = document.getElementById('pedido-title');
+
+function pedidoDetalhesEditor() {
+    return typeof tinymce !== 'undefined' ? tinymce.get('pedido-detalhes') : null;
+}
+function getPedidoDetalhes() {
+    const editor = pedidoDetalhesEditor();
+    return editor ? editor.getContent() : (pedidoDetalhes?.value || '');
+}
+function setPedidoDetalhes(html) {
+    const safeHtml = String(html || '');
+    if (pedidoDetalhes) pedidoDetalhes.value = safeHtml;
+    const editor = pedidoDetalhesEditor();
+    if (editor) editor.setContent(safeHtml);
+}
+function initPedidoDetalhesEditor() {
+    if (typeof tinymce === 'undefined' || !pedidoDetalhes || pedidoDetalhesEditor()) return;
+    tinymce.init({
+        selector: '#pedido-detalhes',
+        base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6',
+        height: 310,
+        menubar: false,
+        branding: false,
+        plugins: 'lists link image table code fullscreen',
+        toolbar: 'undo redo | bold italic underline strikethrough | alignleft aligncenter alignright | bullist numlist | link image table | removeformat code fullscreen',
+        content_style: 'body{font-family:Inter,Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.45} img{max-width:100%;height:auto}',
+        setup(editor) {
+            editor.on('input change keyup undo redo SetContent', () => {
+                editor.save();
+            });
+        }
+    });
+}
 
 function formatCurrencyLabel(value) {
     return 'R$ ' + numberToMoney(value);
@@ -501,18 +637,23 @@ function formatCurrencyLabel(value) {
 function syncPedidoResumo() {
     const base = moneyToNumber(pedidoValorBase?.value);
     const qtd = Math.max(1, Number(pedidoQuantidade?.value || 1));
-    const adicional = moneyToNumber(pedidoValorAdicional?.value);
+    const adicionalUnitario = moneyToNumber(pedidoValorAdicional?.value);
     const desconto = moneyToNumber(pedidoDesconto?.value);
-    const total = Math.max(0, (base * qtd) + adicional - desconto);
+    const item = pacoteMap.get(String(pacoteSelect?.value || '0'));
+    const isPacote = item && String(item.categoria || '').toLowerCase() === 'pacote' && Number(item.pessoasBase || 0) > 0;
+    const convidadosBase = isPacote ? Number(item.pessoasBase || 0) : 0;
+    const convidadosAdicionais = isPacote ? Math.max(0, qtd - convidadosBase) : 0;
+    const adicionalTotal = isPacote ? convidadosAdicionais * adicionalUnitario : adicionalUnitario;
+    const total = isPacote
+        ? Math.max(0, base + adicionalTotal - desconto)
+        : Math.max(0, (base * qtd) + adicionalTotal - desconto);
     document.getElementById('pedido-resumo-base').textContent = formatCurrencyLabel(base);
     document.getElementById('pedido-resumo-qtd').textContent = String(qtd);
-    document.getElementById('pedido-resumo-adicional').textContent = formatCurrencyLabel(adicional);
+    document.getElementById('pedido-resumo-adicional').textContent = isPacote
+        ? `${formatCurrencyLabel(adicionalTotal)} (${convidadosAdicionais} convidados)`
+        : formatCurrencyLabel(adicionalTotal);
     document.getElementById('pedido-resumo-desconto').textContent = formatCurrencyLabel(desconto);
     document.getElementById('pedido-resumo-total').textContent = formatCurrencyLabel(total);
-    if (pedidoDetailPreview) {
-        const detalhes = pedidoDetalhes?.value || '';
-        pedidoDetailPreview.innerHTML = detalhes.trim() ? detalhes : 'Sem detalhes cadastrados.';
-    }
 }
 function fillPedidoFromPacote(overrideExisting = false) {
     const item = pacoteMap.get(String(pacoteSelect?.value || '0'));
@@ -521,9 +662,12 @@ function fillPedidoFromPacote(overrideExisting = false) {
         return;
     }
     if (overrideExisting || !pedidoDescricao.value.trim()) pedidoDescricao.value = item.nome || '';
+    if (String(item.categoria || '').toLowerCase() === 'pacote' && Number(item.pessoasBase || 0) > 0) {
+        pedidoQuantidade.value = String(Math.max(eventoConvidados || 0, Number(item.pessoasBase || 0), 1));
+    }
     if (overrideExisting || moneyToNumber(pedidoValorBase.value) <= 0) pedidoValorBase.value = numberToMoney(item.valorBase || 0);
     if (overrideExisting || moneyToNumber(pedidoValorAdicional.value) <= 0) pedidoValorAdicional.value = numberToMoney(item.valorAdicional || 0);
-    if (overrideExisting || !pedidoDetalhes.value.trim()) pedidoDetalhes.value = item.descricao || '';
+    if (overrideExisting || !getPedidoDetalhes().trim()) setPedidoDetalhes(item.descricao || '');
     syncPedidoResumo();
 }
 function resetPedidoForm() {
@@ -535,6 +679,7 @@ function resetPedidoForm() {
     if (pedidoValorBase) pedidoValorBase.value = '0,00';
     if (pedidoValorAdicional) pedidoValorAdicional.value = '0,00';
     if (pedidoDesconto) pedidoDesconto.value = '0,00';
+    setPedidoDetalhes('');
     syncPedidoResumo();
 }
 function openPedidoModal(data = null) {
@@ -549,17 +694,23 @@ function openPedidoModal(data = null) {
         pedidoValorAdicional.value = numberToMoney(data.valorAdicional || 0);
         pedidoDesconto.value = numberToMoney(data.desconto || 0);
         pedidoDataVenda.value = data.dataVenda || '<?= h(date('Y-m-d')) ?>';
-        pedidoDetalhes.value = data.detalhes || '';
+        setPedidoDetalhes(data.detalhes || '');
     }
     pedidoModal?.classList.add('open');
+    initPedidoDetalhesEditor();
     syncPedidoResumo();
 }
 document.querySelector('[data-open-pedido]')?.addEventListener('click', () => openPedidoModal());
 document.querySelectorAll('[data-close-pedido]').forEach((button) => button.addEventListener('click', () => pedidoModal?.classList.remove('open')));
 pedidoModal?.addEventListener('click', (event) => { if (event.target === pedidoModal) pedidoModal.classList.remove('open'); });
 pacoteSelect?.addEventListener('change', () => fillPedidoFromPacote(true));
-[pedidoQuantidade, pedidoValorBase, pedidoValorAdicional, pedidoDesconto, pedidoDetalhes].forEach((el) => el?.addEventListener('input', syncPedidoResumo));
+[pedidoQuantidade, pedidoValorBase, pedidoValorAdicional, pedidoDesconto].forEach((el) => el?.addEventListener('input', syncPedidoResumo));
 [pedidoValorBase, pedidoValorAdicional, pedidoDesconto].forEach((el) => el?.addEventListener('blur', () => { el.value = numberToMoney(moneyToNumber(el.value)); syncPedidoResumo(); }));
+pedidoForm?.addEventListener('submit', () => {
+    if (typeof tinymce !== 'undefined') {
+        tinymce.triggerSave();
+    }
+});
 document.querySelectorAll('[data-edit-pedido]').forEach((button) => {
     button.addEventListener('click', () => openPedidoModal({
         id: button.dataset.id || '0',
