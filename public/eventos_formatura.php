@@ -1082,6 +1082,7 @@ if (!empty($_SESSION['eventos_formatura_message'])) {
 $clientes = eventos_formatura_clientes($pdo);
 $formandos = eventos_formatura_aplicar_config(eventos_formatura_formandos($pdo, $eventoId), $formaturaConfig);
 $financeiro = eventos_formatura_financeiro($pdo, $eventoId);
+$modelosContrato = eventos_formatura_modelos_contrato($pdo);
 $formandoFinanceiroId = (int)($_GET['formando_id'] ?? 0);
 $mostrarNovaCobranca = (string)($_GET['nova_cobranca'] ?? '') === '1';
 $formandoFinanceiro = null;
@@ -1837,6 +1838,14 @@ includeSidebar('Formatura');
                                         <a class="formatura-icon-btn" title="Financeiro" href="index.php?page=eventos_formatura&evento_id=<?= (int)$eventoId ?>&formando_id=<?= (int)$formando['id'] ?>">$</a>
                                         <button
                                             type="button"
+                                            class="formatura-icon-btn formatura-icon-btn--accent btnDocumentoFormando"
+                                            title="Gerar contrato"
+                                            data-id="<?= (int)$formando['id'] ?>"
+                                            data-nome-formando="<?= eventos_formatura_e((string)$formando['nome_formando']) ?>"
+                                            data-cliente-nome="<?= eventos_formatura_e((string)$formando['cliente_nome']) ?>"
+                                        >📄</button>
+                                        <button
+                                            type="button"
                                             class="formatura-icon-btn btnEditarFormando"
                                             title="Editar"
                                             data-id="<?= (int)$formando['id'] ?>"
@@ -1898,6 +1907,45 @@ includeSidebar('Formatura');
             <div class="formatura-modal-actions">
                 <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
                 <button type="submit" class="formatura-btn formatura-btn--primary">Salvar configurações</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="formatura-modal" id="modalDocumentoFormando" aria-hidden="true">
+    <div class="formatura-modal-dialog">
+        <div class="formatura-modal-head">
+            <h3>Gerar contrato do formando</h3>
+            <button type="button" class="formatura-close" data-close-modal>×</button>
+        </div>
+        <form method="post" id="formDocumentoFormando">
+            <div class="formatura-modal-body">
+                <input type="hidden" name="action" value="generate_documento">
+                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                <input type="hidden" name="formando_id" id="documentoFormandoId" value="">
+                <div class="formatura-grid">
+                    <div class="formatura-field full">
+                        <label>Formando</label>
+                        <div class="cliente-preview" id="documentoFormandoPreview">Selecione o formando na tabela.</div>
+                    </div>
+                    <div class="formatura-field full">
+                        <label for="documentoModeloId">Modelo de contrato/documento</label>
+                        <select id="documentoModeloId" name="modelo_id" required>
+                            <option value="">Selecione um modelo</option>
+                            <?php foreach ($modelosContrato as $modelo): ?>
+                                <option value="<?= (int)$modelo['id'] ?>"><?= eventos_formatura_e((string)$modelo['nome']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (empty($modelosContrato)): ?>
+                            <div class="cliente-preview">Nenhum modelo ativo encontrado em Cadastros > Contratos.</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <div class="formatura-modal-actions">
+                <a class="formatura-btn formatura-btn--light" href="index.php?page=eventos_documentos&evento_id=<?= (int)$eventoId ?>">Ver documentos</a>
+                <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
+                <button type="submit" class="formatura-btn formatura-btn--primary" <?= empty($modelosContrato) ? 'disabled' : '' ?>>Gerar contrato</button>
             </div>
         </form>
     </div>
@@ -1998,6 +2046,7 @@ document.querySelectorAll('.formatura-modal').forEach((modal) => {
 
 const modalFormando = document.getElementById('modalFormando');
 const modalFormaturaConfig = document.getElementById('modalFormaturaConfig');
+const modalDocumentoFormando = document.getElementById('modalDocumentoFormando');
 const formFormando = document.getElementById('formFormando');
 
 document.getElementById('btnFormaturaConfig')?.addEventListener('click', () => {
@@ -2027,6 +2076,16 @@ document.querySelectorAll('.btnEditarFormando').forEach((btn) => {
         document.getElementById('mesas').value = btn.dataset.mesas || '0';
         setCliente(clienteById(btn.dataset.clienteId || 0));
         openModal(modalFormando);
+    });
+});
+
+document.querySelectorAll('.btnDocumentoFormando').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        document.getElementById('documentoFormandoId').value = btn.dataset.id || '';
+        const preview = document.getElementById('documentoFormandoPreview');
+        const responsavel = btn.dataset.clienteNome ? `\nResponsável: ${btn.dataset.clienteNome}` : '';
+        preview.textContent = `${btn.dataset.nomeFormando || '-'}${responsavel}`;
+        openModal(modalDocumentoFormando);
     });
 });
 
