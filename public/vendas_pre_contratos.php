@@ -12,6 +12,7 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/vendas_me_helper.php';
 require_once __DIR__ . '/vendas_helper.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/eventos_financeiro_helper.php';
 require_once __DIR__ . '/cliente_notificacoes_helper.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
@@ -818,6 +819,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $override_conflito ? date('Y-m-d H:i:s') : null,
                     $pre_contrato_id
                 ]);
+
+                $pedido_sync_result = eventos_financeiro_sincronizar_pedido_pre_contrato(
+                    $pdo,
+                    array_merge($pre_contrato, [
+                        'id' => (int)$pre_contrato_id,
+                        'me_event_id' => (int)$me_event_id,
+                    ]),
+                    (int)$me_event_id,
+                    (int)$usuario_id
+                );
+                if (empty($pedido_sync_result['ok'])) {
+                    throw new Exception('Evento aprovado, mas não foi possível preencher os pedidos do financeiro: ' . (string)($pedido_sync_result['error'] ?? 'erro desconhecido'));
+                }
                 
                 // Criar card no Kanban
                 $stmt_board = $pdo->prepare("SELECT id FROM vendas_kanban_boards WHERE ativo = TRUE LIMIT 1");
@@ -860,7 +874,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'me_event_id' => $me_event_id,
                     'override' => $override_conflito,
                     'override_superadmin_id' => $override_conflito ? (int)($override_superadmin['id'] ?? 0) : null,
-                    'kanban_card_id' => $kanban_card_id
+                    'kanban_card_id' => $kanban_card_id,
+                    'financeiro_pedido_sync' => $pedido_sync_result ?? null
                 ])]);
                 
                 $pdo->commit();

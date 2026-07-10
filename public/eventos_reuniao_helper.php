@@ -6,8 +6,25 @@
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_me_helper.php';
+require_once __DIR__ . '/agenda_eventos_sync_helper.php';
 require_once __DIR__ . '/eventos_notificacoes_central_helper.php';
 require_once __DIR__ . '/eventos_historico_helper.php';
+
+function eventos_reuniao_sync_agenda_from_snapshot(PDO $pdo, array $snapshot, string $source = 'eventos_reuniao'): void
+{
+    if (empty($snapshot)) {
+        return;
+    }
+
+    try {
+        $sync = agenda_eventos_sync_me_payload($pdo, $snapshot, $source);
+        if (empty($sync['ok'])) {
+            error_log('eventos_reuniao_sync_agenda_from_snapshot: falha ao sincronizar Agenda Geral: ' . json_encode($sync, JSON_UNESCAPED_UNICODE));
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_sync_agenda_from_snapshot: ' . $e->getMessage());
+    }
+}
 
 function eventos_reuniao_buscar_defaults_pre_contrato(PDO $pdo, int $me_event_id): array
 {
@@ -1985,6 +2002,11 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
             $reuniao = $stmt_pacote->fetch(PDO::FETCH_ASSOC) ?: $reuniao;
         }
 
+        $snapshot_sync = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+        if (is_array($snapshot_sync)) {
+            eventos_reuniao_sync_agenda_from_snapshot($pdo, $snapshot_sync, 'eventos_reuniao_existing');
+        }
+
         return ['ok' => true, 'reuniao' => $reuniao, 'created' => false];
     }
     
@@ -2046,6 +2068,8 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
             $user_id
         );
     }
+
+    eventos_reuniao_sync_agenda_from_snapshot($pdo, $snapshot, 'eventos_reuniao_created');
 
     eventos_historico_registrar(
         $pdo,

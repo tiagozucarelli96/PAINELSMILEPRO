@@ -82,9 +82,12 @@ function eventos_financeiro_ensure_schema(PDO $pdo): void
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS desconto NUMERIC(12,2) NOT NULL DEFAULT 0");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS data_venda DATE NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS detalhes_html TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS pre_contrato_id BIGINT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS origem VARCHAR(40) NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_pedidos ADD COLUMN IF NOT EXISTS deleted_by INTEGER NULL");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_pedidos_evento_ativos ON eventos_financeiro_pedidos(evento_id, deleted_at)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_pedidos_pre_contrato ON eventos_financeiro_pedidos(pre_contrato_id, deleted_at)");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS carteira VARCHAR(20) NOT NULL DEFAULT 'manual'");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS modo_pagamento VARCHAR(30) NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS unidade VARCHAR(120) NULL");
@@ -332,6 +335,155 @@ function eventos_financeiro_excluir_pedido(PDO $pdo, int $eventoId, int $pedidoI
         ':evento_id' => $eventoId,
     ]);
     return $stmt->rowCount() > 0;
+}
+
+function eventos_financeiro_sincronizar_pedido_pre_contrato(PDO $pdo, array $preContrato, int $meEventId, int $userId = 0): array
+{
+    eventos_financeiro_ensure_schema($pdo);
+    require_once __DIR__ . '/agenda_eventos_sync_helper.php';
+    require_once __DIR__ . '/pacotes_evento_helper.php';
+
+    $preContratoId = (int)($preContrato['id'] ?? 0);
+    $pacoteId = (int)($preContrato['pacote_evento_id'] ?? 0);
+    if ($preContratoId <= 0 || $meEventId <= 0 || $pacoteId <= 0) {
+        return ['ok' => false, 'error' => 'Pré-contrato, evento ME ou pacote ausente.'];
+    }
+
+    $payloadAgenda = [
+        'id' => $meEventId,
+        'nomeevento' => (string)($preContrato['nome_evento'] ?? $preContrato['nome_noivos'] ?? $preContrato['nome_completo'] ?? 'Evento'),
+        'dataevento' => (string)($preContrato['data_evento'] ?? ''),
+        'horaevento' => (string)($preContrato['horario_inicio'] ?? ''),
+        'horatermino' => (string)($preContrato['horario_termino'] ?? ''),
+        'localevento' => (string)($preContrato['unidade'] ?? ''),
+        'convidados' => (int)($preContrato['num_convidados'] ?? 0),
+        'nomeCliente' => (string)($preContrato['nome_completo'] ?? ''),
+        'telefone' => (string)($preContrato['telefone'] ?? ''),
+    ];
+    $agendaSync = agenda_eventos_sync_me_payload($pdo, $payloadAgenda, 'pre_contrato_aprovado');
+    if (empty($agendaSync['ok'])) {
+        return ['ok' => false, 'error' => (string)($agendaSync['error'] ?? 'Não foi possível sincronizar o evento na Agenda Geral.')];
+    }
+
+    $stmtEvento = $pdo->prepare("
+        SELECT id
+        FROM logistica_eventos_espelho
+        WHERE me_event_id = :me_event_id
+        LIMIT 1
+    ");
+    $stmtEvento->execute([':me_event_id' => $meEventId]);
+    $eventoId = (int)$stmtEvento->fetchColumn();
+    if ($eventoId <= 0) {
+        return ['ok' => false, 'error' => 'Evento aprovado não encontrado no espelho da Agenda Geral.'];
+    }
+
+    $pacote = pacotes_evento_get($pdo, $pacoteId);
+    if (!$pacote) {
+        return ['ok' => false, 'error' => 'Pacote do pré-contrato não encontrado.'];
+    }
+
+    $convidados = max(0, (int)($preContrato['num_convidados'] ?? 0));
+    $valorNegociado = round((float)($preContrato['valor_negociado'] ?? 0), 2);
+    $desconto = round(max(0, (float)($preContrato['desconto'] ?? 0)), 2);
+    $valorTotal = round((float)($preContrato['valor_total'] ?? 0), 2);
+    $valorResolvido = 0.0;
+    $preco = pacotes_evento_resolver_preco($pdo, $pacoteId, (string)($preContrato['data_evento'] ?? ''), $convidados);
+    if (!empty($preco['ok'])) {
+        $valorResolvido = round((float)($preco['valor'] ?? 0), 2);
+    }
+
+    $valorBase = $valorNegociado > 0 ? $valorNegociado : ($valorResolvido > 0 ? $valorResolvido : $valorTotal);
+    $valorPedido = round(max(0, $valorBase - $desconto), 2);
+    if ($valorPedido <= 0 && $valorTotal > 0) {
+        $valorPedido = $valorTotal;
+        $valorBase = $valorTotal + $desconto;
+    }
+    if ($valorPedido <= 0) {
+        return ['ok' => false, 'error' => 'Valor do pacote aprovado não encontrado.'];
+    }
+
+    $descricao = trim((string)($pacote['nome'] ?? ''));
+    if ($descricao === '') {
+        $descricao = trim((string)($preContrato['pacote_contratado'] ?? 'Pacote aprovado'));
+    }
+
+    $detalhes = trim((string)($pacote['descricao'] ?? ''));
+    $meta = [
+        'Origem: pré-contrato aprovado',
+        'Convidados: ' . $convidados,
+    ];
+    if ((int)($pacote['pessoas_base'] ?? 0) > 0) {
+        $meta[] = 'Convidados base do pacote: ' . (int)$pacote['pessoas_base'];
+    }
+    $detalhesHtml = '<p>' . htmlspecialchars(implode(' · ', $meta), ENT_QUOTES, 'UTF-8') . '</p>' . ($detalhes !== '' ? $detalhes : '');
+
+    $stmtPedido = $pdo->prepare("
+        SELECT id
+        FROM eventos_financeiro_pedidos
+        WHERE evento_id = :evento_id
+          AND pre_contrato_id = :pre_contrato_id
+          AND deleted_at IS NULL
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmtPedido->execute([
+        ':evento_id' => $eventoId,
+        ':pre_contrato_id' => $preContratoId,
+    ]);
+    $pedidoId = (int)$stmtPedido->fetchColumn();
+
+    if ($pedidoId > 0) {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_financeiro_pedidos
+            SET pacote_evento_id = :pacote_evento_id,
+                descricao = :descricao,
+                valor = :valor,
+                quantidade = 1,
+                valor_base = :valor_base,
+                valor_adicional = 0,
+                desconto = :desconto,
+                data_venda = CAST(NULLIF(:data_venda, '') AS DATE),
+                detalhes_html = :detalhes_html,
+                origem = 'pre_contrato_aprovado',
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':id' => $pedidoId,
+            ':pacote_evento_id' => $pacoteId,
+            ':descricao' => $descricao,
+            ':valor' => $valorPedido,
+            ':valor_base' => $valorBase,
+            ':desconto' => $desconto,
+            ':data_venda' => (string)($preContrato['aprovado_em'] ?? $preContrato['data_venda'] ?? date('Y-m-d')),
+            ':detalhes_html' => $detalhesHtml,
+        ]);
+        return ['ok' => true, 'mode' => 'updated', 'evento_id' => $eventoId, 'pedido_id' => $pedidoId];
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_financeiro_pedidos
+            (evento_id, pacote_evento_id, descricao, valor, quantidade, valor_base, valor_adicional, desconto,
+             data_venda, detalhes_html, pre_contrato_id, origem, created_by)
+        VALUES
+            (:evento_id, :pacote_evento_id, :descricao, :valor, 1, :valor_base, 0, :desconto,
+             CAST(NULLIF(:data_venda, '') AS DATE), :detalhes_html, :pre_contrato_id, 'pre_contrato_aprovado', :created_by)
+        RETURNING id
+    ");
+    $stmt->execute([
+        ':evento_id' => $eventoId,
+        ':pacote_evento_id' => $pacoteId,
+        ':descricao' => $descricao,
+        ':valor' => $valorPedido,
+        ':valor_base' => $valorBase,
+        ':desconto' => $desconto,
+        ':data_venda' => (string)($preContrato['aprovado_em'] ?? $preContrato['data_venda'] ?? date('Y-m-d')),
+        ':detalhes_html' => $detalhesHtml,
+        ':pre_contrato_id' => $preContratoId,
+        ':created_by' => $userId > 0 ? $userId : null,
+    ]);
+
+    return ['ok' => true, 'mode' => 'created', 'evento_id' => $eventoId, 'pedido_id' => (int)$stmt->fetchColumn()];
 }
 
 function eventos_financeiro_salvar_receita_manual(PDO $pdo, int $eventoId, string $descricao, string $forma, float $valor, ?string $vencimento, string $status, int $userId): array
