@@ -191,6 +191,13 @@ function eventos_financeiro_format_time(array $evento): string
     if ($inicio === '') {
         return 'Não informado';
     }
+    if ($fim === '') {
+        try {
+            $fim = (new DateTimeImmutable('2000-01-01 ' . $inicio))->modify('+6 hours')->format('H:i');
+        } catch (Throwable $e) {
+            $fim = '';
+        }
+    }
     return $fim !== '' ? "{$inicio} às {$fim}" : $inicio;
 }
 
@@ -223,6 +230,7 @@ $eventoData = (string)($evento['data_evento'] ?? '');
 $eventoWeekday = eventos_financeiro_format_weekday($eventoData);
 $eventoHorario = eventos_financeiro_format_time($evento);
 $eventoInitials = eventos_financeiro_user_initials();
+$eventoFotoUrl = trim((string)($evento['foto_evento_url'] ?? ''));
 
 includeSidebar('Financeiro do Evento');
 ?>
@@ -236,6 +244,9 @@ includeSidebar('Financeiro do Evento');
 .finance-event-avatar{width:128px;height:128px;border-radius:999px;margin:0 auto 1rem;background:#cbd5e1;position:relative}
 .finance-event-avatar::before{content:"";position:absolute;top:28px;left:50%;width:42px;height:42px;border-radius:999px;background:#fff;transform:translateX(-50%)}
 .finance-event-avatar::after{content:"";position:absolute;left:50%;bottom:28px;width:74px;height:42px;border-radius:42px 42px 18px 18px;background:#fff;transform:translateX(-50%)}
+.finance-event-avatar.has-photo{overflow:hidden;background:#e2e8f0;box-shadow:0 10px 24px rgba(15,23,42,.12)}
+.finance-event-avatar.has-photo::before,.finance-event-avatar.has-photo::after{display:none}
+.finance-event-avatar img{width:100%;height:100%;display:block;object-fit:cover}
 .finance-event-summary{text-align:center;color:#475569;font-size:1rem;line-height:1.45;margin-bottom:1rem}
 .finance-event-initials{width:46px;height:46px;border-radius:999px;margin:.9rem auto 0;background:#2f7d32;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;box-shadow:0 10px 20px rgba(47,125,50,.25)}
 .finance-info-block{background:#f8fafc;border-left:4px solid #58c786;border-radius:10px;padding:.9rem;margin-top:.8rem;color:#334155;line-height:1.45}
@@ -279,7 +290,11 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
     <div class="finance-layout">
         <aside class="finance-event-card">
             <h2 class="finance-event-title"><?= h((string)$evento['nome_evento']) ?></h2>
-            <div class="finance-event-avatar" aria-hidden="true"></div>
+            <div class="finance-event-avatar<?= $eventoFotoUrl !== '' ? ' has-photo' : '' ?>" aria-hidden="true">
+                <?php if ($eventoFotoUrl !== ''): ?>
+                    <img src="<?= h($eventoFotoUrl) ?>" alt="">
+                <?php endif; ?>
+            </div>
 
             <div class="finance-event-summary">
                 <div>★ <?= h((string)$evento['space_visivel']) ?></div>

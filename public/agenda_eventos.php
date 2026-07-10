@@ -258,6 +258,79 @@ function agenda_eventos_format_time(array $evento): string
     return $horaFim !== '' ? $horaInicio . ' às ' . $horaFim : $horaInicio;
 }
 
+function agenda_eventos_salvar_foto_evento(PDO $pdo, int $eventoId, string $dataUrl): array
+{
+    if ($eventoId <= 0) {
+        return ['ok' => false, 'error' => 'Evento inválido.'];
+    }
+    if (preg_match('/^data:image\/(png|jpe?g|webp);base64,(.+)$/i', $dataUrl, $matches) !== 1) {
+        return ['ok' => false, 'error' => 'Envie uma imagem válida.'];
+    }
+    $binary = base64_decode($matches[2], true);
+    if ($binary === false || strlen($binary) < 100) {
+        return ['ok' => false, 'error' => 'Não foi possível ler a imagem enviada.'];
+    }
+    if (@getimagesizefromstring($binary) === false) {
+        return ['ok' => false, 'error' => 'Arquivo de imagem inválido.'];
+    }
+
+    $dir = __DIR__ . '/uploads/eventos_fotos';
+    if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+        return ['ok' => false, 'error' => 'Não foi possível criar a pasta de fotos.'];
+    }
+
+    $filename = 'evento_' . $eventoId . '_' . date('YmdHis') . '_' . bin2hex(random_bytes(4)) . '.jpg';
+    $path = $dir . '/' . $filename;
+    if (file_put_contents($path, $binary) === false) {
+        return ['ok' => false, 'error' => 'Não foi possível salvar a foto.'];
+    }
+
+    $url = 'uploads/eventos_fotos/' . $filename;
+    $stmt = $pdo->prepare("UPDATE logistica_eventos_espelho SET foto_evento_url = :foto WHERE id = :id");
+    $stmt->execute([':foto' => $url, ':id' => $eventoId]);
+    return ['ok' => true, 'url' => $url];
+}
+
+function agenda_eventos_normalizar_hora(string $hora): ?string
+{
+    $hora = trim($hora);
+    if (preg_match('/^([01]\d|2[0-3]):([0-5]\d)$/', $hora) !== 1) {
+        return null;
+    }
+    return $hora . ':00';
+}
+
+function agenda_eventos_atualizar_data_horario(PDO $pdo, int $eventoId, string $dataEvento, string $horaInicio, string $horaFim): array
+{
+    if ($eventoId <= 0) {
+        return ['ok' => false, 'error' => 'Evento inválido.'];
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataEvento) !== 1) {
+        return ['ok' => false, 'error' => 'Informe uma data válida.'];
+    }
+    $inicioNormalizado = agenda_eventos_normalizar_hora($horaInicio);
+    $fimNormalizado = agenda_eventos_normalizar_hora($horaFim);
+    if ($inicioNormalizado === null || $fimNormalizado === null) {
+        return ['ok' => false, 'error' => 'Informe horários válidos.'];
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE logistica_eventos_espelho
+        SET data_evento = :data_evento,
+            hora_inicio = :hora_inicio,
+            hora_fim = :hora_fim
+        WHERE id = :id
+    ");
+    $stmt->execute([
+        ':data_evento' => $dataEvento,
+        ':hora_inicio' => $inicioNormalizado,
+        ':hora_fim' => $fimNormalizado,
+        ':id' => $eventoId,
+    ]);
+
+    return ['ok' => true];
+}
+
 $usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $isSuperadmin = !empty($_SESSION['perm_superadmin']);
 $canViewEventDetails = $isSuperadmin || !empty($_SESSION['perm_agenda_eventos_detalhes']);
@@ -272,6 +345,15 @@ $temTabelaReunioes = agenda_eventos_has_table($pdo, 'eventos_reunioes');
 $temTabelaComercialEventosPainel = agenda_eventos_has_table($pdo, 'comercial_eventos_painel');
 $temColunaClienteCadastro = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
 $temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
+$temColunaFotoEvento = false;
+if ($temTabelaEventos) {
+    try {
+        $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS foto_evento_url TEXT NULL");
+        $temColunaFotoEvento = agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'foto_evento_url');
+    } catch (Throwable $e) {
+        error_log('[AGENDA_EVENTOS_FOTO_SCHEMA] ' . $e->getMessage());
+    }
+}
 
 $mesAtual = new DateTimeImmutable('first day of this month');
 $boundsEventos = $temTabelaEventos ? agenda_eventos_date_bounds($pdo, $isSuperadmin, $spacesUsuario) : ['min' => null, 'max' => null];
@@ -302,6 +384,47 @@ $weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 $eventos = [];
 $eventosPorData = [];
 $errors = [];
+$messages = [];
+if (!empty($_SESSION['agenda_eventos_success'])) {
+    $messages[] = (string)$_SESSION['agenda_eventos_success'];
+    unset($_SESSION['agenda_eventos_success']);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'salvar_foto_evento') {
+    $postEventoId = (int)($_POST['evento_id'] ?? 0);
+    if (!$canViewEventDetails) {
+        $errors[] = 'Você não possui permissão para alterar a foto do evento.';
+    } else {
+        $resultadoFoto = agenda_eventos_salvar_foto_evento($pdo, $postEventoId, (string)($_POST['foto_evento_data'] ?? ''));
+        if (!empty($resultadoFoto['ok'])) {
+            $_SESSION['agenda_eventos_success'] = 'Foto do evento atualizada.';
+            header('Location: index.php?page=agenda_eventos&evento_id=' . $postEventoId);
+            exit;
+        }
+        $errors[] = (string)($resultadoFoto['error'] ?? 'Não foi possível salvar a foto do evento.');
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'atualizar_data_horario_evento') {
+    $postEventoId = (int)($_POST['evento_id'] ?? 0);
+    if (!$isSuperadmin) {
+        $errors[] = 'Apenas superadmin pode alterar data e horários do evento.';
+    } else {
+        $resultadoHorario = agenda_eventos_atualizar_data_horario(
+            $pdo,
+            $postEventoId,
+            (string)($_POST['data_evento'] ?? ''),
+            (string)($_POST['hora_inicio'] ?? ''),
+            (string)($_POST['hora_fim'] ?? '')
+        );
+        if (!empty($resultadoHorario['ok'])) {
+            $_SESSION['agenda_eventos_success'] = 'Data e horários do evento atualizados.';
+            header('Location: index.php?page=agenda_eventos&evento_id=' . $postEventoId);
+            exit;
+        }
+        $errors[] = (string)($resultadoHorario['error'] ?? 'Não foi possível atualizar data e horários do evento.');
+    }
+}
 
 if ($eventoSelecionadoId > 0 && !$canViewEventDetails) {
     $eventoSelecionadoId = 0;
@@ -347,6 +470,9 @@ if (!$temTabelaEventos) {
         $nomeEventoSql = $temColunaNomeEvento
             ? "COALESCE(NULLIF(TRIM(e.nome_evento), ''), 'Evento sem nome')"
             : "'Evento sem nome'";
+        $fotoEventoSql = $temColunaFotoEvento
+            ? "COALESCE(NULLIF(TRIM(e.foto_evento_url), ''), '')"
+            : "''";
 
         $meetingIdSql = $temTabelaReunioes ? 'COALESCE(r.meeting_id, 0)' : '0';
 
@@ -405,6 +531,7 @@ if (!$temTabelaEventos) {
                 {$nomeEventoSql} AS nome_evento,
                 COALESCE(NULLIF(TRIM(e.localevento), ''), {$snapshotLocalSql}, 'Local não informado') AS local_evento,
                 COALESCE(NULLIF(TRIM(e.space_visivel), ''), 'Não mapeado') AS space_visivel,
+                {$fotoEventoSql} AS foto_evento_url,
                 COALESCE(NULLIF(TRIM(e.status_mapeamento), ''), 'PENDENTE') AS status_mapeamento,
                 COALESCE(e.convidados, 0) AS convidados,
                 COALESCE(e.idlocalevento, 0) AS id_local_me
@@ -474,6 +601,9 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
         $nomeEventoDetalheSql = $temColunaNomeEvento
             ? "COALESCE(NULLIF(TRIM(e.nome_evento), ''), 'Evento sem nome')"
             : "'Evento sem nome'";
+        $fotoEventoDetalheSql = $temColunaFotoEvento
+            ? "COALESCE(NULLIF(TRIM(e.foto_evento_url), ''), '')"
+            : "''";
 
         $meetingIdDetalheSql = $temTabelaReunioes ? 'COALESCE(r.meeting_id, 0)' : '0';
         $tipoEventoRealDetalheSql = "''";
@@ -541,6 +671,7 @@ if ($eventoSelecionadoId > 0 && $temTabelaEventos) {
                 {$nomeEventoDetalheSql} AS nome_evento,
                 COALESCE(NULLIF(TRIM(e.localevento), ''), {$snapshotLocalDetalheSql}, 'Local não informado') AS local_evento,
                 COALESCE(NULLIF(TRIM(e.space_visivel), ''), 'Não mapeado') AS space_visivel,
+                {$fotoEventoDetalheSql} AS foto_evento_url,
                 COALESCE(NULLIF(TRIM(e.status_mapeamento), ''), 'PENDENTE') AS status_mapeamento,
                 COALESCE(e.convidados, 0) AS convidados,
                 COALESCE(e.idlocalevento, 0) AS id_local_me
@@ -593,6 +724,8 @@ foreach ($eventos as $evento) {
 
 includeSidebar('Agenda Geral');
 ?>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css">
 
 <style>
 .agenda-eventos-page {
@@ -654,6 +787,10 @@ includeSidebar('Agenda Geral');
 
 .agenda-alert.error {
     border-left-color: #dc2626;
+}
+
+.agenda-alert.success {
+    border-left-color: #16a34a;
 }
 
 .calendar-toolbar {
@@ -1063,6 +1200,7 @@ includeSidebar('Agenda Geral');
 }
 
 .event-avatar {
+    display: block;
     width: 138px;
     height: 138px;
     margin: 0.8rem auto 1rem;
@@ -1070,6 +1208,10 @@ includeSidebar('Agenda Geral');
     background: linear-gradient(180deg, #d5dbe4 0%, #bcc5d1 100%);
     position: relative;
     box-shadow: inset 0 -8px 16px rgba(15, 23, 42, 0.05);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
 }
 
 .event-avatar::before,
@@ -1093,6 +1235,136 @@ includeSidebar('Agenda Geral');
     width: 90px;
     height: 45px;
     border-radius: 48px 48px 18px 18px;
+}
+
+.event-avatar.has-photo {
+    background: #e2e8f0;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+}
+
+.event-avatar.has-photo::before,
+.event-avatar.has-photo::after {
+    display: none;
+}
+
+.event-avatar img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.event-avatar-overlay {
+    position: absolute;
+    inset: auto 0 0;
+    padding: 0.45rem 0.35rem;
+    background: rgba(15, 23, 42, 0.68);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    opacity: 0;
+    transition: opacity .16s ease;
+}
+
+.event-avatar:hover .event-avatar-overlay {
+    opacity: 1;
+}
+
+.event-avatar:not(.has-photo) .event-avatar-overlay {
+    opacity: .95;
+}
+
+.event-photo-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, 0.58);
+}
+
+.event-photo-modal.open {
+    display: flex;
+}
+
+.event-photo-card {
+    width: min(760px, 100%);
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
+}
+
+.event-photo-head,
+.event-photo-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.event-photo-actions {
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 0;
+    justify-content: flex-end;
+}
+
+.event-photo-title {
+    margin: 0;
+    color: #1e293b;
+    font-size: 1.1rem;
+    font-weight: 900;
+}
+
+.event-photo-body {
+    padding: 1rem;
+}
+
+.event-photo-input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: .8rem;
+    margin-bottom: 1rem;
+}
+
+.event-photo-stage {
+    min-height: 360px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.event-photo-stage img {
+    max-width: 100%;
+    display: block;
+}
+
+.event-photo-placeholder {
+    color: #64748b;
+    font-weight: 700;
+    text-align: center;
+    padding: 1rem;
+}
+
+.event-photo-close {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #334155;
+    font-weight: 900;
+    cursor: pointer;
 }
 
 .event-side-summary {
@@ -1127,9 +1399,117 @@ includeSidebar('Agenda Geral');
     font-size: 0.92rem;
 }
 
+.event-info-block--button {
+    display: block;
+    width: calc(100% - 2.2rem);
+    text-align: left;
+    border-top: 0;
+    border-right: 0;
+    border-bottom: 0;
+    cursor: pointer;
+    font: inherit;
+}
+
+.event-info-block--button:hover {
+    background: #f1f5f9;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
 .event-info-block.event-info-block--place {
     border-left-color: #70bd68;
     background: #f5fbf4;
+}
+
+.event-schedule-hint {
+    margin-top: .35rem;
+    color: #64748b;
+    font-size: .78rem;
+    font-weight: 800;
+}
+
+.event-datetime-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, .58);
+}
+
+.event-datetime-modal.open {
+    display: flex;
+}
+
+.event-datetime-card {
+    width: min(560px, 100%);
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
+    overflow: hidden;
+}
+
+.event-datetime-head,
+.event-datetime-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.event-datetime-actions {
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 0;
+    justify-content: flex-end;
+}
+
+.event-datetime-title {
+    margin: 0;
+    color: #1e293b;
+    font-size: 1.1rem;
+    font-weight: 900;
+}
+
+.event-datetime-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .9rem;
+    padding: 1rem;
+}
+
+.event-datetime-field:first-child {
+    grid-column: 1 / -1;
+}
+
+.event-datetime-field label {
+    display: block;
+    margin-bottom: .35rem;
+    color: #334155;
+    font-size: .86rem;
+    font-weight: 900;
+}
+
+.event-datetime-field input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: .78rem .85rem;
+    color: #0f172a;
+    font: inherit;
+}
+
+.event-datetime-close {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #334155;
+    font-weight: 900;
+    cursor: pointer;
 }
 
 .event-info-label {
@@ -1344,6 +1724,7 @@ a.event-function-card:hover {
         $clienteDocumentoTipo = trim((string)($eventoSelecionado['cliente_documento_tipo'] ?? ''));
         $clienteDocumentoNumero = trim((string)($eventoSelecionado['cliente_documento_numero'] ?? ''));
         $clienteRg = trim((string)($eventoSelecionado['cliente_rg'] ?? ''));
+        $eventoFotoUrl = trim((string)($eventoSelecionado['foto_evento_url'] ?? ''));
         $clienteCadastroHref = $clienteCadastroId > 0
             ? 'index.php?page=comercial_cadastro_cliente&id=' . $clienteCadastroId
             : 'index.php?page=comercial_clientes_cadastrados' . ($clienteNome !== '' ? '&search=' . urlencode($clienteNome) : '');
@@ -1368,7 +1749,12 @@ a.event-function-card:hover {
         <div class="agenda-detail-layout">
             <aside class="event-side-panel">
                 <h2 class="event-side-title"><?= h((string)($eventoSelecionado['nome_evento'] ?? 'Evento')) ?></h2>
-                <div class="event-avatar" aria-hidden="true"></div>
+                <button type="button" class="event-avatar<?= $eventoFotoUrl !== '' ? ' has-photo' : '' ?>" id="eventPhotoOpen" aria-label="Adicionar ou editar foto do evento" title="Adicionar ou editar foto do evento">
+                    <?php if ($eventoFotoUrl !== ''): ?>
+                        <img src="<?= h($eventoFotoUrl) ?>" alt="Foto do evento <?= h((string)($eventoSelecionado['nome_evento'] ?? '')) ?>">
+                    <?php endif; ?>
+                    <span class="event-avatar-overlay"><?= $eventoFotoUrl !== '' ? 'Editar foto' : 'Adicionar foto' ?></span>
+                </button>
 
                 <div class="event-side-summary">
                     <div>★ <?= h((string)($eventoSelecionado['space_visivel'] ?? 'Unidade não mapeada')) ?></div>
@@ -1376,12 +1762,22 @@ a.event-function-card:hover {
                     <div class="event-type-dot" style="background: <?= h($eventColor) ?>">TI</div>
                 </div>
 
-                <div class="event-info-block" style="border-left-color: <?= h($eventColor) ?>">
-                    <span class="event-info-label">📅 <?= h(agenda_eventos_format_date((string)($eventoSelecionado['data_evento'] ?? ''))) ?></span>
-                    <div><?= h(agenda_eventos_format_weekday((string)($eventoSelecionado['data_evento'] ?? ''))) ?></div>
-                    <div><strong>Horário:</strong> <?= h(agenda_eventos_format_time($eventoSelecionado)) ?></div>
-                    <div><strong>Local:</strong> <?= h((string)($eventoSelecionado['local_evento'] ?? 'Local não informado')) ?></div>
-                </div>
+                <?php if ($isSuperadmin): ?>
+                    <button type="button" class="event-info-block event-info-block--button" id="eventDatetimeOpen" style="border-left-color: <?= h($eventColor) ?>" aria-label="Alterar data e horários do evento">
+                        <span class="event-info-label">📅 <?= h(agenda_eventos_format_date((string)($eventoSelecionado['data_evento'] ?? ''))) ?></span>
+                        <div><?= h(agenda_eventos_format_weekday((string)($eventoSelecionado['data_evento'] ?? ''))) ?></div>
+                        <div><strong>Horário:</strong> <?= h(agenda_eventos_format_time($eventoSelecionado)) ?></div>
+                        <div><strong>Local:</strong> <?= h((string)($eventoSelecionado['local_evento'] ?? 'Local não informado')) ?></div>
+                        <div class="event-schedule-hint">Clique para alterar data e horários</div>
+                    </button>
+                <?php else: ?>
+                    <div class="event-info-block" style="border-left-color: <?= h($eventColor) ?>">
+                        <span class="event-info-label">📅 <?= h(agenda_eventos_format_date((string)($eventoSelecionado['data_evento'] ?? ''))) ?></span>
+                        <div><?= h(agenda_eventos_format_weekday((string)($eventoSelecionado['data_evento'] ?? ''))) ?></div>
+                        <div><strong>Horário:</strong> <?= h(agenda_eventos_format_time($eventoSelecionado)) ?></div>
+                        <div><strong>Local:</strong> <?= h((string)($eventoSelecionado['local_evento'] ?? 'Local não informado')) ?></div>
+                    </div>
+                <?php endif; ?>
 
                 <div class="event-info-block event-info-block--place">
                     <span class="event-info-label">📍 Local do Evento</span>
@@ -1457,6 +1853,9 @@ a.event-function-card:hover {
 
     <?php foreach ($errors as $error): ?>
         <div class="agenda-alert error"><?= h($error) ?></div>
+    <?php endforeach; ?>
+    <?php foreach ($messages as $message): ?>
+        <div class="agenda-alert success"><?= h($message) ?></div>
     <?php endforeach; ?>
 
     <?php if (empty($errors) && !($eventoSelecionadoId > 0 && is_array($eventoSelecionado))): ?>
@@ -1563,5 +1962,185 @@ a.event-function-card:hover {
         <?php endif; ?>
     <?php endif; ?>
 </div>
+
+<?php if (empty($errors) && $isSuperadmin && $eventoSelecionadoId > 0 && is_array($eventoSelecionado)): ?>
+    <div class="event-datetime-modal" id="eventDatetimeModal" role="dialog" aria-modal="true" aria-labelledby="eventDatetimeTitle">
+        <form class="event-datetime-card" method="post">
+            <input type="hidden" name="action" value="atualizar_data_horario_evento">
+            <input type="hidden" name="evento_id" value="<?= (int)$eventoSelecionadoId ?>">
+
+            <div class="event-datetime-head">
+                <h2 class="event-datetime-title" id="eventDatetimeTitle">Alterar data e horários</h2>
+                <button type="button" class="event-datetime-close" data-event-datetime-close aria-label="Fechar">×</button>
+            </div>
+
+            <div class="event-datetime-body">
+                <div class="event-datetime-field">
+                    <label for="eventDatetimeDate">Data do evento</label>
+                    <input type="date" id="eventDatetimeDate" name="data_evento" value="<?= h((string)($eventoSelecionado['data_evento'] ?? '')) ?>" required>
+                </div>
+                <div class="event-datetime-field">
+                    <label for="eventDatetimeStart">Horário de início</label>
+                    <input type="time" id="eventDatetimeStart" name="hora_inicio" value="<?= h(agenda_eventos_format_clock((string)($eventoSelecionado['hora_inicio'] ?? ''))) ?>" required>
+                </div>
+                <div class="event-datetime-field">
+                    <label for="eventDatetimeEnd">Horário de término</label>
+                    <input type="time" id="eventDatetimeEnd" name="hora_fim" value="<?= h(agenda_eventos_format_clock((string)($eventoSelecionado['hora_fim'] ?? ''))) ?>" required>
+                </div>
+            </div>
+
+            <div class="event-datetime-actions">
+                <button type="button" class="event-action-btn" data-event-datetime-close>Cancelar</button>
+                <button type="submit" class="event-action-btn event-action-btn--green">Salvar alterações</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+    (() => {
+        const openButton = document.getElementById('eventDatetimeOpen');
+        const modal = document.getElementById('eventDatetimeModal');
+        const openModal = () => modal?.classList.add('open');
+        const closeModal = () => modal?.classList.remove('open');
+
+        openButton?.addEventListener('click', openModal);
+        document.querySelectorAll('[data-event-datetime-close]').forEach((button) => {
+            button.addEventListener('click', closeModal);
+        });
+        modal?.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                closeModal();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && modal?.classList.contains('open')) {
+                closeModal();
+            }
+        });
+    })();
+    </script>
+<?php endif; ?>
+
+<?php if (empty($errors) && $eventoSelecionadoId > 0 && is_array($eventoSelecionado)): ?>
+    <div class="event-photo-modal" id="eventPhotoModal" role="dialog" aria-modal="true" aria-labelledby="eventPhotoTitle">
+        <form class="event-photo-card" method="post" id="eventPhotoForm">
+            <input type="hidden" name="action" value="salvar_foto_evento">
+            <input type="hidden" name="evento_id" value="<?= (int)$eventoSelecionadoId ?>">
+            <input type="hidden" name="foto_evento_data" id="eventPhotoData">
+
+            <div class="event-photo-head">
+                <h2 class="event-photo-title" id="eventPhotoTitle">Foto do evento</h2>
+                <button type="button" class="event-photo-close" data-event-photo-close aria-label="Fechar">×</button>
+            </div>
+
+            <div class="event-photo-body">
+                <input class="event-photo-input" type="file" id="eventPhotoInput" accept="image/*">
+                <div class="event-photo-stage">
+                    <img id="eventPhotoEditor" alt="Pré-visualização da foto" style="display:none;">
+                    <span class="event-photo-placeholder" id="eventPhotoPlaceholder">Selecione uma imagem para ajustar o corte.</span>
+                </div>
+            </div>
+
+            <div class="event-photo-actions">
+                <button type="button" class="event-action-btn" id="eventPhotoZoomOut">- Zoom</button>
+                <button type="button" class="event-action-btn" id="eventPhotoZoomIn">+ Zoom</button>
+                <button type="button" class="event-action-btn" id="eventPhotoRotate">↻ Girar</button>
+                <button type="button" class="event-action-btn" data-event-photo-close>Cancelar</button>
+                <button type="submit" class="event-action-btn event-action-btn--green">Salvar foto</button>
+            </div>
+        </form>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"></script>
+    <script>
+    (() => {
+        const openButton = document.getElementById('eventPhotoOpen');
+        const modal = document.getElementById('eventPhotoModal');
+        const input = document.getElementById('eventPhotoInput');
+        const image = document.getElementById('eventPhotoEditor');
+        const hidden = document.getElementById('eventPhotoData');
+        const placeholder = document.getElementById('eventPhotoPlaceholder');
+        const form = document.getElementById('eventPhotoForm');
+        let cropper = null;
+
+        const openModal = () => modal?.classList.add('open');
+        const closeModal = () => modal?.classList.remove('open');
+        const destroyCropper = () => {
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+        };
+
+        openButton?.addEventListener('click', openModal);
+        document.querySelectorAll('[data-event-photo-close]').forEach((button) => {
+            button.addEventListener('click', closeModal);
+        });
+        modal?.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                closeModal();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && modal?.classList.contains('open')) {
+                closeModal();
+            }
+        });
+
+        input?.addEventListener('change', () => {
+            const file = input.files && input.files[0] ? input.files[0] : null;
+            if (!file) {
+                return;
+            }
+            if (!file.type.startsWith('image/')) {
+                alert('Selecione uma imagem válida.');
+                input.value = '';
+                return;
+            }
+
+            destroyCropper();
+            const reader = new FileReader();
+            reader.onload = () => {
+                image.src = String(reader.result || '');
+                image.style.display = 'block';
+                if (placeholder) {
+                    placeholder.style.display = 'none';
+                }
+                cropper = new Cropper(image, {
+                    aspectRatio: 1,
+                    viewMode: 1,
+                    autoCropArea: 0.9,
+                    background: false,
+                    responsive: true
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+
+        document.getElementById('eventPhotoZoomOut')?.addEventListener('click', () => cropper?.zoom(-0.1));
+        document.getElementById('eventPhotoZoomIn')?.addEventListener('click', () => cropper?.zoom(0.1));
+        document.getElementById('eventPhotoRotate')?.addEventListener('click', () => cropper?.rotate(90));
+
+        form?.addEventListener('submit', (event) => {
+            if (!cropper) {
+                event.preventDefault();
+                alert('Selecione uma foto antes de salvar.');
+                return;
+            }
+            const canvas = cropper.getCroppedCanvas({
+                width: 900,
+                height: 900,
+                imageSmoothingQuality: 'high'
+            });
+            if (!canvas) {
+                event.preventDefault();
+                alert('Não foi possível recortar a foto.');
+                return;
+            }
+            hidden.value = canvas.toDataURL('image/jpeg', 0.9);
+        });
+    })();
+    </script>
+<?php endif; ?>
 
 <?php endSidebar(); ?>

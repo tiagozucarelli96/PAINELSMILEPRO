@@ -155,10 +155,13 @@ function eventos_financeiro_split_parcelas(float $valorTotal, int $parcelas): ar
 
 function eventos_financeiro_evento(PDO $pdo, int $eventoId): ?array
 {
+    $pdo->exec("ALTER TABLE IF EXISTS logistica_eventos_espelho ADD COLUMN IF NOT EXISTS foto_evento_url TEXT NULL");
     $hasHoraFim = eventos_financeiro_column_exists($pdo, 'logistica_eventos_espelho', 'hora_fim');
+    $hasFotoEvento = eventos_financeiro_column_exists($pdo, 'logistica_eventos_espelho', 'foto_evento_url');
     $hasClienteCadastro = eventos_financeiro_column_exists($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
     $hasClientes = eventos_financeiro_table_exists($pdo, 'comercial_cadastro_clientes');
     $selectHoraFim = $hasHoraFim ? "COALESCE(TO_CHAR(e.hora_fim, 'HH24:MI'), '') AS hora_fim," : "'' AS hora_fim,";
+    $selectFotoEvento = $hasFotoEvento ? "COALESCE(NULLIF(TRIM(e.foto_evento_url), ''), '') AS foto_evento_url," : "'' AS foto_evento_url,";
     $selectClienteId = $hasClienteCadastro ? "COALESCE(e.cliente_cadastro_id, 0) AS cliente_cadastro_id," : "0 AS cliente_cadastro_id,";
     $joinCliente = ($hasClienteCadastro && $hasClientes) ? "LEFT JOIN comercial_cadastro_clientes c ON c.id = e.cliente_cadastro_id" : "";
     $clienteExpr = static function (string $column) use ($pdo, $hasClientes): string {
@@ -186,6 +189,7 @@ function eventos_financeiro_evento(PDO $pdo, int $eventoId): ?array
     $stmt = $pdo->prepare("
         SELECT e.id,
                e.me_event_id,
+               {$selectFotoEvento}
                {$selectClienteId}
                {$clienteSelects}
                e.data_evento::text AS data_evento,
