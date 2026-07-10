@@ -1203,44 +1203,85 @@ includeSidebar('Formatura');
 }
 .formatura-financeiro-head {
     padding: 0 1.4rem 1.25rem;
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
     gap: 1rem;
-    flex-wrap: wrap;
+    align-items: stretch;
+}
+.formatura-financeiro-person {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fbfdff;
+    padding: 1rem;
 }
 .formatura-financeiro-head h3 {
     margin: 0;
-    color: #4b5563;
-    font-size: 1.55rem;
-    font-weight: 850;
+    color: #1f2937;
+    font-size: 1.5rem;
+    font-weight: 900;
 }
 .formatura-financeiro-head p {
-    margin: 0.25rem 0 0;
+    margin: 0.35rem 0 0;
     color: #475569;
     font-weight: 700;
 }
 .formatura-financeiro-resumo {
     display: grid;
-    gap: 0.35rem;
-    min-width: 230px;
-    color: #475569;
-    font-weight: 750;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.7rem;
+}
+.formatura-financeiro-card {
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #fff;
+    padding: 0.9rem;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+.formatura-financeiro-card span {
+    display: block;
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+.formatura-financeiro-card strong {
+    display: block;
+    margin-top: 0.28rem;
+    color: #1e3a8a;
+    font-size: 1.05rem;
+    font-weight: 950;
+    white-space: nowrap;
+}
+.formatura-financeiro-card--saldo strong {
+    color: #0f766e;
 }
 .formatura-calc-note {
     margin: 0 1.4rem 1rem;
-    padding: 0.75rem 0.9rem;
-    border: 1px solid #fde68a;
-    border-radius: 8px;
-    background: #fffbeb;
-    color: #92400e;
-    font-weight: 750;
+    padding: 0.9rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    background: #eff6ff;
+    color: #1e3a8a;
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
 }
-.formatura-calc-note span {
-    display: block;
-    margin-top: 0.25rem;
-    color: #64748b;
-    font-weight: 700;
+.formatura-calc-note strong {
+    margin-right: 0.2rem;
+    font-weight: 950;
+}
+.formatura-calc-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #dbeafe;
+    color: #334155;
+    font-size: 0.86rem;
+    font-weight: 850;
 }
 .formatura-receita-card {
     margin: 0 1.4rem 1.2rem;
@@ -1558,7 +1599,9 @@ includeSidebar('Formatura');
 }
 @media (max-width: 860px) {
     .formatura-stats,
-    .formatura-grid {
+    .formatura-grid,
+    .formatura-financeiro-head,
+    .formatura-financeiro-resumo {
         grid-template-columns: 1fr;
     }
     .formatura-search {
@@ -1605,24 +1648,33 @@ includeSidebar('Formatura');
             </div>
 
             <div class="formatura-financeiro-head">
-                <div>
+                <div class="formatura-financeiro-person">
                     <h3><?= eventos_formatura_e((string)$formandoFinanceiro['nome_formando']) ?></h3>
                     <p><?= eventos_formatura_e((string)($formandoFinanceiro['cliente_telefone'] ?? '')) ?></p>
                     <p class="formatura-muted"><?= eventos_formatura_e((string)($formandoFinanceiro['cliente_email'] ?? '')) ?></p>
                 </div>
                 <div class="formatura-financeiro-resumo">
-                    <span>Lançado: <strong>R$ <?= number_format($financeiroFormandoLancado, 2, ',', '.') ?></strong></span>
-                    <span>Pago: <strong>R$ <?= number_format($financeiroFormandoPago, 2, ',', '.') ?></strong></span>
-                    <span>Saldo: <strong>R$ <?= number_format($financeiroFormandoSaldo, 2, ',', '.') ?></strong></span>
+                    <div class="formatura-financeiro-card">
+                        <span>Lançado</span>
+                        <strong>R$ <?= number_format($financeiroFormandoLancado, 2, ',', '.') ?></strong>
+                    </div>
+                    <div class="formatura-financeiro-card">
+                        <span>Pago</span>
+                        <strong>R$ <?= number_format($financeiroFormandoPago, 2, ',', '.') ?></strong>
+                    </div>
+                    <div class="formatura-financeiro-card formatura-financeiro-card--saldo">
+                        <span>Saldo</span>
+                        <strong>R$ <?= number_format($financeiroFormandoSaldo, 2, ',', '.') ?></strong>
+                    </div>
                 </div>
             </div>
             <?php if (!empty($formandoFinanceiro['calculo_configurado'])): ?>
                 <div class="formatura-calc-note">
-                    <?= (int)$formandoFinanceiro['mesas'] ?> mesa(s) x R$ <?= number_format((float)$formaturaConfig['valor_mesa'], 2, ',', '.') ?>
+                    <strong>Cálculo</strong>
+                    <span class="formatura-calc-chip"><?= (int)$formandoFinanceiro['mesas'] ?> mesa(s) x R$ <?= number_format((float)$formaturaConfig['valor_mesa'], 2, ',', '.') ?></span>
                     <?php if ((int)$formandoFinanceiro['convidados_adicionais'] > 0): ?>
-                        + <?= (int)$formandoFinanceiro['convidados_adicionais'] ?> convidado(s) adicional(is) x R$ <?= number_format((float)$formaturaConfig['valor_convidado_adicional'], 2, ',', '.') ?>
+                        <span class="formatura-calc-chip"><?= (int)$formandoFinanceiro['convidados_adicionais'] ?> adicional(is) x R$ <?= number_format((float)$formaturaConfig['valor_convidado_adicional'], 2, ',', '.') ?></span>
                     <?php endif; ?>
-                    <span>As cobranças continuam sendo geradas manualmente.</span>
                 </div>
             <?php endif; ?>
 
