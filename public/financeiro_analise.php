@@ -333,11 +333,50 @@ function fa_status_clause(string $alias, string $status, bool $expense = false):
     return $expense ? "{$alias}.status IN ('pago', 'conciliado')" : "{$alias}.status = 'pago'";
 }
 
+function fa_despesas_analise_source(): string
+{
+    return "
+        SELECT
+            d.data_movimento,
+            d.categoria,
+            d.centro_custo,
+            d.banco,
+            d.conta,
+            d.descricao,
+            d.valor,
+            d.status,
+            d.origem
+        FROM financeiro_despesas d
+        WHERE NOT (
+            COALESCE(d.origem, '') = 'cartao_credito'
+            OR UPPER(REGEXP_REPLACE(COALESCE(d.categoria, ''), '[^A-Za-z0-9]+', ' ', 'g')) IN ('CARTAO DE CREDITO', 'CARTAO CREDITO')
+        )
+        UNION ALL
+        SELECT
+            COALESCE(f.vencimento, f.competencia)::date AS data_movimento,
+            l.categoria,
+            NULL::text AS centro_custo,
+            c.nome AS banco,
+            c.nome AS conta,
+            l.descricao,
+            l.valor,
+            COALESCE(NULLIF(fd.status, ''), 'pendente') AS status,
+            'cartao_item' AS origem
+        FROM financeiro_cartao_lancamentos l
+        INNER JOIN financeiro_cartao_faturas f ON f.id = l.fatura_id
+        INNER JOIN financeiro_cartoes c ON c.id = l.cartao_id
+        LEFT JOIN financeiro_despesas fd ON fd.id = f.despesa_id
+        WHERE COALESCE(l.valor, 0) <> 0
+          AND COALESCE(NULLIF(TRIM(l.categoria), ''), '') <> ''
+    ";
+}
+
 function fa_summary(PDO $pdo, string $start, string $end, string $dateBase, string $status): array
 {
     $receitaSql = fa_receita_sources($pdo, $dateBase);
     $receitaStatus = fa_status_clause('r', $status, false);
     $despesaStatus = fa_status_clause('d', $status, true);
+    $despesasSql = fa_despesas_analise_source();
     $stmt = $pdo->prepare("
         SELECT
             COALESCE(SUM(valor), 0) AS total,
@@ -358,7 +397,7 @@ function fa_summary(PDO $pdo, string $start, string $end, string $dateBase, stri
             COALESCE(SUM(CASE WHEN status IN ('pago', 'conciliado') THEN valor ELSE 0 END), 0) AS pago,
             COUNT(*) AS qtd,
             COUNT(*) FILTER (WHERE status IN ('pago', 'conciliado')) AS qtd_pago
-        FROM financeiro_despesas d
+        FROM ({$despesasSql}) d
         WHERE {$despesaStatus}
           AND d.data_movimento >= CAST(:start AS DATE)
           AND d.data_movimento < CAST(:end AS DATE)
@@ -538,11 +577,12 @@ function fa_receitas_por_linha(PDO $pdo, string $start, string $end, string $dat
 function fa_top_despesas(PDO $pdo, string $start, string $end, string $status): array
 {
     $despesaStatus = fa_status_clause('d', $status, true);
+    $despesasSql = fa_despesas_analise_source();
     $stmt = $pdo->prepare("
         SELECT COALESCE(NULLIF(categoria, ''), 'Nao Informado') AS categoria,
                COALESCE(SUM(valor), 0) AS valor,
                COUNT(*) AS qtd
-        FROM financeiro_despesas d
+        FROM ({$despesasSql}) d
         WHERE {$despesaStatus}
           AND d.data_movimento >= CAST(:start AS DATE)
           AND d.data_movimento < CAST(:end AS DATE)
@@ -567,11 +607,12 @@ function fa_top_despesas(PDO $pdo, string $start, string $end, string $status): 
 function fa_despesas_por_categoria(PDO $pdo, string $start, string $end, string $status): array
 {
     $despesaStatus = fa_status_clause('d', $status, true);
+    $despesasSql = fa_despesas_analise_source();
     $stmt = $pdo->prepare("
         SELECT COALESCE(NULLIF(categoria, ''), 'Nao Informado') AS categoria,
                COALESCE(SUM(valor), 0) AS valor,
                COUNT(*) AS qtd
-        FROM financeiro_despesas d
+        FROM ({$despesasSql}) d
         WHERE {$despesaStatus}
           AND d.data_movimento >= CAST(:start AS DATE)
           AND d.data_movimento < CAST(:end AS DATE)
@@ -613,6 +654,7 @@ function fa_debt_category_label(?string $category): string
 function fa_endividamento(PDO $pdo, string $start, string $end, string $status): array
 {
     $despesaStatus = fa_status_clause('d', $status, true);
+    $despesasSql = fa_despesas_analise_source();
     $stmt = $pdo->prepare("
         SELECT d.data_movimento,
                COALESCE(NULLIF(TRIM(d.categoria), ''), 'Nao Informado') AS categoria,
@@ -620,7 +662,7 @@ function fa_endividamento(PDO $pdo, string $start, string $end, string $status):
                COALESCE(NULLIF(TRIM(d.descricao), ''), 'Sem descricao') AS descricao,
                COALESCE(d.valor, 0) AS valor,
                d.status
-        FROM financeiro_despesas d
+        FROM ({$despesasSql}) d
         WHERE {$despesaStatus}
           AND d.data_movimento >= CAST(:start AS DATE)
           AND d.data_movimento < CAST(:end AS DATE)
@@ -707,6 +749,7 @@ function fa_investimentos(PDO $pdo, DateTimeImmutable $month, string $status): a
     $yearEnd = $month->modify('first day of january next year')->format('Y-m-d');
     $monthKey = $month->format('Y-m');
     $despesaStatus = fa_status_clause('d', $status, true);
+    $despesasSql = fa_despesas_analise_source();
     $stmt = $pdo->prepare("
         SELECT d.data_movimento,
                TO_CHAR(d.data_movimento, 'YYYY-MM') AS mes,
@@ -716,7 +759,7 @@ function fa_investimentos(PDO $pdo, DateTimeImmutable $month, string $status): a
                COALESCE(NULLIF(TRIM(d.descricao), ''), 'Sem descricao') AS descricao,
                COALESCE(d.valor, 0) AS valor,
                d.status
-        FROM financeiro_despesas d
+        FROM ({$despesasSql}) d
         WHERE {$despesaStatus}
           AND d.data_movimento >= CAST(:start AS DATE)
           AND d.data_movimento < CAST(:end AS DATE)
@@ -833,6 +876,7 @@ function fa_future_commitments(PDO $pdo, DateTimeImmutable $month): array
 {
     $firstFuture = $month->modify('first day of next month');
     $futureEnd = $firstFuture->modify('+6 months');
+    $despesasSql = fa_despesas_analise_source();
     $stmt = $pdo->prepare("
         SELECT d.data_movimento,
                TO_CHAR(d.data_movimento, 'YYYY-MM') AS mes,
@@ -842,7 +886,7 @@ function fa_future_commitments(PDO $pdo, DateTimeImmutable $month): array
                COALESCE(NULLIF(TRIM(d.descricao), ''), 'Sem descricao') AS descricao,
                COALESCE(d.valor, 0) AS valor,
                d.status
-        FROM financeiro_despesas d
+        FROM ({$despesasSql}) d
         WHERE d.status <> 'cancelado'
           AND d.status NOT IN ('pago', 'conciliado')
           AND d.data_movimento >= CAST(:start AS DATE)
