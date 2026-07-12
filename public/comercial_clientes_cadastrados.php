@@ -281,8 +281,13 @@ includeSidebar('Clientes cadastrados');
                             <?php
                             $tipoPessoa = (string)($cliente['tipo_pessoa'] ?? 'PF');
                             $tipoLabel = $tipoPessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física';
-                            $editHref = 'index.php?page=comercial_cadastro_cliente&id=' . (int)$cliente['id']
-                                . '&search=' . urlencode((string)($cliente['nome_completo'] ?? ''));
+                            // O id e suficiente para abrir a edicao. Manter o termo de busca
+                            // no link fazia alguns proxies entregarem os parametros seguintes
+                            // como "amp;id"/"amp;search", fazendo o formulario cair no modo novo.
+                            $editHref = 'index.php?' . http_build_query([
+                                'page' => 'comercial_cadastro_cliente',
+                                'id' => (int)$cliente['id'],
+                            ]);
                             ?>
                             <tr>
                                 <td>

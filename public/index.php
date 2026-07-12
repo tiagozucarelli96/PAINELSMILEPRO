@@ -88,6 +88,18 @@ if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
     parse_str($_SERVER['QUERY_STRING'], $parsed_query);
     // Mesclar com $_GET para garantir que temos todos os parâmetros
     $_GET = array_merge($parsed_query, $_GET);
+
+    // Alguns links podem chegar do proxy com separadores HTML literais
+    // (ex.: "amp;id" em vez de "id"). Normalize antes de resolver a rota.
+    foreach ($_GET as $queryKey => $queryValue) {
+        if (str_starts_with((string)$queryKey, 'amp;')) {
+            $normalizedKey = substr((string)$queryKey, 4);
+            if ($normalizedKey !== '' && !array_key_exists($normalizedKey, $_GET)) {
+                $_GET[$normalizedKey] = $queryValue;
+            }
+            unset($_GET[$queryKey]);
+        }
+    }
 }
 
 // CRÍTICO: Verificar link público da contabilidade ANTES de qualquer coisa
