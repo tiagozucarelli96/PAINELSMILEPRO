@@ -122,6 +122,7 @@ class MagaluStorageHelper {
                         'part_size' => 8 * 1024 * 1024,
                         'before_initiate' => static function (\Aws\Command $command) use ($contentType): void {
                             $command['ContentType'] = $contentType;
+                            $command['ACL'] = 'public-read';
                         },
                     ]);
                     $uploader->upload();
@@ -131,6 +132,7 @@ class MagaluStorageHelper {
                         'Key' => $key,
                         'SourceFile' => $filePath,
                         'ContentType' => $contentType,
+                        'ACL' => 'public-read',
                     ]);
                 }
                 return ['success' => true];

@@ -27,10 +27,14 @@ $urls=[];
 foreach(array_merge($files,$kids) as $item){
  if(!is_file($item['path'])) throw new RuntimeException('Arquivo não encontrado: '.$item['path']);
  $key='orcamentos/catalogos/2026/'.$item['key'];
- fwrite(STDOUT,"Enviando {$item['key']}...\n");
- $result=$storage->uploadFileFromPath($item['path'],'orcamentos/catalogos','application/pdf',$key);
- if(empty($result['success'])||empty($result['url'])) throw new RuntimeException($result['error']??'Upload falhou.');
- $urls[$item['key']]=$result['url'];
+ if(!in_array('--skip-upload',$argv,true)){
+  fwrite(STDOUT,"Enviando {$item['key']}...\n");
+  $result=$storage->uploadFileFromPath($item['path'],'orcamentos/catalogos','application/pdf',$key);
+  if(empty($result['success'])||empty($result['url'])) throw new RuntimeException($result['error']??'Upload falhou.');
+  $urls[$item['key']]=$result['url'];
+ }else{
+  $urls[$item['key']]=rtrim((string)getenv('MAGALU_ENDPOINT'),'/').'/'.getenv('MAGALU_BUCKET').'/'.$key;
+ }
 }
 
 $unitStmt=$pdo->prepare('SELECT id,capacidade_min,capacidade_max FROM orcamento_unidades WHERE nome=:n AND ativo=true');
