@@ -286,7 +286,7 @@ includeSidebar('Clientes cadastrados');
                             // como "amp;id"/"amp;search", fazendo o formulario cair no modo novo.
                             $editHref = 'index.php?' . http_build_query([
                                 'page' => 'comercial_cadastro_cliente',
-                                'id' => (int)$cliente['id'],
+                                'edit_id' => (int)$cliente['id'],
                             ]);
                             ?>
                             <tr>
