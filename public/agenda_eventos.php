@@ -11,6 +11,8 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/eventos_me_helper.php';
+require_once __DIR__ . '/agenda_eventos_sync_helper.php';
 require_once __DIR__ . '/comercial_cliente_sync_helper.php';
 
 if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'])) {
@@ -331,6 +333,69 @@ function agenda_eventos_atualizar_data_horario(PDO $pdo, int $eventoId, string $
     return ['ok' => true];
 }
 
+function agenda_eventos_sync_me_range(PDO $pdo, DateTimeImmutable $inicio, DateTimeImmutable $fim, bool $force = false): array
+{
+    if (!function_exists('eventos_me_request') || !function_exists('agenda_eventos_sync_me_payload')) {
+        return ['ok' => false, 'synced' => 0, 'error' => 'Helpers da ME indisponíveis.'];
+    }
+
+    $inicio = $inicio->setTime(0, 0);
+    $fim = $fim->setTime(0, 0);
+    if ($fim < $inicio) {
+        return ['ok' => false, 'synced' => 0, 'error' => 'Intervalo inválido.'];
+    }
+
+    $cacheKey = 'agenda_eventos_me_sync_' . $inicio->format('Ymd') . '_' . $fim->format('Ymd');
+    $lastSync = (int)($_SESSION[$cacheKey] ?? 0);
+    if (!$force && $lastSync > 0 && (time() - $lastSync) < 1800) {
+        return ['ok' => true, 'synced' => 0, 'cached' => true];
+    }
+
+    $synced = 0;
+    $current = $inicio;
+    while ($current <= $fim) {
+        $chunkEnd = $current->modify('+89 days');
+        if ($chunkEnd > $fim) {
+            $chunkEnd = $fim;
+        }
+
+        $resp = eventos_me_request('GET', '/api/v1/events', [
+            'start' => $current->format('Y-m-d'),
+            'end' => $chunkEnd->format('Y-m-d'),
+            'limit' => 500,
+        ]);
+
+        if (empty($resp['ok'])) {
+            error_log('[AGENDA_EVENTOS_ME_SYNC] ' . (string)($resp['error'] ?? 'Falha ao buscar eventos na ME.'));
+            return ['ok' => false, 'synced' => $synced, 'error' => (string)($resp['error'] ?? 'Falha ao buscar eventos na ME.')];
+        }
+
+        $items = [];
+        $raw = $resp['data'] ?? [];
+        if (is_array($raw)) {
+            $items = $raw['data'] ?? $raw['eventos'] ?? $raw;
+        }
+        if (!is_array($items)) {
+            $items = [];
+        }
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $result = agenda_eventos_sync_me_payload($pdo, $item);
+            if (!empty($result['ok'])) {
+                $synced++;
+            }
+        }
+
+        $current = $chunkEnd->modify('+1 day');
+    }
+
+    $_SESSION[$cacheKey] = time();
+    return ['ok' => true, 'synced' => $synced];
+}
+
 $usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $isSuperadmin = !empty($_SESSION['perm_superadmin']);
 $canViewEventDetails = $isSuperadmin || !empty($_SESSION['perm_agenda_eventos_detalhes']);
@@ -356,6 +421,19 @@ if ($temTabelaEventos) {
 }
 
 $mesAtual = new DateTimeImmutable('first day of this month');
+$forcarSyncAgenda = isset($_GET['sync']) || isset($_GET['refresh']);
+if ($temTabelaEventos) {
+    try {
+        agenda_eventos_sync_me_range(
+            $pdo,
+            (new DateTimeImmutable('first day of this month'))->modify('-2 months'),
+            (new DateTimeImmutable('first day of this month'))->modify('+18 months')->modify('last day of this month'),
+            $forcarSyncAgenda
+        );
+    } catch (Throwable $e) {
+        error_log('[AGENDA_EVENTOS_ME_RANGE_SYNC] ' . $e->getMessage());
+    }
+}
 $boundsEventos = $temTabelaEventos ? agenda_eventos_date_bounds($pdo, $isSuperadmin, $spacesUsuario) : ['min' => null, 'max' => null];
 $primeiraDataEvento = !empty($boundsEventos['min'])
     ? DateTimeImmutable::createFromFormat('!Y-m-d', (string)$boundsEventos['min'])

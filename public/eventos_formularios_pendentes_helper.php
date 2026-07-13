@@ -6,6 +6,7 @@
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/eventos_notificacoes_central_helper.php';
 require_once __DIR__ . '/cliente_notificacoes_helper.php';
+require_once __DIR__ . '/eventos_me_helper.php';
 
 const EVENTOS_FORMULARIOS_PENDENTES_MODELO = 'evento_formularios_pendentes_4d';
 
@@ -53,6 +54,49 @@ function eventos_formularios_pendentes_pick(array $source, array $paths, string 
         }
     }
     return $fallback;
+}
+
+function eventos_formularios_pendentes_table_exists(PDO $pdo, string $table): bool
+{
+    try {
+        $stmt = $pdo->prepare('SELECT to_regclass(:table)');
+        $stmt->execute([':table' => $table]);
+        return trim((string)$stmt->fetchColumn()) !== '';
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function eventos_formularios_pendentes_evento_cancelado(PDO $pdo, array $evento): bool
+{
+    $snapshot = eventos_formularios_pendentes_snapshot($evento);
+    if (function_exists('eventos_me_evento_cancelado') && eventos_me_evento_cancelado($snapshot)) {
+        return true;
+    }
+
+    $meEventId = (int)($evento['me_event_id'] ?? 0);
+    if ($meEventId > 0 && function_exists('eventos_me_evento_cancelado_por_webhook') && eventos_me_evento_cancelado_por_webhook($pdo, $meEventId)) {
+        return true;
+    }
+
+    if ($meEventId <= 0 || !eventos_formularios_pendentes_table_exists($pdo, 'logistica_eventos_espelho')) {
+        return false;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(arquivado, FALSE)
+            FROM logistica_eventos_espelho
+            WHERE me_event_id = :me_event_id
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([':me_event_id' => $meEventId]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('[FORMULARIOS_PENDENTES_CANCEL_CHECK] ' . $e->getMessage());
+        return false;
+    }
 }
 
 function eventos_formularios_pendentes_schema_has_fields($schema): bool
@@ -303,6 +347,7 @@ function eventos_formularios_pendentes_processar(PDO $pdo, array $options = []):
         'emails_enviados' => 0,
         'emails_ignorados' => 0,
         'emails_com_erro' => 0,
+        'eventos_cancelados_ignorados' => 0,
         'pendentes' => [],
         'erros' => [],
     ];
@@ -315,6 +360,12 @@ function eventos_formularios_pendentes_processar(PDO $pdo, array $options = []):
 
     foreach ($eventos as $evento) {
         $meetingId = (int)($evento['id'] ?? 0);
+        if (eventos_formularios_pendentes_evento_cancelado($pdo, $evento)) {
+            $resultado['emails_ignorados']++;
+            $resultado['eventos_cancelados_ignorados']++;
+            continue;
+        }
+
         $pendentes = eventos_formularios_pendentes_links($pdo, $meetingId);
         if (empty($pendentes)) {
             continue;

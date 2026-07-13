@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
+require_once __DIR__ . '/eventos_me_helper.php';
 require_once __DIR__ . '/core/notification_dispatcher.php';
 
 function eventos_cliente_pendencias_whatsapp_ensure_schema(PDO $pdo): void
@@ -113,6 +114,49 @@ function eventos_cliente_pendencias_whatsapp_snapshot(array $evento): array
         return is_array($decoded) ? $decoded : [];
     }
     return is_array($raw) ? $raw : [];
+}
+
+function eventos_cliente_pendencias_whatsapp_table_exists(PDO $pdo, string $table): bool
+{
+    try {
+        $stmt = $pdo->prepare('SELECT to_regclass(:table)');
+        $stmt->execute([':table' => $table]);
+        return trim((string)$stmt->fetchColumn()) !== '';
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function eventos_cliente_pendencias_whatsapp_evento_cancelado(PDO $pdo, array $evento): bool
+{
+    $snapshot = eventos_cliente_pendencias_whatsapp_snapshot($evento);
+    if (function_exists('eventos_me_evento_cancelado') && eventos_me_evento_cancelado($snapshot)) {
+        return true;
+    }
+
+    $meEventId = (int)($evento['me_event_id'] ?? 0);
+    if ($meEventId > 0 && function_exists('eventos_me_evento_cancelado_por_webhook') && eventos_me_evento_cancelado_por_webhook($pdo, $meEventId)) {
+        return true;
+    }
+
+    if ($meEventId <= 0 || !eventos_cliente_pendencias_whatsapp_table_exists($pdo, 'logistica_eventos_espelho')) {
+        return false;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(arquivado, FALSE)
+            FROM logistica_eventos_espelho
+            WHERE me_event_id = :me_event_id
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([':me_event_id' => $meEventId]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('[CLIENTE_PENDENCIAS_WHATSAPP_CANCEL_CHECK] ' . $e->getMessage());
+        return false;
+    }
 }
 
 function eventos_cliente_pendencias_whatsapp_tem_form_fields($schema): bool
@@ -491,6 +535,18 @@ function eventos_cliente_pendencias_whatsapp_processar(PDO $pdo, array $options 
 
         foreach ($eventos as $evento) {
             $meetingId = (int)$evento['id'];
+            if (eventos_cliente_pendencias_whatsapp_evento_cancelado($pdo, $evento)) {
+                $resultado['ignorados']++;
+                $resultado['detalhes'][] = [
+                    'tipo' => $tipo,
+                    'meeting_id' => $meetingId,
+                    'me_event_id' => (int)($evento['me_event_id'] ?? 0),
+                    'data_evento' => $eventDate,
+                    'status' => 'evento_cancelado_arquivado',
+                ];
+                continue;
+            }
+
             if (eventos_cliente_pendencias_whatsapp_ja_enviado($pdo, $meetingId, $tipo)) {
                 $resultado['ignorados']++;
                 continue;
