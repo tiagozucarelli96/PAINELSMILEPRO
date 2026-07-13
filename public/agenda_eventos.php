@@ -458,6 +458,25 @@ $inicioConsulta = $mesSelecionado;
 $fimConsulta = $mesSelecionado->modify('last day of this month');
 $mesAnteriorLink = $mesSelecionado > $mesLimiteInicial ? $mesSelecionado->modify('-1 month')->format('Y-m') : null;
 $mesProximoLink = $mesSelecionado < $mesLimiteFinal ? $mesSelecionado->modify('+1 month')->format('Y-m') : null;
+$mesPickerAno = (int)$mesSelecionado->format('Y');
+$mesPickerAnoAnterior = $mesSelecionado->modify('-1 year');
+$mesPickerAnoProximo = $mesSelecionado->modify('+1 year');
+$mesPickerAnoAnteriorLink = $mesPickerAnoAnterior >= $mesLimiteInicial ? $mesPickerAnoAnterior->format('Y-m') : null;
+$mesPickerAnoProximoLink = $mesPickerAnoProximo <= $mesLimiteFinal ? $mesPickerAnoProximo->format('Y-m') : null;
+$mesPickerMeses = [
+    1 => 'Jan',
+    2 => 'Fev',
+    3 => 'Mar',
+    4 => 'Abr',
+    5 => 'Mai',
+    6 => 'Jun',
+    7 => 'Jul',
+    8 => 'Ago',
+    9 => 'Set',
+    10 => 'Out',
+    11 => 'Nov',
+    12 => 'Dez',
+];
 $weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 $eventos = [];
 $eventosPorData = [];
@@ -814,11 +833,7 @@ includeSidebar('Agenda Geral');
 }
 
 .agenda-eventos-header {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    align-items: flex-start;
-    flex-wrap: wrap;
+    display: block;
     margin-bottom: 1.5rem;
 }
 
@@ -833,23 +848,6 @@ includeSidebar('Agenda Geral');
     margin: 0.35rem 0 0;
     color: #64748b;
     font-size: 0.95rem;
-}
-
-.agenda-eventos-badges {
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
-.agenda-badge {
-    background: #ffffff;
-    border: 1px solid #dbe3ef;
-    border-radius: 999px;
-    padding: 0.65rem 0.95rem;
-    font-size: 0.85rem;
-    color: #334155;
-    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
 }
 
 .agenda-alert {
@@ -872,12 +870,11 @@ includeSidebar('Agenda Geral');
 }
 
 .calendar-toolbar {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 54px minmax(240px, 1fr) 54px;
     align-items: center;
     gap: 1rem;
     margin-bottom: 1rem;
-    flex-wrap: wrap;
 }
 
 .event-detail-toolbar {
@@ -891,7 +888,7 @@ includeSidebar('Agenda Geral');
 .calendar-nav {
     display: inline-flex;
     align-items: center;
-    gap: 0.65rem;
+    justify-content: center;
 }
 
 .calendar-nav-btn {
@@ -915,17 +912,125 @@ includeSidebar('Agenda Geral');
     pointer-events: none;
 }
 
-.calendar-toolbar-title {
-    margin: 0;
-    font-size: 1.42rem;
-    font-weight: 800;
-    color: #0f172a;
+.calendar-month-picker {
+    position: relative;
+    justify-self: center;
+    min-width: 280px;
 }
 
-.calendar-toolbar-subtitle {
-    margin: 0.2rem 0 0;
-    color: #64748b;
-    font-size: 0.86rem;
+.calendar-month-picker summary {
+    list-style: none;
+}
+
+.calendar-month-picker summary::-webkit-details-marker {
+    display: none;
+}
+
+.calendar-month-trigger {
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #0f172a;
+    font: inherit;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    cursor: pointer;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.07);
+}
+
+.calendar-month-icon {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1e3a8a;
+    font-size: 1rem;
+}
+
+.calendar-month-panel {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 0.55rem);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 320px;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid #dbe3ef;
+    box-shadow: 0 24px 54px rgba(15, 23, 42, 0.18);
+}
+
+.calendar-month-year {
+    display: grid;
+    grid-template-columns: 52px 1fr 52px;
+    align-items: center;
+    background: #1f3347;
+    color: #ffffff;
+}
+
+.calendar-month-year-label {
+    text-align: center;
+    font-weight: 900;
+    letter-spacing: 0;
+}
+
+.calendar-month-year-btn {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 1.25rem;
+    font-weight: 900;
+}
+
+.calendar-month-year-btn.is-disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.calendar-month-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+    padding: 0.9rem;
+}
+
+.calendar-month-option {
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #334155;
+    font-weight: 800;
+    border: 1px solid transparent;
+}
+
+.calendar-month-option:hover {
+    background: #eff6ff;
+    color: #1e3a8a;
+}
+
+.calendar-month-option.is-active {
+    background: #1f3347;
+    color: #ffffff;
+}
+
+.calendar-month-option.is-disabled {
+    color: #cbd5e1;
+    pointer-events: none;
 }
 
 .calendar-card {
@@ -1719,7 +1824,17 @@ a.event-function-card:hover {
     }
 
     .calendar-toolbar {
-        align-items: flex-start;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        gap: 0.65rem;
+    }
+
+    .calendar-month-picker {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .calendar-month-panel {
+        width: min(92vw, 320px);
     }
 
     .day-cell {
@@ -1753,19 +1868,8 @@ a.event-function-card:hover {
 <div class="agenda-eventos-page">
     <?php if (!($eventoSelecionadoId > 0 && is_array($eventoSelecionado))): ?>
         <div class="agenda-eventos-header">
-            <div>
-                <h1 class="agenda-eventos-title">Agenda Geral</h1>
-                <p class="agenda-eventos-subtitle">Calendário mensal com todos os eventos importados da ME, filtrado pelas unidades marcadas no usuário.</p>
-            </div>
-            <div class="agenda-eventos-badges">
-                <div class="agenda-badge">Período: <?= h($inicioPeriodo->format('d/m/Y')) ?> até <?= h($fimPeriodo->format('d/m/Y')) ?></div>
-                <div class="agenda-badge">Eventos: <?= count($eventos) ?></div>
-                <?php if ($isSuperadmin): ?>
-                    <div class="agenda-badge">Visualização: todas as unidades</div>
-                <?php else: ?>
-                    <div class="agenda-badge">Unidades: <?= h(implode(', ', $spacesUsuario)) ?></div>
-                <?php endif; ?>
-            </div>
+            <h1 class="agenda-eventos-title">Agenda Geral</h1>
+            <p class="agenda-eventos-subtitle">Calendário mensal com todos os eventos importados da ME, filtrado pelas unidades marcadas no usuário.</p>
         </div>
     <?php endif; ?>
 
@@ -1918,12 +2022,35 @@ a.event-function-card:hover {
         </div>
     <?php elseif (empty($errors)): ?>
         <div class="calendar-toolbar">
-            <div>
-                <h2 class="calendar-toolbar-title"><?= h(agenda_eventos_month_label($mesSelecionado)) ?></h2>
-                <p class="calendar-toolbar-subtitle">Exibindo um mês por vez dentro de todo o período importado.</p>
-            </div>
             <div class="calendar-nav">
                 <a href="index.php?page=agenda_eventos<?= $mesAnteriorLink !== null ? '&mes=' . urlencode($mesAnteriorLink) : '' ?>" class="calendar-nav-btn<?= $mesAnteriorLink === null ? ' is-disabled' : '' ?>" aria-label="Mês anterior"<?= $mesAnteriorLink === null ? ' aria-disabled="true" tabindex="-1"' : '' ?>>←</a>
+            </div>
+            <details class="calendar-month-picker">
+                <summary class="calendar-month-trigger" aria-label="Selecionar mês">
+                    <span class="calendar-month-icon">&#128197;</span>
+                    <span><?= h(agenda_eventos_month_label($mesSelecionado)) ?></span>
+                </summary>
+                <div class="calendar-month-panel">
+                    <div class="calendar-month-year">
+                        <a class="calendar-month-year-btn<?= $mesPickerAnoAnteriorLink === null ? ' is-disabled' : '' ?>" href="index.php?page=agenda_eventos<?= $mesPickerAnoAnteriorLink !== null ? '&mes=' . urlencode($mesPickerAnoAnteriorLink) : '' ?>" aria-label="Ano anterior"<?= $mesPickerAnoAnteriorLink === null ? ' aria-disabled="true" tabindex="-1"' : '' ?>>‹</a>
+                        <div class="calendar-month-year-label"><?= h((string)$mesPickerAno) ?></div>
+                        <a class="calendar-month-year-btn<?= $mesPickerAnoProximoLink === null ? ' is-disabled' : '' ?>" href="index.php?page=agenda_eventos<?= $mesPickerAnoProximoLink !== null ? '&mes=' . urlencode($mesPickerAnoProximoLink) : '' ?>" aria-label="Próximo ano"<?= $mesPickerAnoProximoLink === null ? ' aria-disabled="true" tabindex="-1"' : '' ?>>›</a>
+                    </div>
+                    <div class="calendar-month-grid">
+                        <?php foreach ($mesPickerMeses as $monthNumber => $monthLabel): ?>
+                            <?php
+                            $monthOption = DateTimeImmutable::createFromFormat('!Y-n', $mesPickerAno . '-' . $monthNumber);
+                            $monthOption = $monthOption instanceof DateTimeImmutable ? $monthOption : $mesSelecionado;
+                            $monthOption = $monthOption->modify('first day of this month');
+                            $isOptionActive = $monthOption->format('Y-m') === $mesSelecionado->format('Y-m');
+                            $isOptionDisabled = $monthOption < $mesLimiteInicial || $monthOption > $mesLimiteFinal;
+                            ?>
+                            <a class="calendar-month-option<?= $isOptionActive ? ' is-active' : '' ?><?= $isOptionDisabled ? ' is-disabled' : '' ?>" href="index.php?page=agenda_eventos&mes=<?= h($monthOption->format('Y-m')) ?>"<?= $isOptionDisabled ? ' aria-disabled="true" tabindex="-1"' : '' ?>><?= h($monthLabel) ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </details>
+            <div class="calendar-nav">
                 <a href="index.php?page=agenda_eventos<?= $mesProximoLink !== null ? '&mes=' . urlencode($mesProximoLink) : '' ?>" class="calendar-nav-btn<?= $mesProximoLink === null ? ' is-disabled' : '' ?>" aria-label="Próximo mês"<?= $mesProximoLink === null ? ' aria-disabled="true" tabindex="-1"' : '' ?>>→</a>
             </div>
         </div>
