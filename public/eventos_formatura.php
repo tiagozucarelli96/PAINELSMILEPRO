@@ -394,7 +394,9 @@ function eventos_formatura_financeiro(PDO $pdo, int $eventoId): array
         JOIN eventos_formatura_formandos f ON f.id = fin.formando_id
         WHERE fin.evento_id = :evento_id
           AND f.deleted_at IS NULL
-        ORDER BY COALESCE(fin.vencimento, fin.created_at::date) DESC, fin.id DESC
+        ORDER BY COALESCE(fin.vencimento, fin.created_at::date) ASC,
+                 fin.parcela_numero ASC,
+                 fin.id ASC
     ");
     $stmt->execute([':evento_id' => $eventoId]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -1845,7 +1847,11 @@ includeSidebar('Formatura');
                                     <td><strong>R$ <?= number_format((float)$cobranca['valor'], 2, ',', '.') ?></strong></td>
                                     <td>
                                         <?php if (!empty($cobranca['asaas_invoice_url'])): ?>
-                                            <a href="<?= eventos_formatura_e((string)$cobranca['asaas_invoice_url']) ?>" target="_blank" rel="noopener">Abrir</a>
+                                            <button
+                                                type="button"
+                                                class="formatura-icon-btn btnCopiarLinkCobranca"
+                                                data-link="<?= eventos_formatura_e((string)$cobranca['asaas_invoice_url']) ?>"
+                                            >Copiar</button>
                                         <?php else: ?>
                                             <span class="formatura-muted">-</span>
                                         <?php endif; ?>
@@ -2197,6 +2203,34 @@ document.querySelectorAll('.btnDocumentoFormando').forEach((btn) => {
         const responsavel = btn.dataset.clienteNome ? `\nResponsável: ${btn.dataset.clienteNome}` : '';
         preview.textContent = `${btn.dataset.nomeFormando || '-'}${responsavel}`;
         openModal(modalDocumentoFormando);
+    });
+});
+
+document.querySelectorAll('.btnCopiarLinkCobranca').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+        const link = btn.dataset.link || '';
+        if (!link) return;
+        const originalText = btn.textContent;
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(link);
+            } else {
+                const input = document.createElement('textarea');
+                input.value = link;
+                input.setAttribute('readonly', 'readonly');
+                input.style.position = 'fixed';
+                input.style.left = '-9999px';
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                input.remove();
+            }
+            btn.textContent = 'Copiado';
+            setTimeout(() => { btn.textContent = originalText; }, 1800);
+        } catch (error) {
+            btn.textContent = 'Erro';
+            setTimeout(() => { btn.textContent = originalText; }, 1800);
+        }
     });
 });
 
