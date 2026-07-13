@@ -325,6 +325,21 @@ function comercial_cadastro_cliente_request_id(): int
             return max(0, (int)$value);
         }
     }
+
+    // Alguns proxies mantêm o parâmetro na URI, mas não o entregam em $_GET.
+    // Aceita também a forma HTML literal "&amp;id=" observada em produção.
+    $rawSources = [
+        (string)($_SERVER['REQUEST_URI'] ?? ''),
+        (string)($_SERVER['QUERY_STRING'] ?? ''),
+        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_URI'] ?? ''),
+        (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? ''),
+    ];
+    foreach ($rawSources as $rawSource) {
+        $normalizedSource = html_entity_decode(urldecode($rawSource), ENT_QUOTES, 'UTF-8');
+        if (preg_match('/(?:[?&;]|^)(?:amp;)?(?:id|cliente_id|edit_id)=([0-9]+)/i', $normalizedSource, $match)) {
+            return max(0, (int)$match[1]);
+        }
+    }
     return 0;
 }
 
@@ -496,6 +511,7 @@ $clientes = comercial_cadastro_cliente_recentes($pdo, $search);
 
 includeSidebar('Cadastro do cliente');
 ?>
+<!-- comercial-cadastro-cliente:v2 cliente-id=<?= (int)$clienteId ?> editing=<?= $isEditing ? '1' : '0' ?> -->
 
 <style>
 .cliente-page {
