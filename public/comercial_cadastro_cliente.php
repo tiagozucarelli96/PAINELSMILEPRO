@@ -472,7 +472,7 @@ if ($requestMethod === 'POST') {
                 $stmt->execute($params);
 
                 $_SESSION['comercial_cadastro_cliente_success'] = 'Cliente atualizado com sucesso.';
-                header('Location: index.php?page=comercial_cadastro_cliente&edit_id=' . (int)$clienteAtual['id']);
+                header('Location: comercial_cadastro_cliente.php?edit_id=' . (int)$clienteAtual['id']);
                 exit;
             }
 
@@ -864,7 +864,7 @@ includeSidebar('Cadastro do cliente');
                 <?php else: ?>
                     <?php foreach ($clientes as $cliente): ?>
                         <?php
-                        $clienteHref = 'index.php?page=comercial_cadastro_cliente&edit_id=' . (int)$cliente['id'];
+                        $clienteHref = 'comercial_cadastro_cliente.php?edit_id=' . (int)$cliente['id'];
                         ?>
                         <a class="cliente-list-item" href="<?= comercial_cadastro_cliente_e($clienteHref) ?>">
                             <div class="cliente-list-name"><?= comercial_cadastro_cliente_e((string)$cliente['nome_completo']) ?></div>
