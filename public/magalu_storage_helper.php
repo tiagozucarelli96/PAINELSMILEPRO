@@ -27,7 +27,7 @@ class MagaluStorageHelper {
     /**
      * Upload de arquivo para Magalu Object Storage
      */
-    public function uploadFile($file, $subfolder = '') {
+    public function uploadFile($file, $subfolder = '', $maxSize = 10485760, $allowedTypes = null) {
         // Verificar configuração com logs detalhados
         if (!$this->isConfigured()) {
             error_log("❌ MAGALU: Upload bloqueado - não configurado");
@@ -51,16 +51,18 @@ class MagaluStorageHelper {
             throw new Exception('Erro no upload do arquivo. Código de erro: ' . $error_code);
         }
         
-        // Validar tamanho (10MB máximo)
-        $maxSize = 10485760; // 10MB
+        // Validar tamanho (10MB por padrão; módulos específicos podem definir outro limite)
         if ($file['size'] > $maxSize) {
             $sizeMB = round($file['size'] / 1048576, 2);
-            error_log("❌ MAGALU: Arquivo muito grande - {$sizeMB}MB (máximo: 10MB)");
-            throw new Exception("Arquivo muito grande. Tamanho: {$sizeMB}MB. Máximo permitido: 10MB");
+            $maxSizeMB = round($maxSize / 1048576, 2);
+            error_log("❌ MAGALU: Arquivo muito grande - {$sizeMB}MB (máximo: {$maxSizeMB}MB)");
+            throw new Exception("Arquivo muito grande. Tamanho: {$sizeMB}MB. Máximo permitido: {$maxSizeMB}MB");
         }
         
         // Validar tipo
-        $allowed_types = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx', 'xls', 'xlsx', 'csv'];
+        $allowed_types = is_array($allowedTypes) && $allowedTypes
+            ? array_map('strtolower', $allowedTypes)
+            : ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx', 'xls', 'xlsx', 'csv'];
         $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (!in_array($extension, $allowed_types)) {
             error_log("❌ MAGALU: Tipo de arquivo não permitido - extensão: $extension");
