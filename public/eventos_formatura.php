@@ -659,6 +659,9 @@ function eventos_formatura_criar_pix_asaas(PDO $pdo, int $eventoId, array $event
     if ($responsavelDocumento === '') {
         return ['ok' => false, 'error' => 'O responsável do formando precisa ter CPF/CNPJ cadastrado para gerar cobrança no Asaas.'];
     }
+    if (!eventos_financeiro_documento_valido($responsavelDocumento)) {
+        return ['ok' => false, 'error' => 'O CPF/CNPJ do responsável do formando é inválido. Corrija o documento no cadastro do cliente antes de gerar cobrança no Asaas.'];
+    }
 
     $asaas = new AsaasHelper();
     $created = 0;

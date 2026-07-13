@@ -6,6 +6,51 @@
 
 require_once __DIR__ . '/core/helpers.php';
 
+function eventos_financeiro_documento_valido(string $documento): bool
+{
+    $digits = preg_replace('/\D+/', '', $documento);
+    if (strlen($digits) === 11) {
+        if (preg_match('/^(\d)\1{10}$/', $digits)) {
+            return false;
+        }
+        for ($t = 9; $t < 11; $t++) {
+            $sum = 0;
+            for ($i = 0; $i < $t; $i++) {
+                $sum += (int)$digits[$i] * (($t + 1) - $i);
+            }
+            $digit = ((10 * $sum) % 11) % 10;
+            if ((int)$digits[$t] !== $digit) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    if (strlen($digits) === 14) {
+        if (preg_match('/^(\d)\1{13}$/', $digits)) {
+            return false;
+        }
+        $weightsFirst = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+        $weightsSecond = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+        $sum = 0;
+        for ($i = 0; $i < 12; $i++) {
+            $sum += (int)$digits[$i] * $weightsFirst[$i];
+        }
+        $digit = $sum % 11 < 2 ? 0 : 11 - ($sum % 11);
+        if ((int)$digits[12] !== $digit) {
+            return false;
+        }
+        $sum = 0;
+        for ($i = 0; $i < 13; $i++) {
+            $sum += (int)$digits[$i] * $weightsSecond[$i];
+        }
+        $digit = $sum % 11 < 2 ? 0 : 11 - ($sum % 11);
+        return (int)$digits[13] === $digit;
+    }
+
+    return false;
+}
+
 function eventos_financeiro_table_exists(PDO $pdo, string $table): bool
 {
     $stmt = $pdo->prepare("
@@ -709,6 +754,12 @@ function eventos_financeiro_criar_pix_asaas(PDO $pdo, int $eventoId, array $even
     $customerEmail = trim((string)($dados['cliente_email'] ?? ''));
     $customerPhone = trim((string)($dados['cliente_telefone'] ?? ''));
     $customerCpf = preg_replace('/\D+/', '', (string)($dados['cliente_cpf_cnpj'] ?? ''));
+    if ($customerCpf === '') {
+        return ['ok' => false, 'error' => 'Informe o CPF/CNPJ do cliente para gerar cobrança no Asaas.'];
+    }
+    if (!eventos_financeiro_documento_valido($customerCpf)) {
+        return ['ok' => false, 'error' => 'O CPF/CNPJ informado é inválido. Corrija o documento antes de gerar cobrança no Asaas.'];
+    }
 
     $asaas = new AsaasHelper();
     $created = 0;
