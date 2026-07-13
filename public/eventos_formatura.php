@@ -37,6 +37,7 @@ function eventos_formatura_config_padrao(): array
         'pessoas_por_mesa' => 8,
         'valor_mesa' => 0.0,
         'valor_convidado_adicional' => 0.0,
+        'valor_crianca_meia' => 90.0,
     ];
 }
 
@@ -54,6 +55,7 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
             cliente_cadastro_id BIGINT NOT NULL REFERENCES comercial_cadastro_clientes(id) ON DELETE RESTRICT,
             nome_formando VARCHAR(180) NOT NULL,
             convidados INTEGER NOT NULL DEFAULT 0,
+            criancas_meia INTEGER NOT NULL DEFAULT 0,
             mesas INTEGER NOT NULL DEFAULT 0,
             created_by INTEGER NULL,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -61,6 +63,7 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
             deleted_at TIMESTAMP NULL
         )
     ");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_formandos ADD COLUMN IF NOT EXISTS criancas_meia INTEGER NOT NULL DEFAULT 0");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS eventos_formatura_financeiro (
@@ -105,6 +108,7 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
             pessoas_por_mesa INTEGER NOT NULL DEFAULT 8,
             valor_mesa NUMERIC(12,2) NOT NULL DEFAULT 0,
             valor_convidado_adicional NUMERIC(12,2) NOT NULL DEFAULT 0,
+            valor_crianca_meia NUMERIC(12,2) NOT NULL DEFAULT 90,
             created_by INTEGER NULL,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -113,6 +117,7 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS pessoas_por_mesa INTEGER NOT NULL DEFAULT 8");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS valor_mesa NUMERIC(12,2) NOT NULL DEFAULT 0");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NOT NULL DEFAULT 0");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS valor_crianca_meia NUMERIC(12,2) NOT NULL DEFAULT 90");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS created_by INTEGER NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
@@ -320,7 +325,7 @@ function eventos_formatura_config(PDO $pdo, int $eventoId): array
 {
     $config = eventos_formatura_config_padrao();
     $stmt = $pdo->prepare("
-        SELECT pessoas_por_mesa, valor_mesa, valor_convidado_adicional
+        SELECT pessoas_por_mesa, valor_mesa, valor_convidado_adicional, valor_crianca_meia
         FROM eventos_formatura_config
         WHERE evento_id = :evento_id
         LIMIT 1
@@ -335,6 +340,7 @@ function eventos_formatura_config(PDO $pdo, int $eventoId): array
         'pessoas_por_mesa' => max(0, (int)($row['pessoas_por_mesa'] ?? $config['pessoas_por_mesa'])),
         'valor_mesa' => (float)($row['valor_mesa'] ?? 0),
         'valor_convidado_adicional' => (float)($row['valor_convidado_adicional'] ?? 0),
+        'valor_crianca_meia' => (float)($row['valor_crianca_meia'] ?? $config['valor_crianca_meia']),
     ];
 }
 
@@ -342,26 +348,32 @@ function eventos_formatura_calcular_formando(array $formando, array $config): ar
 {
     $mesas = max(0, (int)($formando['mesas'] ?? 0));
     $convidados = max(0, (int)($formando['convidados'] ?? 0));
+    $criancasMeia = max(0, (int)($formando['criancas_meia'] ?? 0));
     $pessoasPorMesa = max(0, (int)($config['pessoas_por_mesa'] ?? 0));
     $valorMesa = max(0.0, (float)($config['valor_mesa'] ?? 0));
     $valorAdicional = max(0.0, (float)($config['valor_convidado_adicional'] ?? 0));
+    $valorCriancaMeia = max(0.0, (float)($config['valor_crianca_meia'] ?? 0));
     $capacidadeBase = $mesas * $pessoasPorMesa;
     $convidadosAdicionais = max(0, $convidados - $capacidadeBase);
     $valorBaseMesas = $mesas * $valorMesa;
     $valorAdicionais = $convidadosAdicionais * $valorAdicional;
-    $valorCalculado = $valorBaseMesas + $valorAdicionais;
+    $valorCriancasMeia = $criancasMeia * $valorCriancaMeia;
+    $valorCalculado = $valorBaseMesas + $valorAdicionais + $valorCriancasMeia;
 
     return [
         'pessoas_por_mesa' => $pessoasPorMesa,
         'valor_mesa' => $valorMesa,
         'valor_convidado_adicional' => $valorAdicional,
+        'valor_crianca_meia' => $valorCriancaMeia,
+        'criancas_meia' => $criancasMeia,
         'capacidade_base' => $capacidadeBase,
         'convidados_adicionais' => $convidadosAdicionais,
         'valor_base_mesas' => $valorBaseMesas,
         'valor_adicionais' => $valorAdicionais,
+        'valor_criancas_meia' => $valorCriancasMeia,
         'valor_calculado' => $valorCalculado,
         'valor_lancado_display' => $valorCalculado > 0 ? $valorCalculado : (float)($formando['total_lancado'] ?? 0),
-        'calculo_configurado' => $pessoasPorMesa > 0 && ($valorMesa > 0 || $valorAdicional > 0),
+        'calculo_configurado' => $pessoasPorMesa > 0 && ($valorMesa > 0 || $valorAdicional > 0 || $valorCriancaMeia > 0),
     ];
 }
 
@@ -463,8 +475,10 @@ function eventos_formatura_mapa_tags(array $evento, array $formando, array $fina
     $saldo = max(0, $totalLancado - $totalPago);
     $valorMesa = (float)($formando['valor_mesa'] ?? 0);
     $valorConvidadoAdicional = (float)($formando['valor_convidado_adicional'] ?? 0);
+    $valorCriancaMeia = (float)($formando['valor_crianca_meia'] ?? 0);
     $valorBaseMesas = (float)($formando['valor_base_mesas'] ?? 0);
     $valorAdicionais = (float)($formando['valor_adicionais'] ?? 0);
+    $valorCriancasMeia = (float)($formando['valor_criancas_meia'] ?? 0);
 
     $parcelas = [];
     foreach ($financeiroFormando as $item) {
@@ -509,13 +523,16 @@ function eventos_formatura_mapa_tags(array $evento, array $formando, array $fina
         '#VALOR_A_RECEBER#' => 'R$ ' . number_format($saldo, 2, ',', '.'),
         '#NOME_FORMANDO#' => (string)($formando['nome_formando'] ?? ''),
         '#CONVIDADOS_FORMANDO#' => (string)($formando['convidados'] ?? '0'),
+        '#CRIANCAS_MEIA_FORMANDO#' => (string)($formando['criancas_meia'] ?? '0'),
         '#MESAS_FORMANDO#' => (string)($formando['mesas'] ?? '0'),
         '#VALOR_MESA#' => 'R$ ' . number_format($valorMesa, 2, ',', '.'),
         '#PESSOAS_POR_MESA#' => (string)($formando['pessoas_por_mesa'] ?? '0'),
         '#CONVIDADOS_ADICIONAIS#' => (string)($formando['convidados_adicionais'] ?? '0'),
         '#VALOR_CONVIDADO_ADICIONAL#' => 'R$ ' . number_format($valorConvidadoAdicional, 2, ',', '.'),
+        '#VALOR_CRIANCA_MEIA#' => 'R$ ' . number_format($valorCriancaMeia, 2, ',', '.'),
         '#VALOR_MESAS_FORMATURA#' => 'R$ ' . number_format($valorBaseMesas, 2, ',', '.'),
         '#VALOR_ADICIONAIS_FORMATURA#' => 'R$ ' . number_format($valorAdicionais, 2, ',', '.'),
+        '#VALOR_CRIANCAS_MEIA_FORMATURA#' => 'R$ ' . number_format($valorCriancasMeia, 2, ',', '.'),
         '#RESPONSAVEL_FORMANDO#' => (string)($formando['cliente_nome'] ?? ''),
         '#VALOR_FORMANDO#' => 'R$ ' . number_format($totalLancado, 2, ',', '.'),
         '#PARCELAS_FORMANDO#' => $parcelasHtml,
@@ -781,6 +798,7 @@ if ($requestMethod === 'POST') {
         $pessoasPorMesa = max(0, (int)($_POST['pessoas_por_mesa'] ?? 0));
         $valorMesa = max(0.0, eventos_formatura_money($_POST['valor_mesa'] ?? 0));
         $valorAdicional = max(0.0, eventos_formatura_money($_POST['valor_convidado_adicional'] ?? 0));
+        $valorCriancaMeia = max(0.0, eventos_formatura_money($_POST['valor_crianca_meia'] ?? 0));
 
         if ($pessoasPorMesa <= 0) {
             $errors[] = 'Informe a quantidade de pessoas por mesa.';
@@ -789,13 +807,14 @@ if ($requestMethod === 'POST') {
         if (empty($errors)) {
             $stmt = $pdo->prepare("
                 INSERT INTO eventos_formatura_config
-                    (evento_id, pessoas_por_mesa, valor_mesa, valor_convidado_adicional, created_by, updated_at)
+                    (evento_id, pessoas_por_mesa, valor_mesa, valor_convidado_adicional, valor_crianca_meia, created_by, updated_at)
                 VALUES
-                    (:evento_id, :pessoas_por_mesa, :valor_mesa, :valor_convidado_adicional, :created_by, NOW())
+                    (:evento_id, :pessoas_por_mesa, :valor_mesa, :valor_convidado_adicional, :valor_crianca_meia, :created_by, NOW())
                 ON CONFLICT (evento_id) DO UPDATE
                 SET pessoas_por_mesa = EXCLUDED.pessoas_por_mesa,
                     valor_mesa = EXCLUDED.valor_mesa,
                     valor_convidado_adicional = EXCLUDED.valor_convidado_adicional,
+                    valor_crianca_meia = EXCLUDED.valor_crianca_meia,
                     updated_at = NOW()
             ");
             $stmt->execute([
@@ -803,6 +822,7 @@ if ($requestMethod === 'POST') {
                 ':pessoas_por_mesa' => $pessoasPorMesa,
                 ':valor_mesa' => $valorMesa,
                 ':valor_convidado_adicional' => $valorAdicional,
+                ':valor_crianca_meia' => $valorCriancaMeia,
                 ':created_by' => $userId > 0 ? $userId : null,
             ]);
             $_SESSION['eventos_formatura_message'] = 'Configurações financeiras da formatura salvas.';
@@ -815,6 +835,7 @@ if ($requestMethod === 'POST') {
         $clienteId = (int)($_POST['cliente_cadastro_id'] ?? 0);
         $nomeFormando = trim((string)($_POST['nome_formando'] ?? ''));
         $convidados = max(0, (int)($_POST['convidados'] ?? 0));
+        $criancasMeia = max(0, (int)($_POST['criancas_meia'] ?? 0));
         $mesas = max(0, (int)($_POST['mesas'] ?? 0));
 
         if ($clienteId <= 0) {
@@ -839,6 +860,7 @@ if ($requestMethod === 'POST') {
                     SET cliente_cadastro_id = :cliente_id,
                         nome_formando = :nome_formando,
                         convidados = :convidados,
+                        criancas_meia = :criancas_meia,
                         mesas = :mesas,
                         updated_at = NOW()
                     WHERE id = :id
@@ -849,6 +871,7 @@ if ($requestMethod === 'POST') {
                     ':cliente_id' => $clienteId,
                     ':nome_formando' => $nomeFormando,
                     ':convidados' => $convidados,
+                    ':criancas_meia' => $criancasMeia,
                     ':mesas' => $mesas,
                     ':id' => $formandoId,
                     ':evento_id' => $eventoId,
@@ -856,15 +879,16 @@ if ($requestMethod === 'POST') {
             } else {
                 $stmt = $pdo->prepare("
                     INSERT INTO eventos_formatura_formandos
-                        (evento_id, cliente_cadastro_id, nome_formando, convidados, mesas, created_by, updated_at)
+                        (evento_id, cliente_cadastro_id, nome_formando, convidados, criancas_meia, mesas, created_by, updated_at)
                     VALUES
-                        (:evento_id, :cliente_id, :nome_formando, :convidados, :mesas, :created_by, NOW())
+                        (:evento_id, :cliente_id, :nome_formando, :convidados, :criancas_meia, :mesas, :created_by, NOW())
                 ");
                 $stmt->execute([
                     ':evento_id' => $eventoId,
                     ':cliente_id' => $clienteId,
                     ':nome_formando' => $nomeFormando,
                     ':convidados' => $convidados,
+                    ':criancas_meia' => $criancasMeia,
                     ':mesas' => $mesas,
                     ':created_by' => $userId > 0 ? $userId : null,
                 ]);
@@ -1135,6 +1159,7 @@ if ($formandoFinanceiro) {
 }
 
 $totalConvidados = array_sum(array_map(static fn($item) => (int)$item['convidados'], $formandos));
+$totalCriancasMeia = array_sum(array_map(static fn($item) => (int)($item['criancas_meia'] ?? 0), $formandos));
 $totalMesas = array_sum(array_map(static fn($item) => (int)$item['mesas'], $formandos));
 $totalLancado = array_sum(array_map(static fn($item) => (float)($item['valor_lancado_display'] ?? $item['total_lancado'] ?? 0), $formandos));
 $totalPago = array_sum(array_map(static fn($item) => (float)$item['valor'], array_filter($financeiro, static fn($item) => (string)$item['status'] === 'pago')));
@@ -1688,6 +1713,9 @@ includeSidebar('Formatura');
                     <?php if ((int)$formandoFinanceiro['convidados_adicionais'] > 0): ?>
                         <span class="formatura-calc-chip"><?= (int)$formandoFinanceiro['convidados_adicionais'] ?> adicional(is) x R$ <?= number_format((float)$formaturaConfig['valor_convidado_adicional'], 2, ',', '.') ?></span>
                     <?php endif; ?>
+                    <?php if ((int)($formandoFinanceiro['criancas_meia'] ?? 0) > 0): ?>
+                        <span class="formatura-calc-chip"><?= (int)$formandoFinanceiro['criancas_meia'] ?> criança(s) 5 a 8 anos x R$ <?= number_format((float)$formaturaConfig['valor_crianca_meia'], 2, ',', '.') ?></span>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
 
@@ -1831,6 +1859,7 @@ includeSidebar('Formatura');
     <div class="formatura-stats">
         <div class="formatura-stat"><strong><?= count($formandos) ?></strong><span>Formandos</span></div>
         <div class="formatura-stat"><strong><?= (int)$totalConvidados ?></strong><span>Convidados</span></div>
+        <div class="formatura-stat"><strong><?= (int)$totalCriancasMeia ?></strong><span>Crianças meia</span></div>
         <div class="formatura-stat"><strong><?= (int)$totalMesas ?></strong><span>Mesas</span></div>
         <div class="formatura-stat"><strong>R$ <?= number_format($totalPago, 2, ',', '.') ?></strong><span>Recebido de R$ <?= number_format($totalLancado, 2, ',', '.') ?></span></div>
     </div>
@@ -1888,12 +1917,15 @@ includeSidebar('Formatura');
                                 </td>
                                 <td>
                                     <strong><?= (int)$formando['convidados'] ?> convidados</strong>
+                                    <?php if ((int)($formando['criancas_meia'] ?? 0) > 0): ?>
+                                        <div class="formatura-muted"><?= (int)$formando['criancas_meia'] ?> criança(s) meia</div>
+                                    <?php endif; ?>
                                     <div class="formatura-muted"><?= (int)$formando['mesas'] ?> mesas</div>
                                 </td>
                                 <td>
                                     <strong>R$ <?= number_format($valorLancadoDisplay, 2, ',', '.') ?></strong>
                                     <?php if (!empty($formando['calculo_configurado'])): ?>
-                                        <div class="formatura-muted"><?= (int)$formando['mesas'] ?> mesa(s)<?= (int)$formando['convidados_adicionais'] > 0 ? ' + ' . (int)$formando['convidados_adicionais'] . ' adicional(is)' : '' ?></div>
+                                        <div class="formatura-muted"><?= (int)$formando['mesas'] ?> mesa(s)<?= (int)$formando['convidados_adicionais'] > 0 ? ' + ' . (int)$formando['convidados_adicionais'] . ' adicional(is)' : '' ?><?= (int)($formando['criancas_meia'] ?? 0) > 0 ? ' + ' . (int)$formando['criancas_meia'] . ' criança(s) meia' : '' ?></div>
                                     <?php endif; ?>
                                     <div class="formatura-muted">Pago: R$ <?= number_format((float)$formando['total_pago'], 2, ',', '.') ?></div>
                                     <div class="formatura-muted">Saldo: R$ <?= number_format($saldo, 2, ',', '.') ?></div>
@@ -1917,6 +1949,7 @@ includeSidebar('Formatura');
                                             data-cliente-id="<?= (int)$formando['cliente_cadastro_id'] ?>"
                                             data-nome-formando="<?= eventos_formatura_e((string)$formando['nome_formando']) ?>"
                                             data-convidados="<?= (int)$formando['convidados'] ?>"
+                                            data-criancas-meia="<?= (int)($formando['criancas_meia'] ?? 0) ?>"
                                             data-mesas="<?= (int)$formando['mesas'] ?>"
                                         >✎</button>
                                         <form method="post" onsubmit="return confirm('Excluir este formando?');">
@@ -1962,9 +1995,13 @@ includeSidebar('Formatura');
                         <input id="configValorAdicional" name="valor_convidado_adicional" type="text" inputmode="decimal" value="<?= eventos_formatura_e(number_format((float)$formaturaConfig['valor_convidado_adicional'], 2, ',', '.')) ?>" placeholder="0,00" required>
                     </div>
                     <div class="formatura-field">
+                        <label for="configValorCriancaMeia">Valor criança 5 a 8 anos</label>
+                        <input id="configValorCriancaMeia" name="valor_crianca_meia" type="text" inputmode="decimal" value="<?= eventos_formatura_e(number_format((float)$formaturaConfig['valor_crianca_meia'], 2, ',', '.')) ?>" placeholder="90,00" required>
+                    </div>
+                    <div class="formatura-field">
                         <label>Cálculo</label>
                         <div class="cliente-preview">
-                            Mesas x valor da mesa. Convidados acima da capacidade das mesas entram como adicional.
+                            Mesas x valor da mesa. Convidados acima da capacidade das mesas entram como adicional. Crianças de 5 a 8 anos entram no valor meia.
                         </div>
                     </div>
                 </div>
@@ -2048,6 +2085,10 @@ includeSidebar('Formatura');
                         <input id="convidados" name="convidados" type="number" min="0" step="1" value="0" required>
                     </div>
                     <div class="formatura-field">
+                        <label for="criancasMeia">Crianças 5 a 8 anos</label>
+                        <input id="criancasMeia" name="criancas_meia" type="number" min="0" step="1" value="0" required>
+                    </div>
+                    <div class="formatura-field">
                         <label for="mesas">Quantia de mesas</label>
                         <input id="mesas" name="mesas" type="number" min="0" step="1" value="0" required>
                     </div>
@@ -2122,6 +2163,7 @@ document.getElementById('btnNovoFormando')?.addEventListener('click', () => {
     formFormando.reset();
     document.getElementById('formandoId').value = '';
     document.getElementById('clienteCadastroId').value = '';
+    document.getElementById('criancasMeia').value = '0';
     document.getElementById('clientePreview').textContent = 'Selecione um cliente cadastrado.';
     document.getElementById('modalFormandoTitulo').textContent = 'Cadastrar Formando';
     openModal(modalFormando);
@@ -2138,6 +2180,7 @@ document.querySelectorAll('.btnEditarFormando').forEach((btn) => {
         document.getElementById('formandoId').value = btn.dataset.id || '';
         document.getElementById('nomeFormando').value = btn.dataset.nomeFormando || '';
         document.getElementById('convidados').value = btn.dataset.convidados || '0';
+        document.getElementById('criancasMeia').value = btn.dataset.criancasMeia || '0';
         document.getElementById('mesas').value = btn.dataset.mesas || '0';
         setCliente(clienteById(btn.dataset.clienteId || 0));
         openModal(modalFormando);
