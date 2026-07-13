@@ -98,6 +98,48 @@ class MagaluStorageHelper {
      * USA AUTENTICAÇÃO AWS S3 Signature Version 2 (mesmo que Trello)
      */
     private function s3Upload($file, $key) {
+        // A Magalu homologa o AWS SDK PHP até 3.335.0 e exige Signature V4.
+        // O antigo fluxo manual Signature V2 é mantido fora do caminho de execução.
+        $autoload = dirname(__DIR__) . '/vendor/autoload.php';
+        if (is_file($autoload)) {
+            require_once $autoload;
+            try {
+                $filePath = is_array($file) ? $file['tmp_name'] : $file;
+                $contentType = is_array($file) ? ($file['type'] ?: 'application/octet-stream') : (mime_content_type($filePath) ?: 'application/octet-stream');
+                $client = new \Aws\S3\S3Client([
+                    'version' => 'latest',
+                    'region' => $this->region,
+                    'endpoint' => rtrim($this->endpoint, '/'),
+                    'use_path_style_endpoint' => true,
+                    'signature_version' => 'v4',
+                    'credentials' => ['key' => $this->access_key, 'secret' => $this->secret_key],
+                    'http' => ['connect_timeout' => 15, 'timeout' => 300],
+                ]);
+                if (filesize($filePath) > 15 * 1024 * 1024) {
+                    $uploader = new \Aws\S3\MultipartUploader($client, $filePath, [
+                        'bucket' => $this->bucket,
+                        'key' => $key,
+                        'part_size' => 8 * 1024 * 1024,
+                        'before_initiate' => static function (\Aws\Command $command) use ($contentType): void {
+                            $command['ContentType'] = $contentType;
+                        },
+                    ]);
+                    $uploader->upload();
+                } else {
+                    $client->putObject([
+                        'Bucket' => $this->bucket,
+                        'Key' => $key,
+                        'SourceFile' => $filePath,
+                        'ContentType' => $contentType,
+                    ]);
+                }
+                return ['success' => true];
+            } catch (\Throwable $e) {
+                error_log('MAGALU SDK upload: ' . $e->getMessage());
+                return ['success' => false, 'error' => 'Erro no upload para o Magalu Object Storage.'];
+            }
+        }
+
         error_log("DEBUG MAGALU S3: s3Upload chamado");
         error_log("DEBUG MAGALU S3: key: $key");
         error_log("DEBUG MAGALU S3: file type: " . (is_array($file) ? 'array' : gettype($file)));
