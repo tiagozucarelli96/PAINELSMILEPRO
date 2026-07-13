@@ -59,7 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
                 'cliente_telefone' => $_POST['cliente_telefone'] ?? null,
                 'visita_duracao_minutos' => $_POST['visita_duracao_minutos'] ?? null,
                 'participantes' => json_decode($_POST['participantes'] ?? '[]', true),
-                'forcar_conflito' => !empty($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
+                // O primeiro envio sempre valida o conflito. O segundo só acontece
+                // depois de o usuário confirmar explicitamente na interface.
+                'forcar_conflito' => !empty($_POST['forcar_conflito'])
             ];
             
             $response = $agenda->criarEvento($dados);
@@ -105,7 +107,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
                 'fechou_contrato' => $fechou_contrato,
                 'fechou_ref' => $_POST['fechou_ref'] ?? null,
                 'participantes' => json_decode($_POST['participantes'] ?? '[]', true),
-                'forcar_conflito' => !empty($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
+                // Permite prosseguir após a confirmação explícita do conflito.
+                'forcar_conflito' => !empty($_POST['forcar_conflito'])
             ];
             
             $response = $agenda->atualizarEvento($evento_id, $dados);
@@ -926,7 +929,7 @@ includeSidebar('Agenda');
                         🗑️ Excluir
                     </button>
                     <button type="button" class="btn btn-primary" id="forceBtn" onclick="forceConflict()" style="display: none;">
-                        ⚡ Forçar Conflito
+                        Marcar mesmo assim
                     </button>
                     <button type="submit" class="btn btn-success">
                         ✅ Salvar
@@ -1369,6 +1372,8 @@ includeSidebar('Agenda');
             document.getElementById('forcarConflitoInput').value = '0';
             document.getElementById('conflictWarning').style.display = 'none';
             document.getElementById('conflictDetails').innerHTML = '';
+            forceBtn.disabled = false;
+            forceBtn.textContent = 'Marcar mesmo assim';
             
             if (event) {
                 // Editar evento existente
@@ -1574,7 +1579,8 @@ includeSidebar('Agenda');
             document.getElementById('conflictWarning').style.display = 'none';
             document.getElementById('conflictDetails').innerHTML = '';
             document.getElementById('forceBtn').style.display = 'none';
-            document.getElementById('forceBtn').textContent = '⚡ Forçar Conflito';
+            document.getElementById('forceBtn').disabled = false;
+            document.getElementById('forceBtn').textContent = 'Marcar mesmo assim';
             
             // Resetar campos do Google
             document.getElementById('googleEventGroup').style.display = 'none';
@@ -1651,10 +1657,6 @@ includeSidebar('Agenda');
         // Verificar permissões
         function canCreateEvents() {
             return <?= $agenda->canCreateEvents($usuario_id) ? 'true' : 'false' ?>;
-        }
-        
-        function canForceConflict() {
-            return <?= $agenda->canForceConflict($usuario_id) ? 'true' : 'false' ?>;
         }
         
         // Toggle filtros
@@ -1890,9 +1892,9 @@ includeSidebar('Agenda');
         
         // Forçar conflito
         function forceConflict() {
-            if (!canForceConflict()) return;
             document.getElementById('forcarConflitoInput').value = '1';
-            document.getElementById('forceBtn').textContent = '⏳ Salvando com conflito...';
+            document.getElementById('forceBtn').textContent = '⏳ Marcando...';
+            document.getElementById('forceBtn').disabled = true;
             document.getElementById('eventForm').requestSubmit();
         }
         
@@ -2128,16 +2130,12 @@ includeSidebar('Agenda');
                         }
                     }, 1000);
                 } else {
-                    // Erro
+                    // Conflitos são tratados como uma confirmação, não como erro.
                     console.error('Erro ao salvar:', data.error || data.message || 'Erro desconhecido');
-                    submitBtn.innerHTML = '❌ Erro';
-                    showToast('❌ Erro ao salvar: ' + (data.error || data.message || 'Erro desconhecido'), 'error');
-                    setTimeout(() => {
-                        submitBtn.innerHTML = originalText;
-                        submitBtn.disabled = false;
-                    }, 2000);
                     
                     if (data.conflito) {
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.disabled = false;
                         document.getElementById('forcarConflitoInput').value = '0';
                         const conflito = data.conflito;
                         const conflitoTitulo = conflito.evento_conflito_titulo
@@ -2167,15 +2165,22 @@ includeSidebar('Agenda');
                             ${conflitoEspaco}
                             ${espacoSolicitado}
                             ${intervalo}
-                            <br><br><strong>Deseja realmente salvar mesmo assim?</strong>
+                            <br><br><strong>Deseja realmente marcar mesmo assim?</strong>
                         `;
                         document.getElementById('conflictWarning').style.display = 'block';
-                        
-                        if (canForceConflict()) {
-                            document.getElementById('forceBtn').style.display = 'block';
-                            document.getElementById('forceBtn').textContent = '⚡ Salvar Mesmo Assim';
-                        }
+                        document.getElementById('conflictWarning').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+                        const forceBtn = document.getElementById('forceBtn');
+                        forceBtn.style.display = 'block';
+                        forceBtn.disabled = false;
+                        forceBtn.textContent = 'Marcar mesmo assim';
                     } else {
+                        submitBtn.innerHTML = '❌ Erro';
+                        showToast('❌ Erro ao salvar: ' + (data.error || data.message || 'Erro desconhecido'), 'error');
+                        setTimeout(() => {
+                            submitBtn.innerHTML = originalText;
+                            submitBtn.disabled = false;
+                        }, 2000);
                         customAlert('Erro: ' + (data.error || data.message || 'Erro desconhecido'), '❌ Erro');
                     }
                 }
