@@ -771,6 +771,82 @@ function eventos_formatura_criar_pix_asaas(PDO $pdo, int $eventoId, array $event
     }
 }
 
+function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $formandoId, array $dados): array
+{
+    $cobrancaId = (int)($dados['cobranca_id'] ?? 0);
+    $descricao = trim((string)($dados['descricao'] ?? ''));
+    $vencimento = trim((string)($dados['vencimento'] ?? ''));
+    $valor = eventos_formatura_money($dados['valor'] ?? 0);
+
+    if ($cobrancaId <= 0) {
+        return ['ok' => false, 'error' => 'Cobrança não encontrada.'];
+    }
+    if ($descricao === '') {
+        return ['ok' => false, 'error' => 'Informe a descrição da cobrança.'];
+    }
+    if ($vencimento === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $vencimento)) {
+        return ['ok' => false, 'error' => 'Informe um vencimento válido.'];
+    }
+    if ($valor <= 0) {
+        return ['ok' => false, 'error' => 'Informe um valor maior que zero.'];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM eventos_formatura_financeiro
+        WHERE id = :id
+          AND evento_id = :evento_id
+          AND formando_id = :formando_id
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':id' => $cobrancaId,
+        ':evento_id' => $eventoId,
+        ':formando_id' => $formandoId,
+    ]);
+    $cobranca = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$cobranca) {
+        return ['ok' => false, 'error' => 'Cobrança não encontrada para este formando.'];
+    }
+    if (in_array((string)$cobranca['status'], ['pago', 'cancelado'], true)) {
+        return ['ok' => false, 'error' => 'Cobranças pagas ou canceladas não podem ser editadas.'];
+    }
+
+    $asaasPayload = null;
+    if ((string)($cobranca['carteira'] ?? '') === 'asaas' && !empty($cobranca['asaas_payment_id'])) {
+        require_once __DIR__ . '/asaas_helper.php';
+        $asaas = new AsaasHelper();
+        $asaasPayload = $asaas->updatePayment((string)$cobranca['asaas_payment_id'], [
+            'description' => $descricao,
+            'due_date' => $vencimento,
+            'value' => $valor,
+        ]);
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_formatura_financeiro
+        SET descricao = :descricao,
+            vencimento = :vencimento,
+            valor = :valor,
+            asaas_payload = CASE WHEN :asaas_payload <> '' THEN CAST(:asaas_payload AS JSONB) ELSE asaas_payload END,
+            updated_at = NOW()
+        WHERE id = :id
+          AND evento_id = :evento_id
+          AND formando_id = :formando_id
+    ");
+    $stmt->execute([
+        ':descricao' => $descricao,
+        ':vencimento' => $vencimento,
+        ':valor' => $valor,
+        ':asaas_payload' => $asaasPayload ? json_encode($asaasPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
+        ':id' => $cobrancaId,
+        ':evento_id' => $eventoId,
+        ':formando_id' => $formandoId,
+    ]);
+
+    return ['ok' => true];
+}
+
 $eventoId = (int)($_GET['evento_id'] ?? $_POST['evento_id'] ?? 0);
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $messages = [];
@@ -1112,6 +1188,27 @@ if ($requestMethod === 'POST') {
                 eventos_formatura_redirect_financeiro($eventoId, $formandoId);
             }
             $errors[] = (string)($result['error'] ?? 'Não foi possível salvar a receita.');
+        }
+    }
+
+    if ($action === 'update_financeiro') {
+        $formandoId = (int)($_POST['formando_id'] ?? 0);
+        if ($formandoId <= 0) {
+            $errors[] = 'Selecione o formando para editar a cobrança.';
+        }
+
+        if (empty($errors)) {
+            try {
+                $result = eventos_formatura_atualizar_cobranca($pdo, $eventoId, $formandoId, $_POST);
+            } catch (Throwable $e) {
+                $result = ['ok' => false, 'error' => $e->getMessage()];
+            }
+
+            if (!empty($result['ok'])) {
+                $_SESSION['eventos_formatura_message'] = 'Cobrança atualizada.';
+                eventos_formatura_redirect_financeiro($eventoId, $formandoId);
+            }
+            $errors[] = (string)($result['error'] ?? 'Não foi possível atualizar a cobrança.');
         }
     }
 }
@@ -1482,6 +1579,12 @@ includeSidebar('Formatura');
     font-weight: 900;
     text-decoration: none;
 }
+.formatura-icon-btn--text {
+    width: auto;
+    min-width: 72px;
+    padding: 0 0.75rem;
+    border-radius: 8px;
+}
 .formatura-icon-btn:hover {
     background: #f8fafc;
     border-color: #94a3b8;
@@ -1827,6 +1930,7 @@ includeSidebar('Formatura');
                                 <th>Status</th>
                                 <th>Valor</th>
                                 <th>Link</th>
+                                <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1849,9 +1953,23 @@ includeSidebar('Formatura');
                                         <?php if (!empty($cobranca['asaas_invoice_url'])): ?>
                                             <button
                                                 type="button"
-                                                class="formatura-icon-btn btnCopiarLinkCobranca"
+                                                class="formatura-icon-btn formatura-icon-btn--text btnCopiarLinkCobranca"
                                                 data-link="<?= eventos_formatura_e((string)$cobranca['asaas_invoice_url']) ?>"
                                             >Copiar</button>
+                                        <?php else: ?>
+                                            <span class="formatura-muted">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if (!in_array((string)$cobranca['status'], ['pago', 'cancelado'], true)): ?>
+                                            <button
+                                                type="button"
+                                                class="formatura-icon-btn formatura-icon-btn--text btnEditarCobranca"
+                                                data-id="<?= (int)$cobranca['id'] ?>"
+                                                data-descricao="<?= eventos_formatura_e((string)$cobranca['descricao']) ?>"
+                                                data-vencimento="<?= eventos_formatura_e((string)($cobranca['vencimento'] ?? '')) ?>"
+                                                data-valor="<?= eventos_formatura_e(number_format((float)$cobranca['valor'], 2, ',', '.')) ?>"
+                                            >Editar</button>
                                         <?php else: ?>
                                             <span class="formatura-muted">-</span>
                                         <?php endif; ?>
@@ -1978,6 +2096,41 @@ includeSidebar('Formatura');
     </section>
 
     <?php endif; ?>
+</div>
+
+<div class="formatura-modal" id="modalEditarCobranca" aria-hidden="true">
+    <div class="formatura-modal-dialog">
+        <div class="formatura-modal-head">
+            <h3>Editar cobrança</h3>
+            <button type="button" class="formatura-close" data-close-modal>×</button>
+        </div>
+        <form method="post" id="formEditarCobranca">
+            <div class="formatura-modal-body">
+                <input type="hidden" name="action" value="update_financeiro">
+                <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                <input type="hidden" name="formando_id" value="<?= (int)$formandoFinanceiroId ?>">
+                <input type="hidden" name="cobranca_id" id="editarCobrancaId" value="">
+                <div class="formatura-grid">
+                    <div class="formatura-field full">
+                        <label for="editarCobrancaDescricao">Descrição</label>
+                        <input id="editarCobrancaDescricao" name="descricao" type="text" required>
+                    </div>
+                    <div class="formatura-field">
+                        <label for="editarCobrancaVencimento">Vencimento</label>
+                        <input id="editarCobrancaVencimento" name="vencimento" type="date" required>
+                    </div>
+                    <div class="formatura-field">
+                        <label for="editarCobrancaValor">Valor</label>
+                        <input id="editarCobrancaValor" name="valor" type="text" inputmode="decimal" required>
+                    </div>
+                </div>
+            </div>
+            <div class="formatura-modal-actions">
+                <button type="button" class="formatura-btn formatura-btn--light" data-close-modal>Cancelar</button>
+                <button type="submit" class="formatura-btn formatura-btn--primary">Salvar cobrança</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <div class="formatura-modal" id="modalFormaturaConfig" aria-hidden="true">
@@ -2162,6 +2315,7 @@ document.querySelectorAll('.formatura-modal').forEach((modal) => {
 const modalFormando = document.getElementById('modalFormando');
 const modalFormaturaConfig = document.getElementById('modalFormaturaConfig');
 const modalDocumentoFormando = document.getElementById('modalDocumentoFormando');
+const modalEditarCobranca = document.getElementById('modalEditarCobranca');
 const formFormando = document.getElementById('formFormando');
 
 document.getElementById('btnFormaturaConfig')?.addEventListener('click', () => {
@@ -2231,6 +2385,16 @@ document.querySelectorAll('.btnCopiarLinkCobranca').forEach((btn) => {
             btn.textContent = 'Erro';
             setTimeout(() => { btn.textContent = originalText; }, 1800);
         }
+    });
+});
+
+document.querySelectorAll('.btnEditarCobranca').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        document.getElementById('editarCobrancaId').value = btn.dataset.id || '';
+        document.getElementById('editarCobrancaDescricao').value = btn.dataset.descricao || '';
+        document.getElementById('editarCobrancaVencimento').value = btn.dataset.vencimento || '';
+        document.getElementById('editarCobrancaValor').value = btn.dataset.valor || '';
+        openModal(modalEditarCobranca);
     });
 });
 

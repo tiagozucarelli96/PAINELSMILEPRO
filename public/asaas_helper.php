@@ -84,6 +84,33 @@ class AsaasHelper {
         
         return $this->makeRequest('POST', $endpoint, $payload);
     }
+
+    /**
+     * Atualizar cobrança no ASAAS
+     */
+    public function updatePayment($payment_id, $data) {
+        $payment_id = trim((string)$payment_id);
+        if ($payment_id === '') {
+            throw new Exception('payment_id é obrigatório');
+        }
+
+        $endpoint = $this->base_url . '/payments/' . rawurlencode($payment_id);
+        $payload = [];
+        if (array_key_exists('value', $data)) {
+            $payload['value'] = number_format((float)$data['value'], 2, '.', '');
+        }
+        if (!empty($data['due_date'])) {
+            $payload['dueDate'] = $data['due_date'];
+        }
+        if (array_key_exists('description', $data)) {
+            $payload['description'] = (string)$data['description'];
+        }
+        if (empty($payload)) {
+            throw new Exception('Informe ao menos um campo para atualizar a cobrança.');
+        }
+
+        return $this->makeRequest('PUT', $endpoint, $payload);
+    }
     
     /**
      * Criar customer no ASAAS
