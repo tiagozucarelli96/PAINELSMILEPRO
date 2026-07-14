@@ -15,6 +15,7 @@ require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/eventos_financeiro_helper.php';
 require_once __DIR__ . '/contratos_modelos_helper.php';
 require_once __DIR__ . '/eventos_documentos_helper.php';
+require_once __DIR__ . '/config_env.php';
 
 if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -84,6 +85,13 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
             asaas_payment_id VARCHAR(120) NULL,
             asaas_invoice_url TEXT NULL,
             asaas_payload JSONB NULL,
+            pixgo_payment_id VARCHAR(120) NULL,
+            pixgo_payment_url TEXT NULL,
+            pixgo_qr_code TEXT NULL,
+            pixgo_qr_image_url TEXT NULL,
+            pixgo_expires_at TIMESTAMPTZ NULL,
+            pixgo_idempotency_key VARCHAR(120) NULL,
+            pixgo_payload JSONB NULL,
             pago_em TIMESTAMP NULL,
             created_by INTEGER NULL,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -100,7 +108,15 @@ function eventos_formatura_ensure_schema(PDO $pdo): void
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payment_id VARCHAR(120) NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_invoice_url TEXT NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payload JSONB NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_payment_id VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_payment_url TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_qr_code TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_qr_image_url TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_expires_at TIMESTAMPTZ NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_idempotency_key VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_payload JSONB NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pago_em TIMESTAMP NULL");
+    $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_formatura_financeiro_pixgo ON eventos_formatura_financeiro(pixgo_payment_id) WHERE pixgo_payment_id IS NOT NULL");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS eventos_formatura_config (
@@ -771,6 +787,113 @@ function eventos_formatura_criar_pix_asaas(PDO $pdo, int $eventoId, array $event
     }
 }
 
+function eventos_formatura_criar_pix_pixgo(PDO $pdo, int $eventoId, array $evento, array $formando, array $dados, int $userId): array
+{
+    require_once __DIR__ . '/pixgo_helper.php';
+
+    $valores = is_array($dados['parcela_valor'] ?? null) ? $dados['parcela_valor'] : [];
+    if (count($valores) !== 1) {
+        return ['ok' => false, 'error' => 'A PixGo aceita somente cobrança à vista. O QR Code expira em cerca de 20 minutos.'];
+    }
+    $valor = eventos_formatura_money($valores[0] ?? 0);
+    if ($valor < 10) {
+        return ['ok' => false, 'error' => 'A cobrança mínima da PixGo é R$ 10,00.'];
+    }
+
+    $nome = trim((string)($formando['cliente_nome'] ?? ''));
+    $documento = preg_replace('/\D+/', '', (string)($formando['cliente_documento'] ?? ''));
+    if ($nome === '') {
+        return ['ok' => false, 'error' => 'O responsável do formando não tem nome cadastrado.'];
+    }
+    if (!eventos_financeiro_documento_valido($documento)) {
+        return ['ok' => false, 'error' => 'O responsável precisa ter CPF/CNPJ válido para gerar a cobrança PixGo.'];
+    }
+
+    $descricao = trim((string)($dados['descricao'] ?? 'Receita do formando')) ?: 'Receita do formando';
+    $unidade = trim((string)($dados['unidade'] ?? ($evento['space_visivel'] ?? '')));
+    $vencimento = trim((string)(($dados['parcela_vencimento'][0] ?? null) ?: ($dados['primeiro_vencimento'] ?? date('Y-m-d'))));
+    $grupo = 'formatura_pixgo_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_formatura_financeiro
+            (formando_id, evento_id, descricao, valor, vencimento, status, forma_pagamento,
+             carteira, modo_pagamento, unidade, parcelamento_grupo, parcela_numero, parcelas_total,
+             created_by, updated_at)
+        VALUES
+            (:formando_id, :evento_id, :descricao, :valor, :vencimento, 'pendente', 'pix_pixgo',
+             'pixgo', 'pix', :unidade, :grupo, 1, 1, :created_by, NOW())
+        RETURNING id
+    ");
+    $stmt->execute([
+        ':formando_id' => (int)$formando['id'],
+        ':evento_id' => $eventoId,
+        ':descricao' => $descricao,
+        ':valor' => $valor,
+        ':vencimento' => $vencimento,
+        ':unidade' => $unidade !== '' ? $unidade : null,
+        ':grupo' => $grupo,
+        ':created_by' => $userId > 0 ? $userId : null,
+    ]);
+    $receitaId = (int)$stmt->fetchColumn();
+    $idempotencyKey = 'smile-formatura-' . $receitaId . '-' . bin2hex(random_bytes(8));
+
+    try {
+        $pixgo = new PixGoHelper();
+        $payment = $pixgo->createPayment([
+            'amount' => $valor,
+            'description' => $descricao . ' - ' . (string)($formando['nome_formando'] ?? 'Formando') . ' - ' . (string)($evento['nome_evento'] ?? 'Formatura'),
+            'external_id' => 'formatura_financeiro_receita:' . $receitaId,
+            'receiver_name' => $nome,
+            'receiver_cpf' => $documento,
+            'receiver_email' => (string)($formando['cliente_email'] ?? ''),
+            'receiver_phone' => (string)($formando['cliente_telefone'] ?? ''),
+            'receiver_address' => trim(implode(', ', array_filter([
+                (string)($formando['cliente_endereco'] ?? ''),
+                (string)($formando['cliente_numero'] ?? ''),
+                (string)($formando['cliente_bairro'] ?? ''),
+                (string)($formando['cliente_cidade'] ?? ''),
+                (string)($formando['cliente_estado'] ?? ''),
+                (string)($formando['cliente_cep'] ?? ''),
+            ]))),
+            'idempotency_key' => $idempotencyKey,
+        ]);
+        $paymentId = trim((string)($payment['payment_id'] ?? $payment['id'] ?? ''));
+        if ($paymentId === '') {
+            throw new RuntimeException('A PixGo não retornou o identificador da cobrança.');
+        }
+        $paymentUrl = eventos_financeiro_pixgo_payment_url($paymentId);
+        $stmt = $pdo->prepare("
+            UPDATE eventos_formatura_financeiro
+            SET pixgo_payment_id = :payment_id,
+                pixgo_payment_url = :payment_url,
+                pixgo_qr_code = :qr_code,
+                pixgo_qr_image_url = :qr_image_url,
+                pixgo_expires_at = CAST(NULLIF(:expires_at, '') AS TIMESTAMPTZ),
+                pixgo_idempotency_key = :idempotency_key,
+                pixgo_payload = CAST(:payload AS JSONB),
+                status = :status,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':payment_id' => $paymentId,
+            ':payment_url' => $paymentUrl,
+            ':qr_code' => $payment['qr_code'] ?? null,
+            ':qr_image_url' => $payment['qr_image_url'] ?? null,
+            ':expires_at' => $payment['expires_at'] ?? '',
+            ':idempotency_key' => $idempotencyKey,
+            ':payload' => json_encode($payment, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ':status' => eventos_financeiro_status_from_pixgo((string)($payment['status'] ?? 'pending')),
+            ':id' => $receitaId,
+        ]);
+        return ['ok' => true, 'created' => 1, 'payment_url' => $paymentUrl];
+    } catch (Throwable $e) {
+        $stmt = $pdo->prepare("UPDATE eventos_formatura_financeiro SET status = 'cancelado', pixgo_idempotency_key = :key, updated_at = NOW() WHERE id = :id");
+        $stmt->execute([':key' => $idempotencyKey, ':id' => $receitaId]);
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
 function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $formandoId, array $dados): array
 {
     $cobrancaId = (int)($dados['cobranca_id'] ?? 0);
@@ -810,6 +933,9 @@ function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $form
     }
     if (in_array((string)$cobranca['status'], ['pago', 'cancelado'], true)) {
         return ['ok' => false, 'error' => 'Cobranças pagas ou canceladas não podem ser editadas.'];
+    }
+    if ((string)($cobranca['carteira'] ?? '') === 'pixgo') {
+        return ['ok' => false, 'error' => 'A cobrança PixGo é imutável. Gere uma nova cobrança para alterar valor, descrição ou vencimento.'];
     }
 
     $asaasPayload = null;
@@ -1176,6 +1302,8 @@ if ($requestMethod === 'POST') {
             $carteira = (string)($_POST['carteira'] ?? 'manual');
             if ($carteira === 'asaas' && is_array($formandoSelecionado)) {
                 $result = eventos_formatura_criar_pix_asaas($pdo, $eventoId, $evento, $formandoSelecionado, $_POST, $userId);
+            } elseif ($carteira === 'pixgo' && is_array($formandoSelecionado)) {
+                $result = eventos_formatura_criar_pix_pixgo($pdo, $eventoId, $evento, $formandoSelecionado, $_POST, $userId);
             } else {
                 $result = eventos_formatura_salvar_receitas_manual_lote($pdo, $eventoId, $formandoId, $_POST, $userId);
             }
@@ -1860,6 +1988,7 @@ includeSidebar('Formatura');
                                 <select id="financeiroCarteira" name="carteira">
                                     <option value="manual">Manual</option>
                                     <option value="asaas">Asaas</option>
+                                    <option value="pixgo" <?= PIXGO_ENABLED ? '' : 'disabled' ?>>PixGo<?= PIXGO_ENABLED ? '' : ' (configurar Railway)' ?></option>
                                 </select>
                             </div>
                             <div class="formatura-field">
@@ -1950,11 +2079,12 @@ includeSidebar('Formatura');
                                     <td><?= eventos_formatura_e(eventos_formatura_label_status((string)$cobranca['status'])) ?></td>
                                     <td><strong>R$ <?= number_format((float)$cobranca['valor'], 2, ',', '.') ?></strong></td>
                                     <td>
-                                        <?php if (!empty($cobranca['asaas_invoice_url'])): ?>
+                                        <?php $paymentLink = (string)($cobranca['pixgo_payment_url'] ?? $cobranca['asaas_invoice_url'] ?? ''); ?>
+                                        <?php if ($paymentLink !== ''): ?>
                                             <button
                                                 type="button"
                                                 class="formatura-icon-btn formatura-icon-btn--text btnCopiarLinkCobranca"
-                                                data-link="<?= eventos_formatura_e((string)$cobranca['asaas_invoice_url']) ?>"
+                                                data-link="<?= eventos_formatura_e($paymentLink) ?>"
                                             >Copiar</button>
                                         <?php else: ?>
                                             <span class="formatura-muted">-</span>
@@ -2454,19 +2584,25 @@ function renderFormaturaParcelas() {
 }
 
 function updateFormaturaReceitaMode() {
+    const isProvider = receitaCarteira?.value === 'asaas' || receitaCarteira?.value === 'pixgo';
+    const isPixGo = receitaCarteira?.value === 'pixgo';
+    if (isPixGo) {
+        formaturaReceitaTipo = 'avista';
+        if (receitaParcelasInput) receitaParcelasInput.value = '1';
+    }
     if (receitaTipoValor) receitaTipoValor.value = formaturaReceitaTipo;
     document.querySelectorAll('[data-formatura-tipo]').forEach((button) => {
         button.classList.toggle('is-active', button.dataset.formaturaTipo === formaturaReceitaTipo);
     });
     receitaParcelasField?.classList.toggle('formatura-hidden', formaturaReceitaTipo !== 'parcelado');
-    const isAsaas = receitaCarteira?.value === 'asaas';
-    if (isAsaas && receitaModo) {
+    document.querySelectorAll('[data-formatura-tipo="parcelado"]').forEach((button) => { button.disabled = isPixGo; });
+    if (isProvider && receitaModo) {
         receitaModo.value = 'pix';
     }
     receitaModo?.querySelectorAll('option').forEach((option) => {
-        option.disabled = isAsaas && option.value !== 'pix';
+        option.disabled = isProvider && option.value !== 'pix';
     });
-    if (isAsaas && receitaStatus) {
+    if (isProvider && receitaStatus) {
         receitaStatus.value = 'pendente';
         receitaStatus.disabled = true;
     } else if (receitaStatus) {

@@ -98,6 +98,7 @@ Variáveis propostas no Railway:
 ```dotenv
 PIXGO_ENABLED=false
 PIXGO_API_KEY=
+PIXGO_WEBHOOK_SECRET=
 PIXGO_BASE_URL=https://pixgo.org/api/v1
 PIXGO_WEBHOOK_URL=https://SEU-DOMINIO/pixgo_webhook.php
 PIXGO_WEBHOOK_MAX_AGE_SECONDS=300
@@ -192,7 +193,6 @@ Esse endpoint aceita somente 1.000 requisições por 24 horas por chave. Deve se
 
 Eventos informados:
 
-- `order.created`;
 - `payment.completed`;
 - `payment.expired`;
 - `payment.refunded`.
@@ -209,7 +209,7 @@ Validação indicada pela PixGo:
 
 ```text
 mensagem = timestamp + "." + corpo_bruto
-assinatura_esperada = HMAC-SHA256(mensagem, PIXGO_API_KEY)
+assinatura_esperada = HMAC-SHA256(mensagem, PIXGO_WEBHOOK_SECRET)
 ```
 
 Requisitos adicionais para uma implementação segura:

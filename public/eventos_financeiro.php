@@ -12,6 +12,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_financeiro_helper.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
+require_once __DIR__ . '/config_env.php';
 
 if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -78,6 +79,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $errors[] = (string)($result['error'] ?? 'Não foi possível criar a cobrança no Asaas.');
             }
+        } elseif ($carteira === 'pixgo') {
+            $result = eventos_financeiro_criar_pix_pixgo($pdo, $eventoId, $evento, $_POST, $userId);
+            if (!empty($result['ok'])) {
+                $messages[] = 'Cobrança PIX PixGo criada. O QR Code expira em cerca de 20 minutos.';
+            } else {
+                $errors[] = (string)($result['error'] ?? 'Não foi possível criar a cobrança na PixGo.');
+            }
         } else {
             $result = eventos_financeiro_salvar_receitas_manual_lote($pdo, $eventoId, $_POST, $userId);
             if (!empty($result['ok'])) {
@@ -109,6 +117,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($synced > 0) {
             $messages[] = $synced . ' cobrança(s) atualizada(s) pelo Asaas.';
+        }
+    }
+
+    if ($action === 'sync_pixgo') {
+        require_once __DIR__ . '/pixgo_helper.php';
+        $pixgo = new PixGoHelper();
+        $synced = 0;
+        foreach (eventos_financeiro_listar_receitas($pdo, $eventoId) as $receita) {
+            $paymentId = trim((string)($receita['pixgo_payment_id'] ?? ''));
+            if ($paymentId === '' || in_array((string)$receita['status'], ['pago', 'cancelado', 'vencido'], true)) {
+                continue;
+            }
+            try {
+                $payment = $pixgo->getPayment($paymentId);
+                if (eventos_financeiro_atualizar_pixgo_payment($pdo, $paymentId, $payment)) {
+                    $synced++;
+                }
+            } catch (Throwable $e) {
+                $errors[] = 'Falha ao consultar PixGo: ' . $e->getMessage();
+                break;
+            }
+        }
+        if ($synced > 0) {
+            $messages[] = $synced . ' cobrança(s) atualizada(s) pela PixGo.';
         }
     }
 }
@@ -150,6 +182,7 @@ function eventos_financeiro_label_modo(string $forma): string
 {
     return [
         'pix_asaas' => 'PIX Asaas',
+        'pix_pixgo' => 'PIX PixGo',
         'pix' => 'Pix',
         'cartao_credito' => 'Cartão de crédito',
         'dinheiro' => 'Dinheiro',
@@ -364,6 +397,13 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
                     <input type="hidden" name="action" value="sync_asaas">
                     <button class="btn btn-slate" type="submit">Atualizar Asaas</button>
                 </form>
+                <?php if (PIXGO_ENABLED): ?>
+                <form method="post">
+                    <input type="hidden" name="evento_id" value="<?= (int)$eventoId ?>">
+                    <input type="hidden" name="action" value="sync_pixgo">
+                    <button class="btn btn-slate" type="submit">Atualizar PixGo</button>
+                </form>
+                <?php endif; ?>
             </div>
 
             <div class="table-wrap">
@@ -389,8 +429,9 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
                             <td><?= h((string)($receita['unidade'] ?? $eventoUnidade)) ?></td>
                             <td><span class="badge badge-<?= h($status) ?>"><?= h(eventos_financeiro_badge_status($status)) ?></span></td>
                             <td>
-                                <?php if (!empty($receita['asaas_invoice_url'])): ?>
-                                    <a href="<?= h((string)$receita['asaas_invoice_url']) ?>" target="_blank" rel="noopener">Abrir</a>
+                                <?php $paymentLink = (string)($receita['pixgo_payment_url'] ?? $receita['asaas_invoice_url'] ?? ''); ?>
+                                <?php if ($paymentLink !== ''): ?>
+                                    <a href="<?= h($paymentLink) ?>" target="_blank" rel="noopener">Abrir</a>
                                 <?php else: ?>
                                     <span class="muted">-</span>
                                 <?php endif; ?>
@@ -539,7 +580,7 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
                     <div class="field"><label>Unidade</label><select name="unidade" id="receita-unidade">
                         <?php foreach ($unidades as $unidade): ?><option value="<?= h($unidade) ?>" <?= $unidade === $eventoUnidade ? 'selected' : '' ?>><?= h($unidade) ?></option><?php endforeach; ?>
                     </select></div>
-                    <div class="field"><label>Carteira</label><select name="carteira" id="receita-carteira"><option value="manual">Manual</option><option value="asaas">Asaas</option></select></div>
+                    <div class="field"><label>Carteira</label><select name="carteira" id="receita-carteira"><option value="manual">Manual</option><option value="asaas">Asaas</option><option value="pixgo" <?= PIXGO_ENABLED ? '' : 'disabled' ?>>PixGo<?= PIXGO_ENABLED ? '' : ' (configurar Railway)' ?></option></select></div>
                     <div class="field"><label>Modo de pagamento</label><select name="modo_pagamento" id="receita-modo">
                         <option value="pix">Pix</option><option value="cartao_credito">Cartão de crédito</option><option value="dinheiro">Dinheiro</option><option value="cartao_debito">Cartão de débito</option><option value="nao_informado">Não informado</option>
                     </select></div>
@@ -547,10 +588,10 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
                     <div class="field" id="valor-total-field"><label>Valor total</label><input name="valor_total" id="receita-valor-total" inputmode="decimal" placeholder="R$ 0,00"></div>
                     <div class="field" id="parcelas-qtd-field"><label>Quantidade de parcelas</label><input type="number" name="parcelas" id="receita-parcelas" min="1" max="24" value="1"></div>
                     <div class="field"><label>Primeiro vencimento</label><input type="date" name="primeiro_vencimento" id="receita-primeiro-vencimento" value="<?= h(date('Y-m-d')) ?>"></div>
-                    <div class="field asaas-field hidden"><label>Cliente</label><input name="cliente_nome" value="<?= h((string)$evento['nome_evento']) ?>"></div>
-                    <div class="field asaas-field hidden"><label>Email</label><input type="email" name="cliente_email"></div>
-                    <div class="field asaas-field hidden"><label>Telefone</label><input name="cliente_telefone"></div>
-                    <div class="field asaas-field hidden"><label>CPF/CNPJ</label><input name="cliente_cpf_cnpj"></div>
+                    <div class="field provider-field hidden"><label>Cliente/pagador</label><input name="cliente_nome" value="<?= h((string)($evento['cliente_nome'] ?? '')) ?>"></div>
+                    <div class="field provider-field hidden"><label>Email</label><input type="email" name="cliente_email" value="<?= h((string)($evento['cliente_email'] ?? '')) ?>"></div>
+                    <div class="field provider-field hidden"><label>Telefone</label><input name="cliente_telefone" value="<?= h((string)($evento['cliente_telefone'] ?? '')) ?>"></div>
+                    <div class="field provider-field hidden"><label>CPF/CNPJ do pagador</label><input name="cliente_cpf_cnpj" value="<?= h((string)($evento['cliente_documento_numero'] ?? '')) ?>"></div>
                 </div>
 
                 <div class="parcelas-box">
@@ -769,12 +810,18 @@ function renderParcelas() {
     }
 }
 function updateReceitaMode() {
+    const isProvider = carteiraSelect.value === 'asaas' || carteiraSelect.value === 'pixgo';
+    const isPixGo = carteiraSelect.value === 'pixgo';
+    if (isPixGo) {
+        receitaTipo = 'avista';
+        receitaParcelas.value = 1;
+    }
     document.querySelectorAll('[data-receita-tipo]').forEach((btn) => btn.classList.toggle('active', btn.dataset.receitaTipo === receitaTipo));
     document.getElementById('parcelas-qtd-field').classList.toggle('hidden', receitaTipo !== 'parcelado');
-    const isAsaas = carteiraSelect.value === 'asaas';
-    document.querySelectorAll('.asaas-field').forEach((el) => el.classList.toggle('hidden', !isAsaas));
-    document.getElementById('status-field').classList.toggle('hidden', isAsaas);
-    if (isAsaas) {
+    document.querySelectorAll('.provider-field').forEach((el) => el.classList.toggle('hidden', !isProvider));
+    document.getElementById('status-field').classList.toggle('hidden', isProvider);
+    document.querySelectorAll('[data-receita-tipo="parcelado"]').forEach((el) => { el.disabled = isPixGo; });
+    if (isProvider) {
         modoSelect.value = 'pix';
         [...modoSelect.options].forEach((option) => option.disabled = option.value !== 'pix');
     } else {

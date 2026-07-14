@@ -135,6 +135,13 @@ function eventos_financeiro_ensure_schema(PDO $pdo): void
             asaas_payment_id VARCHAR(120) NULL,
             asaas_invoice_url TEXT NULL,
             asaas_payload JSONB NULL,
+            pixgo_payment_id VARCHAR(120) NULL,
+            pixgo_payment_url TEXT NULL,
+            pixgo_qr_code TEXT NULL,
+            pixgo_qr_image_url TEXT NULL,
+            pixgo_expires_at TIMESTAMPTZ NULL,
+            pixgo_idempotency_key VARCHAR(120) NULL,
+            pixgo_payload JSONB NULL,
             carteira VARCHAR(20) NOT NULL DEFAULT 'manual',
             modo_pagamento VARCHAR(30) NULL,
             unidade VARCHAR(120) NULL,
@@ -163,8 +170,16 @@ function eventos_financeiro_ensure_schema(PDO $pdo): void
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS modo_pagamento VARCHAR(30) NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS unidade VARCHAR(120) NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS parcelamento_grupo VARCHAR(80) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS pixgo_payment_id VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS pixgo_payment_url TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS pixgo_qr_code TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS pixgo_qr_image_url TEXT NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS pixgo_expires_at TIMESTAMPTZ NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS pixgo_idempotency_key VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_financeiro_receitas ADD COLUMN IF NOT EXISTS pixgo_payload JSONB NULL");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_evento ON eventos_financeiro_receitas(evento_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_asaas ON eventos_financeiro_receitas(asaas_payment_id)");
+    $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_pixgo ON eventos_financeiro_receitas(pixgo_payment_id) WHERE pixgo_payment_id IS NOT NULL");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_unidade ON eventos_financeiro_receitas(unidade, status)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_financeiro_receitas_grupo ON eventos_financeiro_receitas(parcelamento_grupo)");
     $done = true;
@@ -645,7 +660,7 @@ function eventos_financeiro_normalizar_modo(string $modo, string $carteira): str
 {
     $modo = trim($modo);
     $validosManual = ['pix', 'cartao_credito', 'dinheiro', 'cartao_debito', 'nao_informado'];
-    if ($carteira === 'asaas') {
+    if (in_array($carteira, ['asaas', 'pixgo'], true)) {
         return 'pix';
     }
     return in_array($modo, $validosManual, true) ? $modo : 'nao_informado';
@@ -725,6 +740,135 @@ function eventos_financeiro_status_from_asaas(string $status): string
         return 'cancelado';
     }
     return 'pendente';
+}
+
+function eventos_financeiro_status_from_pixgo(string $status, string $event = ''): string
+{
+    $status = strtolower(trim($status));
+    $event = strtolower(trim($event));
+    if ($event === 'payment.refunded') {
+        return 'cancelado';
+    }
+    if ($event === 'payment.expired') {
+        return 'vencido';
+    }
+    if ($event === 'payment.completed') {
+        return 'pago';
+    }
+    if ($status === 'completed') {
+        return 'pago';
+    }
+    if ($status === 'expired') {
+        return 'vencido';
+    }
+    if (in_array($status, ['cancelled', 'canceled', 'refunded'], true)) {
+        return 'cancelado';
+    }
+    return 'pendente';
+}
+
+function eventos_financeiro_pixgo_payment_url(string $paymentId): string
+{
+    require_once __DIR__ . '/config_env.php';
+    return rtrim((string)APP_URL, '/') . '/pixgo_pagamento.php?payment=' . rawurlencode($paymentId);
+}
+
+function eventos_financeiro_criar_pix_pixgo(PDO $pdo, int $eventoId, array $evento, array $dados, int $userId): array
+{
+    eventos_financeiro_ensure_schema($pdo);
+    require_once __DIR__ . '/pixgo_helper.php';
+
+    $valores = is_array($dados['parcela_valor'] ?? null) ? $dados['parcela_valor'] : [];
+    if (count($valores) !== 1) {
+        return ['ok' => false, 'error' => 'A PixGo aceita somente cobrança à vista. O QR Code expira em cerca de 20 minutos.'];
+    }
+    $valor = eventos_financeiro_money($valores[0] ?? 0);
+    if ($valor < 10) {
+        return ['ok' => false, 'error' => 'A cobrança mínima da PixGo é R$ 10,00.'];
+    }
+
+    $documento = preg_replace('/\D+/', '', (string)($dados['cliente_cpf_cnpj'] ?? $evento['cliente_documento_numero'] ?? ''));
+    if (!eventos_financeiro_documento_valido($documento)) {
+        return ['ok' => false, 'error' => 'Informe um CPF/CNPJ válido do pagador para gerar a cobrança PixGo.'];
+    }
+    $nome = trim((string)($dados['cliente_nome'] ?? $evento['cliente_nome'] ?? ''));
+    if ($nome === '') {
+        return ['ok' => false, 'error' => 'Informe o nome do pagador para gerar a cobrança PixGo.'];
+    }
+
+    $descricao = trim((string)($dados['descricao'] ?? 'Receita do evento')) ?: 'Receita do evento';
+    $unidade = trim((string)($dados['unidade'] ?? ($evento['space_visivel'] ?? '')));
+    $vencimento = trim((string)(($dados['parcela_vencimento'][0] ?? null) ?: ($dados['primeiro_vencimento'] ?? date('Y-m-d'))));
+    $grupo = 'pixgo_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_financeiro_receitas
+            (evento_id, descricao, forma_pagamento, carteira, modo_pagamento, unidade, parcelamento_grupo,
+             valor, parcela_numero, parcelas_total, vencimento, status, created_by)
+        VALUES
+            (:evento_id, :descricao, 'pix_pixgo', 'pixgo', 'pix', :unidade, :grupo,
+             :valor, 1, 1, CAST(NULLIF(:vencimento, '') AS DATE), 'pendente', :created_by)
+        RETURNING id
+    ");
+    $stmt->execute([
+        ':evento_id' => $eventoId,
+        ':descricao' => $descricao,
+        ':unidade' => $unidade !== '' ? $unidade : null,
+        ':grupo' => $grupo,
+        ':valor' => $valor,
+        ':vencimento' => $vencimento,
+        ':created_by' => $userId > 0 ? $userId : null,
+    ]);
+    $receitaId = (int)$stmt->fetchColumn();
+    $idempotencyKey = 'smile-evento-' . $receitaId . '-' . bin2hex(random_bytes(8));
+
+    try {
+        $pixgo = new PixGoHelper();
+        $payment = $pixgo->createPayment([
+            'amount' => $valor,
+            'description' => $descricao . ' - ' . (string)($evento['nome_evento'] ?? 'Evento'),
+            'external_id' => 'evento_financeiro_receita:' . $receitaId,
+            'receiver_name' => $nome,
+            'receiver_cpf' => $documento,
+            'receiver_email' => (string)($dados['cliente_email'] ?? $evento['cliente_email'] ?? ''),
+            'receiver_phone' => (string)($dados['cliente_telefone'] ?? $evento['cliente_telefone'] ?? ''),
+            'idempotency_key' => $idempotencyKey,
+        ]);
+        $paymentId = trim((string)($payment['payment_id'] ?? $payment['id'] ?? ''));
+        if ($paymentId === '') {
+            throw new RuntimeException('A PixGo não retornou o identificador da cobrança.');
+        }
+        $paymentUrl = eventos_financeiro_pixgo_payment_url($paymentId);
+        $stmt = $pdo->prepare("
+            UPDATE eventos_financeiro_receitas
+            SET pixgo_payment_id = :payment_id,
+                pixgo_payment_url = :payment_url,
+                pixgo_qr_code = :qr_code,
+                pixgo_qr_image_url = :qr_image_url,
+                pixgo_expires_at = CAST(NULLIF(:expires_at, '') AS TIMESTAMPTZ),
+                pixgo_idempotency_key = :idempotency_key,
+                pixgo_payload = CAST(:payload AS JSONB),
+                status = :status,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':payment_id' => $paymentId,
+            ':payment_url' => $paymentUrl,
+            ':qr_code' => $payment['qr_code'] ?? null,
+            ':qr_image_url' => $payment['qr_image_url'] ?? null,
+            ':expires_at' => $payment['expires_at'] ?? '',
+            ':idempotency_key' => $idempotencyKey,
+            ':payload' => json_encode($payment, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ':status' => eventos_financeiro_status_from_pixgo((string)($payment['status'] ?? 'pending')),
+            ':id' => $receitaId,
+        ]);
+        return ['ok' => true, 'created' => 1, 'payment_url' => $paymentUrl];
+    } catch (Throwable $e) {
+        $stmt = $pdo->prepare("UPDATE eventos_financeiro_receitas SET status = 'cancelado', pixgo_idempotency_key = :key, updated_at = NOW() WHERE id = :id");
+        $stmt->execute([':key' => $idempotencyKey, ':id' => $receitaId]);
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
 }
 
 function eventos_financeiro_criar_pix_asaas(PDO $pdo, int $eventoId, array $evento, array $dados, int $userId): array
@@ -881,7 +1025,6 @@ function eventos_formatura_financeiro_atualizar_asaas_payment(PDO $pdo, string $
     if (!$existsStmt || !$existsStmt->fetchColumn()) {
         return false;
     }
-
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payment_id VARCHAR(120) NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payload JSONB NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pago_em TIMESTAMP NULL");
@@ -898,6 +1041,70 @@ function eventos_formatura_financeiro_atualizar_asaas_payment(PDO $pdo, string $
     $stmt->execute([
         ':status' => $status,
         ':status_pago' => $status,
+        ':payload' => $paymentData ? json_encode($paymentData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
+        ':payment_id' => $paymentId,
+    ]);
+    return $stmt->rowCount() > 0;
+}
+
+function eventos_financeiro_atualizar_pixgo_payment(PDO $pdo, string $paymentId, array $paymentData = [], string $event = ''): bool
+{
+    eventos_financeiro_ensure_schema($pdo);
+    if ($paymentId === '') {
+        return false;
+    }
+    $status = eventos_financeiro_status_from_pixgo((string)($paymentData['status'] ?? ''), $event);
+    $stmt = $pdo->prepare("
+        UPDATE eventos_financeiro_receitas
+        SET status = :status,
+            pago_em = CASE
+                WHEN :status_pago = 'pago' THEN COALESCE(pago_em, NOW())
+                WHEN :status_cancelado = 'cancelado' THEN NULL
+                ELSE pago_em
+            END,
+            pixgo_payload = CASE WHEN :payload <> '' THEN CAST(:payload AS JSONB) ELSE pixgo_payload END,
+            updated_at = NOW()
+        WHERE pixgo_payment_id = :payment_id
+    ");
+    $stmt->execute([
+        ':status' => $status,
+        ':status_pago' => $status,
+        ':status_cancelado' => $status,
+        ':payload' => $paymentData ? json_encode($paymentData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
+        ':payment_id' => $paymentId,
+    ]);
+    return $stmt->rowCount() > 0;
+}
+
+function eventos_formatura_financeiro_atualizar_pixgo_payment(PDO $pdo, string $paymentId, array $paymentData = [], string $event = ''): bool
+{
+    if ($paymentId === '') {
+        return false;
+    }
+    $existsStmt = $pdo->query("SELECT to_regclass('eventos_formatura_financeiro')");
+    if (!$existsStmt || !$existsStmt->fetchColumn()) {
+        return false;
+    }
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_payment_id VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pixgo_payload JSONB NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pago_em TIMESTAMP NULL");
+    $status = eventos_financeiro_status_from_pixgo((string)($paymentData['status'] ?? ''), $event);
+    $stmt = $pdo->prepare("
+        UPDATE eventos_formatura_financeiro
+        SET status = :status,
+            pago_em = CASE
+                WHEN :status_pago = 'pago' THEN COALESCE(pago_em, NOW())
+                WHEN :status_cancelado = 'cancelado' THEN NULL
+                ELSE pago_em
+            END,
+            pixgo_payload = CASE WHEN :payload <> '' THEN CAST(:payload AS JSONB) ELSE pixgo_payload END,
+            updated_at = NOW()
+        WHERE pixgo_payment_id = :payment_id
+    ");
+    $stmt->execute([
+        ':status' => $status,
+        ':status_pago' => $status,
+        ':status_cancelado' => $status,
         ':payload' => $paymentData ? json_encode($paymentData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
         ':payment_id' => $paymentId,
     ]);

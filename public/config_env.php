@@ -23,6 +23,14 @@ define('WEBHOOK_URL', $_ENV['WEBHOOK_URL'] ?? 'https://seudominio.railway.app/pu
 // Chave PIX para QR Codes estáticos (chave aleatória do Asaas - não é a API Key). Sobrescreva via ENV se precisar trocar.
 define('ASAAS_PIX_ADDRESS_KEY', $_ENV['ASAAS_PIX_ADDRESS_KEY'] ?? getenv('ASAAS_PIX_ADDRESS_KEY') ?: '3e2aab51-53bb-4a0e-ace1-f12e2c2ad9e5');
 
+// Configurações PixGo.org
+define('PIXGO_ENABLED', filter_var($_ENV['PIXGO_ENABLED'] ?? getenv('PIXGO_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN));
+define('PIXGO_API_KEY', $_ENV['PIXGO_API_KEY'] ?? getenv('PIXGO_API_KEY') ?: '');
+define('PIXGO_WEBHOOK_SECRET', $_ENV['PIXGO_WEBHOOK_SECRET'] ?? getenv('PIXGO_WEBHOOK_SECRET') ?: '');
+define('PIXGO_BASE_URL', rtrim($_ENV['PIXGO_BASE_URL'] ?? getenv('PIXGO_BASE_URL') ?: 'https://pixgo.org/api/v1', '/'));
+define('PIXGO_WEBHOOK_URL', $_ENV['PIXGO_WEBHOOK_URL'] ?? getenv('PIXGO_WEBHOOK_URL') ?: '');
+define('PIXGO_WEBHOOK_MAX_AGE_SECONDS', max(60, (int)($_ENV['PIXGO_WEBHOOK_MAX_AGE_SECONDS'] ?? getenv('PIXGO_WEBHOOK_MAX_AGE_SECONDS') ?: 300)));
+
 // Configurações ME Eventos (se necessário)
 define('ME_BASE_URL', $_ENV['ME_BASE_URL'] ?? '');
 define('ME_API_KEY', $_ENV['ME_API_KEY'] ?? '');

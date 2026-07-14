@@ -118,6 +118,7 @@ function financeiro_modo_label(string $forma): string
 {
     return [
         'pix_asaas' => 'PIX Asaas',
+        'pix_pixgo' => 'PIX PixGo',
         'pix' => 'Pix',
         'cartao_credito' => 'Cartao de credito',
         'dinheiro' => 'Dinheiro',
