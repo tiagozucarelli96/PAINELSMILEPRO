@@ -6,6 +6,73 @@
 
 require_once __DIR__ . '/conexao.php';
 
+function vendas_formas_pagamento_normalizar(string $valor): string
+{
+    $valor = trim($valor);
+    if (function_exists('mb_strtolower')) {
+        $valor = mb_strtolower($valor, 'UTF-8');
+    } else {
+        $valor = strtolower($valor);
+    }
+    if (function_exists('iconv')) {
+        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $valor);
+        if (is_string($ascii)) {
+            $valor = $ascii;
+        }
+    }
+    return trim(preg_replace('/\s+/', ' ', preg_replace('/[^a-z0-9]+/', ' ', $valor) ?? '') ?? '');
+}
+
+/**
+ * Condições comerciais dos eventos infantis, conforme os catálogos das unidades.
+ */
+function vendas_formas_pagamento_infantil(string $unidade, string $pacote): array
+{
+    $unidadeNormalizada = vendas_formas_pagamento_normalizar($unidade);
+    $pacoteNormalizado = vendas_formas_pagamento_normalizar($pacote);
+    $lisbon = str_contains($unidadeNormalizada, 'lisbon')
+        && (str_contains($unidadeNormalizada, 'unidade 1')
+            || str_contains($unidadeNormalizada, 'lisbon 1')
+            || str_contains($unidadeNormalizada, 'parque dos sinos'));
+    $diverkids = str_contains($unidadeNormalizada, 'diverkids')
+        || str_contains($unidadeNormalizada, 'diver kids');
+
+    if ($lisbon) {
+        return [
+            ['codigo' => 'pix_avista', 'rotulo' => 'PIX à vista', 'descricao' => 'PIX à vista — 4% de desconto'],
+            ['codigo' => 'pix_boleto', 'rotulo' => 'PIX/Boleto parcelado', 'descricao' => 'PIX/Boleto parcelado — pagamento concluído até o evento'],
+            ['codigo' => 'entrada', 'rotulo' => '30% de entrada + saldo', 'descricao' => '30% de entrada + saldo até o evento'],
+            ['codigo' => 'cartao', 'rotulo' => 'Cartão de crédito', 'descricao' => 'Cartão de crédito — até 12x sem juros (Master ou Visa)'],
+        ];
+    }
+
+    if ($diverkids) {
+        $opcoes = [
+            ['codigo' => 'pix_avista', 'rotulo' => 'PIX à vista', 'descricao' => 'PIX à vista — 4% de desconto'],
+            ['codigo' => 'pix_boleto', 'rotulo' => 'PIX/Boleto parcelado', 'descricao' => 'PIX/Boleto parcelado — até 15 dias antes do evento (parcela mínima de R$ 300,00)'],
+            ['codigo' => 'entrada', 'rotulo' => '30% de entrada + saldo', 'descricao' => '30% de entrada + saldo até 15 dias antes do evento'],
+        ];
+        if (str_contains($pacoteNormalizado, 'essencial')) {
+            $opcoes[] = ['codigo' => 'cartao', 'rotulo' => 'Cartão de crédito', 'descricao' => 'Cartão de crédito — até 8x sem juros (Master ou Visa)'];
+        } elseif (str_contains($pacoteNormalizado, 'diver')) {
+            $opcoes[] = ['codigo' => 'cartao', 'rotulo' => 'Cartão de crédito', 'descricao' => 'Cartão de crédito — até 12x sem juros (Master ou Visa)'];
+        }
+        return $opcoes;
+    }
+
+    return [];
+}
+
+function vendas_forma_pagamento_infantil_valida(string $forma, string $unidade, string $pacote): bool
+{
+    foreach (vendas_formas_pagamento_infantil($unidade, $pacote) as $opcao) {
+        if (hash_equals((string)$opcao['descricao'], trim($forma))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Verifica se o usuário pode acessar Vendas > Administração.
  * Mantém compatibilidade com o perfil administrativo já existente.

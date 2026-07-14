@@ -286,6 +286,16 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
         $unidade_atualizada = $unidade_payload;
     }
 
+    if ((string)($pre_contrato['tipo_evento'] ?? '') === 'infantil') {
+        if (!vendas_forma_pagamento_infantil_valida(
+            (string)($payload['forma_pagamento'] ?? ''),
+            $unidade_atualizada,
+            (string)($payload['pacote_contratado'] ?? '')
+        )) {
+            throw new Exception('Selecione uma forma de pagamento válida para a unidade e o pacote infantil.');
+        }
+    }
+
     $preco_pacote_aplicado = null;
     if ((float)$payload['valor_negociado'] <= 0 && (int)$payload['pacote_evento_id'] > 0) {
         $preco_pacote = pacotes_evento_resolver_preco(
@@ -1431,6 +1441,55 @@ ob_start();
     font-size: 1.1rem;
 }
 
+.approval-commercial-summary {
+    margin: 1rem 0 1.25rem;
+    padding: 1rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
+    background: #eff6ff;
+}
+.approval-commercial-summary h3 {
+    margin: 0 0 .75rem;
+    color: #1e3a8a;
+    font-size: 1rem;
+}
+.approval-commercial-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem;
+}
+.approval-commercial-grid > div {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    padding: .7rem .8rem;
+    border-radius: 9px;
+    background: #fff;
+}
+.approval-commercial-grid span {
+    color: #64748b;
+    font-size: .78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+.approval-commercial-grid strong {
+    color: #0f172a;
+    line-height: 1.4;
+}
+.approval-commercial-grid .approval-payment-row {
+    grid-column: 1 / -1;
+    border-left: 4px solid #2563eb;
+}
+.approval-commercial-summary > small {
+    display: block;
+    margin-top: .65rem;
+    color: #475569;
+}
+@media (max-width: 640px) {
+    .approval-commercial-grid { grid-template-columns: 1fr; }
+}
+
 .modal-form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1813,6 +1872,15 @@ ob_start();
             $pacote_atual_edicao = trim((string)($pre_contrato_editar['pacote_contratado'] ?? ''));
             $tipo_evento_real_edicao = eventos_reuniao_normalizar_tipo_evento_real((string)($pre_contrato_editar['tipo_evento_real'] ?? ''), $pdo);
             $pacote_evento_id_edicao = (int)($pre_contrato_editar['pacote_evento_id'] ?? 0);
+            $evento_infantil_edicao = (string)($pre_contrato_editar['tipo_evento'] ?? '') === 'infantil';
+            $formas_pagamento_edicao = $evento_infantil_edicao
+                ? vendas_formas_pagamento_infantil(
+                    (string)($pre_contrato_editar['unidade'] ?? ''),
+                    (string)($pre_contrato_editar['pacote_contratado'] ?? '')
+                )
+                : [];
+            $forma_pagamento_atual_edicao = trim((string)($pre_contrato_editar['forma_pagamento'] ?? ''));
+            $forma_pagamento_atual_encontrada = false;
             $pacote_atual_existe = false;
             foreach ($pacotes_evento as $pacote_evento_item) {
                 if (trim((string)($pacote_evento_item['nome'] ?? '')) === $pacote_atual_edicao) {
@@ -1955,7 +2023,31 @@ ob_start();
 
                             <div class="form-group">
                                 <label for="forma_pagamento_detalhada">Forma de pagamento</label>
-                                <textarea id="forma_pagamento_detalhada" name="forma_pagamento_detalhada" rows="3" placeholder="Ex.: Entrada de 30% + saldo em 3x no cartão"><?php echo htmlspecialchars($pre_contrato_editar['forma_pagamento'] ?? ''); ?></textarea>
+                                <?php if ($evento_infantil_edicao): ?>
+                                    <select id="forma_pagamento_detalhada" name="forma_pagamento_detalhada" required>
+                                        <option value="">Selecione...</option>
+                                        <?php foreach ($formas_pagamento_edicao as $forma_pagamento_opcao): ?>
+                                            <?php
+                                                $descricao_pagamento = (string)($forma_pagamento_opcao['descricao'] ?? '');
+                                                $selecionada_pagamento = hash_equals($descricao_pagamento, $forma_pagamento_atual_edicao);
+                                                if ($selecionada_pagamento) {
+                                                    $forma_pagamento_atual_encontrada = true;
+                                                }
+                                            ?>
+                                            <option value="<?php echo htmlspecialchars($descricao_pagamento); ?>" <?php echo $selecionada_pagamento ? 'selected' : ''; ?>>
+                                                <?php echo htmlspecialchars((string)($forma_pagamento_opcao['rotulo'] ?? 'Pagamento') . ' — ' . preg_replace('/^.*?—\s*/u', '', $descricao_pagamento)); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                        <?php if ($forma_pagamento_atual_edicao !== '' && !$forma_pagamento_atual_encontrada): ?>
+                                            <option value="<?php echo htmlspecialchars($forma_pagamento_atual_edicao); ?>" selected>
+                                                <?php echo htmlspecialchars($forma_pagamento_atual_edicao); ?> (condição anterior)
+                                            </option>
+                                        <?php endif; ?>
+                                    </select>
+                                    <small style="display:block;color:#64748b;margin-top:.35rem;">Condições disponíveis para a unidade e o pacote selecionados.</small>
+                                <?php else: ?>
+                                    <textarea id="forma_pagamento_detalhada" name="forma_pagamento_detalhada" rows="3" placeholder="Ex.: Entrada de 30% + saldo em 3x no cartão"><?php echo htmlspecialchars($forma_pagamento_atual_edicao); ?></textarea>
+                                <?php endif; ?>
                             </div>
 
                             <div class="form-group full-width">
@@ -2195,6 +2287,24 @@ ob_start();
                         $vendedores_me = [];
                     }
                 ?>
+                <div class="approval-commercial-summary">
+                    <h3>Condições comerciais para aprovação</h3>
+                    <div class="approval-commercial-grid">
+                        <div>
+                            <span>Unidade</span>
+                            <strong><?php echo htmlspecialchars(vendas_unidade_curta($locais_curto_map, (string)($pre_contrato_editar['unidade'] ?? ''))); ?></strong>
+                        </div>
+                        <div>
+                            <span>Pacote</span>
+                            <strong><?php echo htmlspecialchars((string)($pre_contrato_editar['pacote_contratado'] ?? 'Não informado')); ?></strong>
+                        </div>
+                        <div class="approval-payment-row">
+                            <span>Forma de pagamento</span>
+                            <strong><?php echo htmlspecialchars((string)($pre_contrato_editar['forma_pagamento'] ?? 'Não informada')); ?></strong>
+                        </div>
+                    </div>
+                    <small>Confira estes dados antes de confirmar a criação do evento na ME.</small>
+                </div>
                 <div class="form-group">
                     <label for="idvendedor_select">Vendedor (ME) <span style="color: #ef4444;">*</span>:</label>
                     <?php if (!empty($vendedores_me)): ?>

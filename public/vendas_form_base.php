@@ -34,64 +34,66 @@ function vendas_form_normalizar_texto(string $valor): string
     return trim(preg_replace('/\s+/', ' ', $valor) ?? '');
 }
 
-function vendas_form_pacote_infantil_tipo(string $nome): string
+function vendas_form_unidade_infantil_grupo(string $unidade, string $spaceVisivel = ''): string
 {
-    $normalizado = vendas_form_normalizar_texto($nome);
+    $normalizado = vendas_form_normalizar_texto(trim($unidade . ' ' . $spaceVisivel));
     if ($normalizado === '') {
         return '';
     }
-    if (str_contains($normalizado, 'essencial')) {
-        return 'essencial';
+    if (str_contains($normalizado, 'lisbon')
+        && (str_contains($normalizado, 'unidade 1')
+            || str_contains($normalizado, 'lisbon 1')
+            || str_contains($normalizado, 'parque dos sinos'))) {
+        return 'lisbon_unidade_1';
     }
-    if (str_contains($normalizado, 'diver')) {
-        return 'diver';
+    if (str_contains($normalizado, 'diverkids') || str_contains($normalizado, 'diver kids')) {
+        return 'diverkids';
     }
     return '';
 }
 
-function vendas_form_unidade_lisbon_unidade_1(string $unidade): bool
+function vendas_form_pacote_infantil_grupo(array $pacote): string
 {
-    $normalizado = vendas_form_normalizar_texto($unidade);
-    return str_contains($normalizado, 'lisbon')
-        && (str_contains($normalizado, 'unidade 1') || str_contains($normalizado, 'parque dos sinos'));
+    if (vendas_form_normalizar_texto((string)($pacote['categoria'] ?? '')) !== 'pacote'
+        || vendas_form_normalizar_texto((string)($pacote['tipo_evento_real'] ?? '')) !== 'infantil') {
+        return '';
+    }
+
+    $normalizado = vendas_form_normalizar_texto((string)($pacote['nome'] ?? ''));
+    if (str_contains($normalizado, 'lisbon')) {
+        return 'lisbon_unidade_1';
+    }
+    if (str_contains($normalizado, 'diverkids')
+        || str_contains($normalizado, 'diver kids')
+        || str_contains($normalizado, 'essencial diver')) {
+        return 'diverkids';
+    }
+    return '';
 }
 
-function vendas_form_pacotes_infantis_default(): array
+function vendas_form_pacote_infantil_permitido(PDO $pdo, string $pacote, string $unidade): bool
 {
-    return [
-        ['nome' => 'Essencial', 'grupo_unidade' => 'default'],
-        ['nome' => 'Diver', 'grupo_unidade' => 'default'],
-    ];
-}
-
-function vendas_form_pacotes_infantis_lisbon_unidade_1(): array
-{
-    return [
-        ['nome' => 'Plano Smile', 'grupo_unidade' => 'lisbon_unidade_1'],
-        ['nome' => 'Plano Almoço', 'grupo_unidade' => 'lisbon_unidade_1'],
-        ['nome' => 'Plano Diver', 'grupo_unidade' => 'lisbon_unidade_1'],
-        ['nome' => 'Plano Delícias Kids', 'grupo_unidade' => 'lisbon_unidade_1'],
-        ['nome' => 'Plano Gold', 'grupo_unidade' => 'lisbon_unidade_1'],
-    ];
-}
-
-function vendas_form_pacote_infantil_permitido(string $pacote, string $unidade): bool
-{
-    $normalizado = vendas_form_normalizar_texto($pacote);
-    if ($normalizado === '') {
+    $nomeNormalizado = vendas_form_normalizar_texto($pacote);
+    if ($nomeNormalizado === '') {
         return false;
     }
 
-    if (vendas_form_unidade_lisbon_unidade_1($unidade)) {
-        foreach (['smile', 'almoco', 'diver', 'delicias kids', 'gold'] as $alias) {
-            if (str_contains($normalizado, $alias)) {
-                return true;
-            }
+    $spaceVisivel = function_exists('vendas_obter_space_visivel')
+        ? (string)(vendas_obter_space_visivel($unidade) ?? '')
+        : '';
+    $grupoUnidade = vendas_form_unidade_infantil_grupo($unidade, $spaceVisivel);
+    if ($grupoUnidade === '') {
+        return false;
+    }
+
+    foreach (pacotes_evento_listar($pdo, false) as $pacoteCadastrado) {
+        if (vendas_form_normalizar_texto((string)($pacoteCadastrado['nome'] ?? '')) !== $nomeNormalizado) {
+            continue;
         }
-        return false;
+        return vendas_form_pacote_infantil_grupo($pacoteCadastrado) === $grupoUnidade;
     }
 
-    return vendas_form_pacote_infantil_tipo($pacote) !== '';
+    return false;
 }
 
 // Tipo de evento (casamento, infantil, pj)
@@ -102,6 +104,15 @@ if (!in_array($tipo_evento, ['casamento', 'infantil', 'pj'])) {
 
 // Buscar locais mapeados para dropdown
 $locais_mapeados = vendas_buscar_locais_mapeados();
+if ($tipo_evento === 'infantil') {
+    $locais_mapeados = array_values(array_filter(
+        $locais_mapeados,
+        static fn(array $local): bool => vendas_form_unidade_infantil_grupo(
+            (string)($local['me_local_nome'] ?? ''),
+            (string)($local['space_visivel'] ?? '')
+        ) !== ''
+    ));
+}
 
 // Títulos por tipo
 $titulos = [
@@ -119,10 +130,13 @@ $limite_por_hora = 3; // Máximo 3 envios por hora por IP
 $pdo = $GLOBALS['pdo'];
 $pacotes_evento = pacotes_evento_listar($pdo, false);
 if ($tipo_evento === 'infantil') {
-    $pacotes_evento = array_merge(
-        vendas_form_pacotes_infantis_default(),
-        vendas_form_pacotes_infantis_lisbon_unidade_1()
-    );
+    $pacotes_evento = array_values(array_filter(array_map(
+        static function (array $pacote): array {
+            $pacote['grupo_unidade'] = vendas_form_pacote_infantil_grupo($pacote);
+            return $pacote;
+        },
+        $pacotes_evento
+    ), static fn(array $pacote): bool => (string)($pacote['grupo_unidade'] ?? '') !== ''));
 }
 
 // Verificar rate limit
@@ -314,8 +328,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             throw new Exception('Pacote/Plano escolhido é obrigatório');
         }
         if ($tipo_evento === 'infantil') {
-            if (!vendas_form_pacote_infantil_permitido($pacote_plano, $unidade)) {
+            if (!vendas_form_pacote_infantil_permitido($pdo, $pacote_plano, $unidade)) {
                 throw new Exception('Pacote indisponível para a unidade selecionada.');
+            }
+            if ($forma_pagamento === '' || !vendas_forma_pagamento_infantil_valida($forma_pagamento, $unidade, $pacote_plano)) {
+                throw new Exception('Selecione uma forma de pagamento válida para a unidade e o pacote escolhidos.');
             }
         }
 
@@ -843,7 +860,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                                     <option value="" disabled>Nenhum local disponível no momento.</option>
                                 <?php else: ?>
                                     <?php foreach ($locais_mapeados as $local): ?>
-                                        <option value="<?php echo htmlspecialchars($local['me_local_nome']); ?>" <?php echo (($_POST['unidade'] ?? '') === $local['me_local_nome']) ? 'selected' : ''; ?>>
+                                        <?php $grupo_unidade_infantil = vendas_form_unidade_infantil_grupo((string)$local['me_local_nome'], (string)($local['space_visivel'] ?? '')); ?>
+                                        <option value="<?php echo htmlspecialchars($local['me_local_nome']); ?>"
+                                                <?php if ($tipo_evento === 'infantil'): ?>data-package-group="<?php echo htmlspecialchars($grupo_unidade_infantil); ?>"<?php endif; ?>
+                                                <?php echo (($_POST['unidade'] ?? '') === $local['me_local_nome']) ? 'selected' : ''; ?>>
                                             <?php echo htmlspecialchars($local['me_local_nome']); ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -943,7 +963,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     <div class="form-group">
                         <label for="pacote_plano">Pacote/Plano escolhido <span class="required">*</span></label>
                         <select id="pacote_plano" name="pacote_plano" required>
-                            <option value="">Selecione...</option>
+                            <option value=""><?php echo $tipo_evento === 'infantil' ? 'Selecione primeiro a unidade...' : 'Selecione...'; ?></option>
                             <?php foreach ($pacotes_evento as $pacote): ?>
                                 <option value="<?php echo htmlspecialchars((string)$pacote['nome']); ?>"
                                         data-unit-group="<?php echo htmlspecialchars((string)($pacote['grupo_unidade'] ?? 'all')); ?>"
@@ -964,8 +984,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     <?php endif; ?>
 
                     <div class="form-group">
-                        <label for="forma_pagamento">Forma de Pagamento</label>
-                        <input type="text" id="forma_pagamento" name="forma_pagamento" placeholder="Ex: PIX, cartão, dinheiro, parcelado..." value="<?php echo htmlspecialchars($_POST['forma_pagamento'] ?? ''); ?>">
+                        <label for="forma_pagamento">Forma de Pagamento<?php echo $tipo_evento === 'infantil' ? ' <span class="required">*</span>' : ''; ?></label>
+                        <?php if ($tipo_evento === 'infantil'): ?>
+                            <select id="forma_pagamento" name="forma_pagamento" required disabled data-current-value="<?php echo htmlspecialchars((string)($_POST['forma_pagamento'] ?? '')); ?>">
+                                <option value="">Selecione primeiro a unidade e o pacote...</option>
+                            </select>
+                            <small id="forma_pagamento_detalhe" style="color:#64748b;display:block;margin-top:.4rem;"></small>
+                        <?php else: ?>
+                            <input type="text" id="forma_pagamento" name="forma_pagamento" placeholder="Ex: PIX, cartão, dinheiro, parcelado..." value="<?php echo htmlspecialchars($_POST['forma_pagamento'] ?? ''); ?>">
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -1079,25 +1106,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
 
         const unidadeEl = document.getElementById('unidade');
         const pacotePlanoEl = document.getElementById('pacote_plano');
-        const normalizarTexto = (valor) => String(valor || '')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim();
-        const unidadeEhLisbonUnidade1 = (valor) => {
-            const normalizado = normalizarTexto(valor);
-            return normalizado.includes('lisbon')
-                && (normalizado.includes('unidade 1') || normalizado.includes('parque dos sinos'));
-        };
+        const formaPagamentoEl = document.getElementById('forma_pagamento');
+        const formaPagamentoDetalheEl = document.getElementById('forma_pagamento_detalhe');
+        const tipoEventoInfantil = <?php echo $tipo_evento === 'infantil' ? 'true' : 'false'; ?>;
+        const formasPagamentoInfantil = <?php echo json_encode([
+            'lisbon_unidade_1' => vendas_formas_pagamento_infantil('LISBON BUFFET - UNIDADE 1 - PARQUE DOS SINOS', 'Smile Lisbon'),
+            'diverkids_essencial' => vendas_formas_pagamento_infantil('DIVERKIDS', 'Essencial Diver'),
+            'diverkids_diver' => vendas_formas_pagamento_infantil('DIVERKIDS', 'Diver Diverkids'),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         const atualizarPacotesPorUnidade = () => {
-            if (!unidadeEl || !pacotePlanoEl) return;
-            const grupoPermitido = unidadeEhLisbonUnidade1(unidadeEl.value) ? 'lisbon_unidade_1' : 'default';
+            if (!tipoEventoInfantil || !unidadeEl || !pacotePlanoEl) return;
+            const unidadeSelecionada = unidadeEl.options[unidadeEl.selectedIndex];
+            const grupoPermitido = unidadeSelecionada?.dataset.packageGroup || '';
             let selecionadoContinuaVisivel = false;
 
             Array.from(pacotePlanoEl.options).forEach((option) => {
                 const grupo = option.dataset.unitGroup || 'all';
-                const visivel = option.value === '' || grupo === 'all' || grupo === grupoPermitido;
+                const visivel = option.value === '' || (grupoPermitido !== '' && (grupo === 'all' || grupo === grupoPermitido));
                 option.hidden = !visivel;
                 option.disabled = !visivel;
                 if (option.selected && visivel) {
@@ -1108,9 +1133,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             if (!selecionadoContinuaVisivel) {
                 pacotePlanoEl.value = '';
             }
+            pacotePlanoEl.disabled = grupoPermitido === '';
+            const placeholder = pacotePlanoEl.options[0];
+            if (placeholder) {
+                placeholder.textContent = unidadeEl.value === ''
+                    ? 'Selecione primeiro a unidade...'
+                    : (grupoPermitido === '' ? 'Nenhum pacote infantil para esta unidade' : 'Selecione...');
+            }
         };
         unidadeEl?.addEventListener('change', atualizarPacotesPorUnidade);
         atualizarPacotesPorUnidade();
+
+        const atualizarFormasPagamento = (valorPreferido = '') => {
+            if (!tipoEventoInfantil || !formaPagamentoEl || !unidadeEl || !pacotePlanoEl) return;
+            const grupoUnidade = unidadeEl.options[unidadeEl.selectedIndex]?.dataset.packageGroup || '';
+            const pacoteNormalizado = String(pacotePlanoEl.value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            let chave = grupoUnidade;
+            if (grupoUnidade === 'diverkids') {
+                chave = pacoteNormalizado.includes('essencial') ? 'diverkids_essencial'
+                    : (pacoteNormalizado.includes('diver') ? 'diverkids_diver' : '');
+            }
+            const opcoes = chave ? (formasPagamentoInfantil[chave] || []) : [];
+            const valorAtual = valorPreferido || formaPagamentoEl.dataset.currentValue || formaPagamentoEl.value || '';
+            formaPagamentoEl.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = opcoes.length ? 'Selecione...' : 'Selecione primeiro a unidade e o pacote...';
+            formaPagamentoEl.appendChild(placeholder);
+            opcoes.forEach((opcao) => {
+                const option = document.createElement('option');
+                option.value = opcao.descricao;
+                option.textContent = `${opcao.rotulo} — ${opcao.descricao.replace(/^.*?—\s*/, '')}`;
+                option.dataset.detail = opcao.descricao;
+                formaPagamentoEl.appendChild(option);
+            });
+            formaPagamentoEl.disabled = opcoes.length === 0;
+            if (opcoes.some((opcao) => opcao.descricao === valorAtual)) {
+                formaPagamentoEl.value = valorAtual;
+            }
+            formaPagamentoEl.dataset.currentValue = '';
+            if (formaPagamentoDetalheEl) {
+                formaPagamentoDetalheEl.textContent = formaPagamentoEl.value || '';
+            }
+        };
+        unidadeEl?.addEventListener('change', () => atualizarFormasPagamento());
+        pacotePlanoEl?.addEventListener('change', () => atualizarFormasPagamento());
+        formaPagamentoEl?.addEventListener('change', () => {
+            if (formaPagamentoDetalheEl) formaPagamentoDetalheEl.textContent = formaPagamentoEl.value || '';
+        });
+        atualizarFormasPagamento();
 
         const faixaHorarioEl = document.getElementById('faixa_horario');
         if (faixaHorarioEl) {
@@ -1269,6 +1340,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             atualizarPacotesPorUnidade();
             preencherCampo('num_convidados', registro.num_convidados || '');
             preencherCampo('pacote_plano', registro.pacote_contratado || '');
+            atualizarFormasPagamento(registro.forma_pagamento || '');
             preencherCampo('forma_pagamento', registro.forma_pagamento || '');
             preencherCampo('observacoes', registro.itens_adicionais || '');
             preencherCampo('observacoes_pj', registro.observacoes || '');
