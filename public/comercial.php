@@ -51,6 +51,11 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                     <div class="item-text">Gerar link de pagamento</div>
                     <div class="item-arrow">→</div>
                 </div>
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_gerenciar_pix'">
+                    <div class="item-icon">📋</div>
+                    <div class="item-text">Gerenciar Pix</div>
+                    <div class="item-arrow">→</div>
+                </div>
             </div>
         </div>
         

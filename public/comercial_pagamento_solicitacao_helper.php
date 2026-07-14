@@ -78,7 +78,20 @@ function comercial_pagamento_money($value): float
 
 function comercial_pagamento_public_url(string $token): string
 {
-    return rtrim((string)APP_URL, '/') . '/index.php?page=comercial_solicitacao_pagamento_public&token=' . rawurlencode($token);
+    $baseUrl = trim((string)APP_URL);
+    if ($baseUrl === '' || str_contains($baseUrl, 'seudominio.railway.app')) {
+        $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+        $scheme = (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']))
+            ? trim((string)$_SERVER['HTTP_X_FORWARDED_PROTO'])
+            : ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
+        if ($host !== '') {
+            $baseUrl = $scheme . '://' . $host;
+        }
+    }
+    if ($baseUrl === '') {
+        $baseUrl = 'https://painelpro.smileeventos.com.br';
+    }
+    return rtrim($baseUrl, '/') . '/index.php?page=comercial_solicitacao_pagamento_public&token=' . rawurlencode($token);
 }
 
 function comercial_pagamento_calcular_total(float $valorOriginal, string $vencimento, ?DateTimeImmutable $hoje = null): array

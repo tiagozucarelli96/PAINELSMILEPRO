@@ -11,8 +11,8 @@ define('DB_PASS', $_ENV['DB_PASS'] ?? '');
 
 // Configurações da Aplicação
 define('APP_NAME', $_ENV['APP_NAME'] ?? 'GRUPO Smile EVENTOS');
-define('APP_URL', $_ENV['APP_URL'] ?? 'https://seudominio.railway.app');
-define('APP_DEBUG', $_ENV['APP_DEBUG'] ?? '0');
+define('APP_URL', $_ENV['APP_URL'] ?? getenv('APP_URL') ?: '');
+define('APP_DEBUG', $_ENV['APP_DEBUG'] ?? getenv('APP_DEBUG') ?: '0');
 
 // Configurações ASAAS
 // API Key: defina ASAAS_API_KEY nas variáveis de ambiente (Railway → Variables) com a chave do painel Asaas.

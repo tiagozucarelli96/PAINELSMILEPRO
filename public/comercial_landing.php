@@ -529,6 +529,27 @@ includeSidebar('Comercial');
     
     <!-- Funcionalidades Principais -->
     <div class="funcionalidades-grid">
+        <!-- Solicitar pagamento -->
+        <div class="funcionalidade-card" style="cursor: default;">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #16a34a, #15803d);">
+                <span class="funcionalidade-card-icon">💳</span>
+                <div class="funcionalidade-card-title">Solicitar pagamento</div>
+                <div class="funcionalidade-card-subtitle">Link PixGo com multa e juros automáticos</div>
+            </div>
+            <div class="funcionalidade-card-content">
+                <a href="index.php?page=comercial_solicitar_pagamento" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">🔗</span>
+                    <span class="funcionalidade-item-text">Gerar link de pagamento</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+                <a href="index.php?page=comercial_gerenciar_pix" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">📋</span>
+                    <span class="funcionalidade-item-text">Gerenciar Pix</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+            </div>
+        </div>
+
         <!-- Degustações -->
         <div class="funcionalidade-card" style="cursor: default;">
             <div class="funcionalidade-card-header">
@@ -613,27 +634,6 @@ includeSidebar('Comercial');
                 <div class="funcionalidade-card-item">
                     <span class="funcionalidade-item-icon">👤</span>
                     <span class="funcionalidade-item-text">Vincular cliente e dados comerciais</span>
-                    <span class="funcionalidade-item-arrow">→</span>
-                </div>
-            </div>
-        </a>
-
-        <!-- Solicitar pagamento -->
-        <a href="index.php?page=comercial_solicitar_pagamento" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #16a34a, #15803d);">
-                <span class="funcionalidade-card-icon">💳</span>
-                <div class="funcionalidade-card-title">Solicitar pagamento</div>
-                <div class="funcionalidade-card-subtitle">Link PixGo com multa e juros automáticos</div>
-            </div>
-            <div class="funcionalidade-card-content">
-                <div class="funcionalidade-card-item">
-                    <span class="funcionalidade-item-icon">🔗</span>
-                    <span class="funcionalidade-item-text">Gerar link de pagamento</span>
-                    <span class="funcionalidade-item-arrow">→</span>
-                </div>
-                <div class="funcionalidade-card-item">
-                    <span class="funcionalidade-item-icon">🧾</span>
-                    <span class="funcionalidade-item-text">Pix só é criado quando o cliente solicitar</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </div>
             </div>
