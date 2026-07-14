@@ -36,8 +36,6 @@ $old = [
     'vencimento' => date('Y-m-d'),
     'pagador_nome' => '',
     'pagador_documento' => '',
-    'pagador_email' => '',
-    'pagador_telefone' => '',
 ];
 
 function comercial_solicitar_pagamento_eventos(PDO $pdo): array
@@ -49,13 +47,9 @@ function comercial_solicitar_pagamento_eventos(PDO $pdo): array
         $clienteSelect = $hasCliente ? "
             COALESCE(c.nome_completo, '') AS cliente_nome,
             COALESCE(c.documento_numero, '') AS cliente_documento,
-            COALESCE(c.email, '') AS cliente_email,
-            COALESCE(c.telefone_whatsapp, '') AS cliente_telefone,
         " : "
             '' AS cliente_nome,
             '' AS cliente_documento,
-            '' AS cliente_email,
-            '' AS cliente_telefone,
         ";
         $stmt = $pdo->query("
             SELECT e.id,
@@ -63,7 +57,7 @@ function comercial_solicitar_pagamento_eventos(PDO $pdo): array
                    e.data_evento::text AS data_evento,
                    COALESCE(e.localevento, '') AS local_evento,
                    {$clienteSelect}
-                   COALESCE(e.whatsapp_cliente, e.telefone_cliente, '') AS telefone_evento
+                   '' AS telefone_evento
             FROM logistica_eventos_espelho e
             {$join}
             ORDER BY COALESCE(e.data_evento, CURRENT_DATE) DESC, e.id DESC
@@ -93,8 +87,6 @@ foreach ($eventos as $evento) {
         'nome_evento' => (string)$evento['nome_evento'],
         'cliente_nome' => (string)$evento['cliente_nome'],
         'cliente_documento' => (string)$evento['cliente_documento'],
-        'cliente_email' => (string)$evento['cliente_email'],
-        'cliente_telefone' => (string)(($evento['cliente_telefone'] ?? '') ?: ($evento['telefone_evento'] ?? '')),
     ];
 }
 
@@ -107,8 +99,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         'vencimento' => trim((string)($_POST['vencimento'] ?? '')),
         'pagador_nome' => trim((string)($_POST['pagador_nome'] ?? '')),
         'pagador_documento' => trim((string)($_POST['pagador_documento'] ?? '')),
-        'pagador_email' => trim((string)($_POST['pagador_email'] ?? '')),
-        'pagador_telefone' => trim((string)($_POST['pagador_telefone'] ?? '')),
     ]);
 
     if (!hash_equals($csrf, (string)($_POST['csrf'] ?? ''))) {
@@ -125,26 +115,43 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $errors[] = 'Informe uma data de vencimento válida.';
     }
 
-    $documento = preg_replace('/\D+/', '', $old['pagador_documento']);
-    if (!eventos_financeiro_documento_valido($documento)) {
-        $errors[] = 'Informe um CPF/CNPJ válido do pagador. A PixGo exige esse dado para gerar o QR Code.';
-    }
-
-    if (mb_strlen($old['pagador_nome'], 'UTF-8') < 2) {
-        $errors[] = 'Informe o nome do pagador.';
-    }
-
-    $email = filter_var($old['pagador_email'], FILTER_VALIDATE_EMAIL) ? $old['pagador_email'] : '';
-    $telefone = preg_replace('/\D+/', '', $old['pagador_telefone']);
     $eventoId = (int)$old['evento_id'];
     $eventoNome = '';
+    $eventoSelecionado = null;
+    if ($eventoId <= 0 && $old['evento_label'] !== '') {
+        foreach ($eventOptions as $option) {
+            if ((string)$option['label'] === $old['evento_label']) {
+                $eventoId = (int)$option['id'];
+                $old['evento_id'] = (string)$eventoId;
+                break;
+            }
+        }
+    }
     if ($eventoId > 0) {
         foreach ($eventOptions as $option) {
             if ((int)$option['id'] === $eventoId) {
                 $eventoNome = (string)$option['nome_evento'];
+                $eventoSelecionado = $option;
                 break;
             }
         }
+    }
+    if ($eventoSelecionado) {
+        $old['pagador_nome'] = trim((string)$eventoSelecionado['cliente_nome']);
+        $old['pagador_documento'] = trim((string)$eventoSelecionado['cliente_documento']);
+    }
+
+    $documento = preg_replace('/\D+/', '', $old['pagador_documento']);
+    if (!eventos_financeiro_documento_valido($documento)) {
+        $errors[] = $eventoSelecionado
+            ? 'O cliente vinculado ao evento não possui CPF/CNPJ válido. Atualize o cadastro do cliente antes de gerar o link.'
+            : 'Informe um CPF/CNPJ válido do pagador. A PixGo exige esse dado para gerar o QR Code.';
+    }
+
+    if (mb_strlen($old['pagador_nome'], 'UTF-8') < 2) {
+        $errors[] = $eventoSelecionado
+            ? 'O cliente vinculado ao evento não possui nome válido. Atualize o cadastro do cliente antes de gerar o link.'
+            : 'Informe o nome do pagador.';
     }
 
     if (!$errors) {
@@ -152,10 +159,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $stmt = $pdo->prepare("
             INSERT INTO comercial_pagamento_solicitacoes
                 (token, evento_id, evento_nome, descricao, valor_original, vencimento,
-                 pagador_nome, pagador_documento, pagador_email, pagador_telefone, created_by)
+                 pagador_nome, pagador_documento, created_by)
             VALUES
                 (:token, :evento_id, :evento_nome, :descricao, :valor_original, :vencimento,
-                 :pagador_nome, :pagador_documento, :pagador_email, :pagador_telefone, :created_by)
+                 :pagador_nome, :pagador_documento, :created_by)
             RETURNING *
         ");
         $stmt->execute([
@@ -167,8 +174,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             ':vencimento' => $old['vencimento'],
             ':pagador_nome' => $old['pagador_nome'],
             ':pagador_documento' => $documento,
-            ':pagador_email' => $email !== '' ? $email : null,
-            ':pagador_telefone' => $telefone !== '' ? $telefone : null,
             ':created_by' => !empty($_SESSION['usuario_id']) ? (int)$_SESSION['usuario_id'] : null,
         ]);
         $created = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -255,7 +260,7 @@ includeSidebar('Comercial');
                             <option value="<?= h($option['label']) ?>"></option>
                         <?php endforeach; ?>
                     </datalist>
-                    <span class="pay-help">Ao selecionar um evento, os dados do pagador são preenchidos quando disponíveis.</span>
+                    <span class="pay-help">Ao selecionar um evento, nome e CPF/CNPJ serão usados a partir do cliente vinculado ao evento.</span>
                 </div>
 
                 <div class="pay-field span-2">
@@ -277,21 +282,13 @@ includeSidebar('Comercial');
                 <div class="pay-field">
                     <label for="pagador_nome">Nome do pagador</label>
                     <input id="pagador_nome" name="pagador_nome" value="<?= h($old['pagador_nome']) ?>" required>
+                    <span class="pay-help payer-linked-note" hidden>Preenchido pelo cliente vinculado ao evento.</span>
                 </div>
 
                 <div class="pay-field">
                     <label for="pagador_documento">CPF/CNPJ do pagador</label>
                     <input id="pagador_documento" name="pagador_documento" value="<?= h($old['pagador_documento']) ?>" required>
-                </div>
-
-                <div class="pay-field">
-                    <label for="pagador_email">E-mail</label>
-                    <input id="pagador_email" name="pagador_email" type="email" value="<?= h($old['pagador_email']) ?>">
-                </div>
-
-                <div class="pay-field">
-                    <label for="pagador_telefone">Telefone</label>
-                    <input id="pagador_telefone" name="pagador_telefone" value="<?= h($old['pagador_telefone']) ?>">
+                    <span class="pay-help payer-linked-note" hidden>Preenchido pelo cliente vinculado ao evento.</span>
                 </div>
 
                 <div class="pay-actions">
@@ -326,14 +323,18 @@ includeSidebar('Comercial');
 const eventOptions = <?= json_encode($eventOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const eventInput = document.getElementById('evento_label');
 const eventIdInput = document.getElementById('evento_id');
+const payerName = document.getElementById('pagador_nome');
+const payerDocument = document.getElementById('pagador_documento');
+const payerLinkedNotes = Array.from(document.querySelectorAll('.payer-linked-note'));
 function applySelectedEvent() {
     const selected = eventOptions.find(item => item.label === eventInput.value);
     eventIdInput.value = selected ? String(selected.id) : '';
+    payerName.readOnly = !!selected;
+    payerDocument.readOnly = !!selected;
+    payerLinkedNotes.forEach((note) => { note.hidden = !selected; });
     if (!selected) return;
-    document.getElementById('pagador_nome').value = selected.cliente_nome || document.getElementById('pagador_nome').value;
-    document.getElementById('pagador_documento').value = selected.cliente_documento || document.getElementById('pagador_documento').value;
-    document.getElementById('pagador_email').value = selected.cliente_email || document.getElementById('pagador_email').value;
-    document.getElementById('pagador_telefone').value = selected.cliente_telefone || document.getElementById('pagador_telefone').value;
+    payerName.value = selected.cliente_nome || '';
+    payerDocument.value = selected.cliente_documento || '';
     const descricao = document.getElementById('descricao');
     if (!descricao.value || descricao.value === 'Pagamento Smile Eventos') {
         descricao.value = 'Pagamento relacionado ao evento ' + selected.nome_evento;

@@ -167,32 +167,141 @@ $canGenerate = !in_array($status, ['pago', 'gerando_pix'], true);
     <?php if ($status === 'pendente'): ?><meta http-equiv="refresh" content="10"><?php endif; ?>
     <title>Solicitação de pagamento - Smile Eventos</title>
     <style>
-        :root { color-scheme: light; font-family: Inter, system-ui, -apple-system, sans-serif; }
+        :root {
+            color-scheme: light;
+            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --smile-blue: #1e3a8a;
+            --smile-blue-soft: #2563eb;
+            --smile-green: #16a34a;
+            --smile-teal: #0f766e;
+            --ink: #172033;
+            --muted: #64748b;
+            --line: #e2e8f0;
+            --paper: #ffffff;
+            --surface: #f8fafc;
+        }
         * { box-sizing: border-box; }
-        body { margin: 0; min-height: 100vh; background: #f1f5f9; color: #172033; display: grid; place-items: center; padding: 24px; }
-        main { width: min(100%, 620px); background: #fff; border-radius: 20px; padding: 28px; box-shadow: 0 18px 50px rgba(15, 23, 42, .12); }
-        h1 { margin: 0 0 6px; font-size: 1.55rem; }
-        .muted { color: #64748b; line-height: 1.5; }
-        .summary { display: grid; gap: 10px; margin: 22px 0; }
-        .row { display: flex; justify-content: space-between; gap: 1rem; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
-        .row strong { color: #0f172a; }
-        .total { font-size: 1.35rem; font-weight: 900; color: #0f766e; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--ink);
+            display: grid;
+            place-items: center;
+            padding: 28px;
+            background:
+                radial-gradient(circle at 18% 18%, rgba(37, 99, 235, .14), transparent 34%),
+                linear-gradient(135deg, #eef4ff 0%, #f8fafc 46%, #e8f7f1 100%);
+        }
+        main {
+            width: min(100%, 640px);
+            background: var(--paper);
+            border: 1px solid rgba(226, 232, 240, .85);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 24px 70px rgba(30, 58, 138, .18);
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 24px 28px;
+            background: linear-gradient(135deg, var(--smile-blue), var(--smile-blue-soft));
+            color: #fff;
+        }
+        .brand img {
+            width: 58px;
+            height: 58px;
+            object-fit: contain;
+            border-radius: 14px;
+            background: #fff;
+            padding: 8px;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, .18);
+        }
+        .brand-kicker { margin: 0 0 4px; font-size: .78rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: .86; }
+        h1 { margin: 0; font-size: 1.55rem; line-height: 1.18; }
+        .content { padding: 28px; }
+        .muted { color: var(--muted); line-height: 1.5; }
+        .description { margin: 0 0 8px; font-weight: 700; color: #334155; }
+        .summary {
+            display: grid;
+            gap: 0;
+            margin: 22px 0;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            overflow: hidden;
+            background: var(--surface);
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 13px 16px;
+            border-bottom: 1px solid var(--line);
+            background: #fff;
+        }
+        .row strong { color: #0f172a; font-weight: 900; text-align: right; }
+        .row span { color: #475569; font-weight: 650; }
+        .total {
+            font-size: 1.28rem;
+            font-weight: 900;
+            color: var(--smile-teal);
+            background: linear-gradient(90deg, #ecfdf5, #fff);
+            border-bottom: 0;
+        }
+        .total span, .total strong { color: var(--smile-teal); }
         .status { border-radius: 12px; padding: 12px 14px; font-weight: 800; background: #eff6ff; color: #1d4ed8; margin: 14px 0; }
         .status.pago { background: #ecfdf5; color: #047857; }
         .status.vencido, .status.cancelado { background: #fef2f2; color: #b91c1c; }
         .alert { border-radius: 12px; padding: 12px 14px; margin: 14px 0; background: #fef2f2; color: #991b1b; }
         .notice { border-radius: 12px; padding: 12px 14px; margin: 14px 0; background: #f0fdf4; color: #166534; }
-        button { width: 100%; border: 0; border-radius: 10px; padding: 14px 16px; background: #16a34a; color: #fff; font-weight: 900; cursor: pointer; font-size: 1rem; }
+        button {
+            width: 100%;
+            border: 0;
+            border-radius: 12px;
+            padding: 15px 16px;
+            background: linear-gradient(135deg, var(--smile-green), #15803d);
+            color: #fff;
+            font-weight: 900;
+            cursor: pointer;
+            font-size: 1rem;
+            box-shadow: 0 12px 28px rgba(22, 163, 74, .25);
+        }
+        button:hover { filter: brightness(.98); transform: translateY(-1px); }
         button[disabled] { opacity: .6; cursor: wait; }
-        .qr { display: block; width: min(100%, 300px); margin: 22px auto; border-radius: 12px; }
-        textarea { width: 100%; min-height: 96px; resize: none; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; font: 12px/1.4 ui-monospace, monospace; }
-        .copy { margin-top: 10px; background: #2563eb; }
+        .qr {
+            display: block;
+            width: min(100%, 300px);
+            margin: 22px auto;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            padding: 10px;
+            background: #fff;
+        }
+        textarea { width: 100%; min-height: 96px; resize: none; padding: 12px; border: 1px solid #cbd5e1; border-radius: 12px; font: 12px/1.4 ui-monospace, monospace; background: #f8fafc; }
+        .copy { margin-top: 10px; background: linear-gradient(135deg, var(--smile-blue), var(--smile-blue-soft)); box-shadow: 0 12px 28px rgba(37, 99, 235, .22); }
+        .footer-note { margin: 18px 0 0; text-align: center; color: #94a3b8; font-size: .82rem; }
+        @media (max-width: 560px) {
+            body { padding: 14px; align-items: start; }
+            .brand { padding: 20px; }
+            .brand img { width: 50px; height: 50px; }
+            .content { padding: 20px; }
+            .row { align-items: flex-start; flex-direction: column; gap: 5px; }
+            .row strong { text-align: left; }
+        }
     </style>
 </head>
 <body>
 <main>
-    <h1>Solicitação de pagamento</h1>
-    <p class="muted"><?= h((string)$solicitacao['descricao']) ?></p>
+    <div class="brand">
+        <img src="logo-smile.png" alt="Smile Eventos">
+        <div>
+            <p class="brand-kicker">Grupo Smile Eventos</p>
+            <h1>Solicitação de pagamento</h1>
+        </div>
+    </div>
+    <div class="content">
+    <p class="description"><?= h((string)$solicitacao['descricao']) ?></p>
 
     <?php if (!empty($solicitacao['evento_nome_atual'])): ?>
         <p class="muted"><strong>Evento:</strong> <?= h((string)$solicitacao['evento_nome_atual']) ?><?= !empty($solicitacao['evento_data']) ? ' · ' . h(brDateOnly((string)$solicitacao['evento_data'])) : '' ?></p>
@@ -224,6 +333,8 @@ $canGenerate = !in_array($status, ['pago', 'gerando_pix'], true);
         </form>
     <?php endif; ?>
 
+    <p class="footer-note">Ambiente seguro Smile Eventos</p>
+    </div>
 </main>
 <script>
 document.getElementById('generateBtn')?.closest('form')?.addEventListener('submit', () => {
