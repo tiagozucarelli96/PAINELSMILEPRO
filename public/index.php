@@ -40,6 +40,10 @@ if ($earlyPage === 'orcamento_guiado') {
     require_once __DIR__ . '/orcamento_guiado.php';
     exit;
 }
+if ($earlyPage === 'comercial_solicitacao_pagamento_public') {
+    require_once __DIR__ . '/comercial_solicitacao_pagamento_public.php';
+    exit;
+}
 
 session_start();
 
@@ -334,6 +338,9 @@ $routes = [
   'vendas_form_infantil' => 'vendas_form_infantil.php',
   'vendas_form_pj' => 'vendas_form_pj.php',
   'comercial_pagamento' => 'comercial_pagamento.php',
+  'comercial_solicitar_pagamento' => 'comercial_solicitar_pagamento.php',
+  'comercial_gerenciar_pix' => 'comercial_gerenciar_pix.php',
+  'comercial_solicitacao_pagamento_public' => 'comercial_solicitacao_pagamento_public.php',
   'comercial_inscritos_cadastrados' => 'comercial_inscritos_cadastrados.php',
   'comercial_lista_espera' => 'comercial_lista_espera.php',
   'comercial_realizar_degustacao' => 'comercial_realizar_degustacao.php',
@@ -500,6 +507,7 @@ $public_pages = [
   'eventos_galeria_public',
   'marketing_public',
   'orcamento_guiado',
+  'comercial_solicitacao_pagamento_public',
   // Portal Jurídico (acesso externo por usuário/senha próprios)
   'juridico_login',
   'juridico_portal',

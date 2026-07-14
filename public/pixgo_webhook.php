@@ -5,6 +5,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/config_env.php';
 require_once __DIR__ . '/pixgo_helper.php';
 require_once __DIR__ . '/eventos_financeiro_helper.php';
+require_once __DIR__ . '/comercial_pagamento_solicitacao_helper.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -101,6 +102,7 @@ try {
 
     $updatedEvento = eventos_financeiro_atualizar_pixgo_payment($pdo, $paymentId, $data, $event);
     $updatedFormatura = eventos_formatura_financeiro_atualizar_pixgo_payment($pdo, $paymentId, $data, $event);
+    $updatedComercial = comercial_pagamento_atualizar_pixgo_payment($pdo, $paymentId, $data, $event);
 
     $stmt = $pdo->prepare("
         UPDATE pixgo_webhook_events
@@ -109,14 +111,14 @@ try {
         WHERE id = :id
     ");
     $stmt->execute([
-        ':status' => ($updatedEvento || $updatedFormatura) ? 'processado' : 'sem_vinculo',
+        ':status' => ($updatedEvento || $updatedFormatura || $updatedComercial) ? 'processado' : 'sem_vinculo',
         ':id' => $eventId,
     ]);
     $pdo->commit();
 
     pixgo_webhook_response(200, [
         'ok' => true,
-        'processed' => $updatedEvento || $updatedFormatura,
+        'processed' => $updatedEvento || $updatedFormatura || $updatedComercial,
     ]);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) {

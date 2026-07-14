@@ -37,6 +37,22 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 </div>
             </div>
         </div>
+
+        <!-- Solicitar Pagamento -->
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #16a34a, #15803d);">
+                <div class="card-icon">💳</div>
+                <div class="card-title">Solicitar pagamento</div>
+                <div class="card-subtitle">Link PixGo sem cobrança antecipada</div>
+            </div>
+            <div class="card-content">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_solicitar_pagamento'">
+                    <div class="item-icon">🔗</div>
+                    <div class="item-text">Gerar link de pagamento</div>
+                    <div class="item-arrow">→</div>
+                </div>
+            </div>
+        </div>
         
         <!-- Comunicação & Propostas -->
         <div class="card">
