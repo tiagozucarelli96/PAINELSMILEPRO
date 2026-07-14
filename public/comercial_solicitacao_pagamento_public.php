@@ -182,7 +182,6 @@ $canGenerate = !in_array($status, ['pago', 'gerando_pix'], true);
         .status.vencido, .status.cancelado { background: #fef2f2; color: #b91c1c; }
         .alert { border-radius: 12px; padding: 12px 14px; margin: 14px 0; background: #fef2f2; color: #991b1b; }
         .notice { border-radius: 12px; padding: 12px 14px; margin: 14px 0; background: #f0fdf4; color: #166534; }
-        .disclosure { margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 10px; color: #475569; font-size: .88rem; line-height: 1.5; }
         button { width: 100%; border: 0; border-radius: 10px; padding: 14px 16px; background: #16a34a; color: #fff; font-weight: 900; cursor: pointer; font-size: 1rem; }
         button[disabled] { opacity: .6; cursor: wait; }
         .qr { display: block; width: min(100%, 300px); margin: 22px auto; border-radius: 12px; }
@@ -225,7 +224,6 @@ $canGenerate = !in_array($status, ['pago', 'gerando_pix'], true);
         </form>
     <?php endif; ?>
 
-    <p class="disclosure">Ao gerar e efetuar o pagamento, o valor será processado via PIX pelos parceiros financeiros da PixGo e convertido em DEPIX, ativo digital pareado ao Real, para liquidação ao recebedor em carteira Liquid.</p>
 </main>
 <script>
 document.getElementById('generateBtn')?.closest('form')?.addEventListener('submit', () => {
