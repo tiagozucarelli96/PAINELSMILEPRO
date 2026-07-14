@@ -889,6 +889,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ])]);
                 
                 $pdo->commit();
+                if ((string)($pre_contrato['tipo_evento'] ?? '') === 'infantil') {
+                    $reuniaoBoloSync = eventos_reuniao_get_or_create(
+                        $pdo,
+                        (int)$me_event_id,
+                        (int)$usuario_id,
+                        (string)($pre_contrato['tipo_evento_real'] ?? 'infantil')
+                    );
+                    if (empty($reuniaoBoloSync['ok'])) {
+                        error_log('Aprovação infantil concluída, mas a sincronização inicial do bolo ficou pendente: ' . (string)($reuniaoBoloSync['error'] ?? 'erro desconhecido'));
+                    }
+                }
                 $msg_ok = $already_exists
                     ? 'Evento já existia na ME e foi vinculado no Painel com sucesso.'
                     : 'Evento criado na ME com sucesso.';
@@ -1486,8 +1497,30 @@ ob_start();
     margin-top: .65rem;
     color: #475569;
 }
+.customer-cake-choice {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .65rem;
+}
+.customer-cake-choice > div {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    padding: .75rem;
+    border: 1px solid #fed7aa;
+    border-radius: 9px;
+    background: #fff7ed;
+}
+.customer-cake-choice span {
+    color: #9a3412;
+    font-size: .78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.customer-cake-choice strong { color: #431407; }
 @media (max-width: 640px) {
     .approval-commercial-grid { grid-template-columns: 1fr; }
+    .customer-cake-choice { grid-template-columns: 1fr; }
 }
 
 .modal-form-grid {
@@ -1881,6 +1914,8 @@ ob_start();
                 : [];
             $forma_pagamento_atual_edicao = trim((string)($pre_contrato_editar['forma_pagamento'] ?? ''));
             $forma_pagamento_atual_encontrada = false;
+            $bolo_massa_nome_edicao = vendas_bolo_item_nome($pdo, (int)($pre_contrato_editar['bolo_massa_item_id'] ?? 0));
+            $bolo_recheio_nome_edicao = vendas_bolo_item_nome($pdo, (int)($pre_contrato_editar['bolo_recheio_item_id'] ?? 0));
             $pacote_atual_existe = false;
             foreach ($pacotes_evento as $pacote_evento_item) {
                 if (trim((string)($pacote_evento_item['nome'] ?? '')) === $pacote_atual_edicao) {
@@ -2049,6 +2084,17 @@ ob_start();
                                     <textarea id="forma_pagamento_detalhada" name="forma_pagamento_detalhada" rows="3" placeholder="Ex.: Entrada de 30% + saldo em 3x no cartão"><?php echo htmlspecialchars($forma_pagamento_atual_edicao); ?></textarea>
                                 <?php endif; ?>
                             </div>
+
+                            <?php if ($evento_infantil_edicao): ?>
+                                <div class="form-group full-width">
+                                    <label>Escolha do bolo feita pelo cliente</label>
+                                    <div class="customer-cake-choice">
+                                        <div><span>Massa</span><strong><?php echo htmlspecialchars($bolo_massa_nome_edicao !== '' ? $bolo_massa_nome_edicao : 'Não informada'); ?></strong></div>
+                                        <div><span>Recheio</span><strong><?php echo htmlspecialchars($bolo_recheio_nome_edicao !== '' ? $bolo_recheio_nome_edicao : 'Não informado'); ?></strong></div>
+                                    </div>
+                                    <small style="display:block;color:#64748b;margin-top:.35rem;">Esta escolha será sincronizada com o cardápio da Área do Cliente após a aprovação.</small>
+                                </div>
+                            <?php endif; ?>
 
                             <div class="form-group full-width">
                                 <label for="itens_adicionais"><?php echo htmlspecialchars($itens_adicionais_label); ?></label>
@@ -2302,6 +2348,16 @@ ob_start();
                             <span>Forma de pagamento</span>
                             <strong><?php echo htmlspecialchars((string)($pre_contrato_editar['forma_pagamento'] ?? 'Não informada')); ?></strong>
                         </div>
+                        <?php if ($evento_infantil_edicao): ?>
+                            <div class="approval-payment-row">
+                                <span>Bolo escolhido pelo cliente</span>
+                                <strong><?php echo htmlspecialchars(
+                                    ($bolo_massa_nome_edicao !== '' && $bolo_recheio_nome_edicao !== '')
+                                        ? $bolo_massa_nome_edicao . ' com recheio ' . $bolo_recheio_nome_edicao
+                                        : 'Não informado'
+                                ); ?></strong>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <small>Confira estes dados antes de confirmar a criação do evento na ME.</small>
                 </div>

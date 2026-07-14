@@ -138,6 +138,7 @@ if ($tipo_evento === 'infantil') {
         $pacotes_evento
     ), static fn(array $pacote): bool => (string)($pacote['grupo_unidade'] ?? '') !== ''));
 }
+$bolo_catalogo_infantil = $tipo_evento === 'infantil' ? vendas_bolo_infantil_catalogo($pdo) : [];
 
 // Verificar rate limit
 $stmt = $pdo->prepare("
@@ -199,6 +200,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         // Texto livre (público)
         $pacote_plano = trim($_POST['pacote_plano'] ?? '');
         $forma_pagamento = trim($_POST['forma_pagamento'] ?? '');
+        $bolo_massa_key = trim((string)($_POST['bolo_massa'] ?? ''));
+        $bolo_recheio_key = trim((string)($_POST['bolo_recheio'] ?? ''));
+        $bolo_massa_item_id = null;
+        $bolo_recheio_item_id = null;
         $observacoes_publicas = $tipo_evento === 'pj'
             ? trim((string)($_POST['observacoes_pj'] ?? $_POST['observacoes'] ?? ''))
             : trim((string)($_POST['observacoes'] ?? ''));
@@ -334,6 +339,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             if ($forma_pagamento === '' || !vendas_forma_pagamento_infantil_valida($forma_pagamento, $unidade, $pacote_plano)) {
                 throw new Exception('Selecione uma forma de pagamento válida para a unidade e o pacote escolhidos.');
             }
+            $boloValidado = vendas_bolo_infantil_validar($pdo, $pacote_plano, $bolo_massa_key, $bolo_recheio_key);
+            if (empty($boloValidado['ok'])) {
+                throw new Exception((string)($boloValidado['error'] ?? 'Selecione o sabor do bolo.'));
+            }
+            $bolo_massa_item_id = (int)($boloValidado['massa']['item_id'] ?? 0) ?: null;
+            $bolo_recheio_item_id = (int)($boloValidado['recheio']['item_id'] ?? 0) ?: null;
         }
 
         $registro_existente = null;
@@ -372,6 +383,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     como_conheceu_outro = ?,
                     pacote_contratado = ?,
                     forma_pagamento = ?,
+                    bolo_massa_item_id = ?,
+                    bolo_recheio_item_id = ?,
                     itens_adicionais = ?,
                     observacoes = ?,
                     atualizado_em = NOW()
@@ -403,6 +416,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                 $como_conheceu === 'outro' ? $como_conheceu_outro : null,
                 $pacote_plano,
                 $forma_pagamento !== '' ? $forma_pagamento : null,
+                $bolo_massa_item_id,
+                $bolo_recheio_item_id,
                 $itens_adicionais_para_salvar,
                 $observacoes_para_salvar,
                 $pre_contrato_id
@@ -428,8 +443,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                  cep, endereco_completo, numero, complemento, bairro, cidade, estado, pais, instagram,
                  data_evento, unidade, horario_inicio, horario_termino,
                  nome_noivos, num_convidados, como_conheceu, como_conheceu_outro,
-                 pacote_contratado, forma_pagamento, itens_adicionais, observacoes, status, criado_por_ip)
-                VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
+                 pacote_contratado, forma_pagamento, bolo_massa_item_id, bolo_recheio_item_id,
+                 itens_adicionais, observacoes, status, criado_por_ip)
+                VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
             ");
 
             $stmt->execute([
@@ -458,6 +474,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                 $como_conheceu === 'outro' ? $como_conheceu_outro : null,
                 $pacote_plano,
                 $forma_pagamento !== '' ? $forma_pagamento : null,
+                $bolo_massa_item_id,
+                $bolo_recheio_item_id,
                 $itens_adicionais_para_salvar,
                 $observacoes_para_salvar,
                 $ip
@@ -974,6 +992,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                         </select>
                     </div>
 
+                    <?php if ($tipo_evento === 'infantil'): ?>
+                        <div class="form-group">
+                            <label for="bolo_massa">Massa do bolo <span class="required">*</span></label>
+                            <select id="bolo_massa" name="bolo_massa" required disabled data-current-value="<?php echo htmlspecialchars((string)($_POST['bolo_massa'] ?? '')); ?>">
+                                <option value="">Selecione primeiro o pacote...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="bolo_recheio">Recheio do bolo <span class="required">*</span></label>
+                            <select id="bolo_recheio" name="bolo_recheio" required disabled data-current-value="<?php echo htmlspecialchars((string)($_POST['bolo_recheio'] ?? '')); ?>">
+                                <option value="">Selecione primeiro a massa...</option>
+                            </select>
+                            <small id="bolo_escolha_detalhe" style="color:#64748b;display:block;margin-top:.4rem;">A escolha será levada automaticamente para o cardápio da Área do Cliente.</small>
+                        </div>
+                    <?php endif; ?>
+
                     <?php if ($tipo_evento !== 'pj'): ?>
                         <div class="form-group">
                             <label for="observacoes"><strong>Deseja adicionar algum item extra além do pacote contratado?</strong></label>
@@ -1108,7 +1142,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         const pacotePlanoEl = document.getElementById('pacote_plano');
         const formaPagamentoEl = document.getElementById('forma_pagamento');
         const formaPagamentoDetalheEl = document.getElementById('forma_pagamento_detalhe');
+        const boloMassaEl = document.getElementById('bolo_massa');
+        const boloRecheioEl = document.getElementById('bolo_recheio');
+        const boloDetalheEl = document.getElementById('bolo_escolha_detalhe');
         const tipoEventoInfantil = <?php echo $tipo_evento === 'infantil' ? 'true' : 'false'; ?>;
+        const boloCatalogoInfantil = <?php echo json_encode($bolo_catalogo_infantil, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         const formasPagamentoInfantil = <?php echo json_encode([
             'lisbon_unidade_1' => vendas_formas_pagamento_infantil('LISBON BUFFET - UNIDADE 1 - PARQUE DOS SINOS', 'Smile Lisbon'),
             'diverkids_essencial' => vendas_formas_pagamento_infantil('DIVERKIDS', 'Essencial Diver'),
@@ -1182,6 +1220,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             if (formaPagamentoDetalheEl) formaPagamentoDetalheEl.textContent = formaPagamentoEl.value || '';
         });
         atualizarFormasPagamento();
+
+        const normalizarOpcaoBolo = (valor) => String(valor || '').normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const recheioPermitidoParaMassa = (massaNome, recheioNome) => {
+            const massa = normalizarOpcaoBolo(massaNome);
+            const recheio = normalizarOpcaoBolo(recheioNome);
+            const permitidos = massa.includes('chocolate')
+                ? ['brigadeiro', 'ninho', 'mousse de chocolate', 'sensacao', 'prestigio']
+                : ['creme de leite condensado', 'doce de leite', 'doce de leite com coco', 'beijinho', 'ninho', 'abacaxi com coco'];
+            return permitidos.includes(recheio);
+        };
+        const atualizarRecheiosBolo = (valorPreferido = '') => {
+            if (!boloMassaEl || !boloRecheioEl || !pacotePlanoEl) return;
+            const pacote = Object.values(boloCatalogoInfantil).find((item) => item.pacote_nome === pacotePlanoEl.value) || null;
+            const massaNome = boloMassaEl.selectedOptions?.[0]?.dataset.nome || '';
+            const recheios = pacote ? (pacote.recheios || []).filter((item) => recheioPermitidoParaMassa(massaNome, item.nome)) : [];
+            const valorAtual = valorPreferido || boloRecheioEl.dataset.currentValue || boloRecheioEl.value || '';
+            boloRecheioEl.innerHTML = '<option value="">Selecione...</option>';
+            recheios.forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item.key;
+                option.textContent = item.nome;
+                option.dataset.nome = item.nome;
+                boloRecheioEl.appendChild(option);
+            });
+            boloRecheioEl.disabled = !massaNome || recheios.length === 0;
+            if (recheios.some((item) => item.key === valorAtual)) boloRecheioEl.value = valorAtual;
+            boloRecheioEl.dataset.currentValue = '';
+        };
+        const atualizarOpcoesBolo = (massaPreferida = '', recheioPreferido = '') => {
+            if (!tipoEventoInfantil || !boloMassaEl || !boloRecheioEl || !pacotePlanoEl) return;
+            const pacote = Object.values(boloCatalogoInfantil).find((item) => item.pacote_nome === pacotePlanoEl.value) || null;
+            const massas = pacote?.massas || [];
+            const valorMassa = massaPreferida || boloMassaEl.dataset.currentValue || boloMassaEl.value || '';
+            boloMassaEl.innerHTML = '<option value="">Selecione...</option>';
+            massas.forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item.key;
+                option.textContent = item.nome;
+                option.dataset.nome = item.nome;
+                boloMassaEl.appendChild(option);
+            });
+            boloMassaEl.disabled = massas.length === 0;
+            if (massas.some((item) => item.key === valorMassa)) boloMassaEl.value = valorMassa;
+            boloMassaEl.dataset.currentValue = '';
+            atualizarRecheiosBolo(recheioPreferido);
+        };
+        pacotePlanoEl?.addEventListener('change', () => atualizarOpcoesBolo());
+        boloMassaEl?.addEventListener('change', () => atualizarRecheiosBolo());
+        boloRecheioEl?.addEventListener('change', () => {
+            if (!boloDetalheEl) return;
+            const massa = boloMassaEl?.selectedOptions?.[0]?.dataset.nome || '';
+            const recheio = boloRecheioEl?.selectedOptions?.[0]?.dataset.nome || '';
+            boloDetalheEl.textContent = massa && recheio
+                ? `${massa} com recheio ${recheio}. Esta escolha será sincronizada com a Área do Cliente.`
+                : 'A escolha será levada automaticamente para o cardápio da Área do Cliente.';
+        });
+        atualizarOpcoesBolo();
 
         const faixaHorarioEl = document.getElementById('faixa_horario');
         if (faixaHorarioEl) {
@@ -1342,6 +1438,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             preencherCampo('pacote_plano', registro.pacote_contratado || '');
             atualizarFormasPagamento(registro.forma_pagamento || '');
             preencherCampo('forma_pagamento', registro.forma_pagamento || '');
+            atualizarOpcoesBolo(registro.bolo_massa_key || '', registro.bolo_recheio_key || '');
             preencherCampo('observacoes', registro.itens_adicionais || '');
             preencherCampo('observacoes_pj', registro.observacoes || '');
 

@@ -29,13 +29,15 @@ function eventos_reuniao_sync_agenda_from_snapshot(PDO $pdo, array $snapshot, st
 function eventos_reuniao_buscar_defaults_pre_contrato(PDO $pdo, int $me_event_id): array
 {
     if ($me_event_id <= 0 || !eventos_reuniao_has_table($pdo, 'vendas_pre_contratos')) {
-        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0];
+        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0, 'bolo_massa_item_id' => 0, 'bolo_recheio_item_id' => 0];
     }
 
     $has_tipo = eventos_reuniao_has_column($pdo, 'vendas_pre_contratos', 'tipo_evento_real');
     $has_pacote = eventos_reuniao_has_column($pdo, 'vendas_pre_contratos', 'pacote_evento_id');
-    if (!$has_tipo && !$has_pacote) {
-        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0];
+    $has_bolo_massa = eventos_reuniao_has_column($pdo, 'vendas_pre_contratos', 'bolo_massa_item_id');
+    $has_bolo_recheio = eventos_reuniao_has_column($pdo, 'vendas_pre_contratos', 'bolo_recheio_item_id');
+    if (!$has_tipo && !$has_pacote && !$has_bolo_massa && !$has_bolo_recheio) {
+        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0, 'bolo_massa_item_id' => 0, 'bolo_recheio_item_id' => 0];
     }
 
     $cols = ['id'];
@@ -45,6 +47,8 @@ function eventos_reuniao_buscar_defaults_pre_contrato(PDO $pdo, int $me_event_id
     if ($has_pacote) {
         $cols[] = 'pacote_evento_id';
     }
+    if ($has_bolo_massa) $cols[] = 'bolo_massa_item_id';
+    if ($has_bolo_recheio) $cols[] = 'bolo_recheio_item_id';
 
     try {
         $stmt = $pdo->prepare("
@@ -57,13 +61,76 @@ function eventos_reuniao_buscar_defaults_pre_contrato(PDO $pdo, int $me_event_id
         $stmt->execute([':me_event_id' => $me_event_id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
     } catch (Throwable $e) {
-        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0];
+        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0, 'bolo_massa_item_id' => 0, 'bolo_recheio_item_id' => 0];
     }
 
     return [
         'tipo_evento_real' => $has_tipo ? eventos_reuniao_normalizar_tipo_evento_real((string)($row['tipo_evento_real'] ?? ''), $pdo) : '',
         'pacote_evento_id' => $has_pacote ? (int)($row['pacote_evento_id'] ?? 0) : 0,
+        'bolo_massa_item_id' => $has_bolo_massa ? (int)($row['bolo_massa_item_id'] ?? 0) : 0,
+        'bolo_recheio_item_id' => $has_bolo_recheio ? (int)($row['bolo_recheio_item_id'] ?? 0) : 0,
     ];
+}
+
+function eventos_reuniao_aplicar_bolo_pre_contrato(PDO $pdo, int $meetingId, array $defaults): void
+{
+    $pacoteId = (int)($defaults['pacote_evento_id'] ?? 0);
+    $itens = [
+        'massa' => (int)($defaults['bolo_massa_item_id'] ?? 0),
+        'recheio' => (int)($defaults['bolo_recheio_item_id'] ?? 0),
+    ];
+    if ($meetingId <= 0 || $pacoteId <= 0 || in_array(0, $itens, true)) return;
+    if (!eventos_reuniao_has_table($pdo, 'eventos_cardapio_respostas')
+        || !eventos_reuniao_has_table($pdo, 'eventos_cardapio_resposta_itens')) return;
+
+    try {
+        $selecoes = [];
+        $stmt = $pdo->prepare("
+            SELECT s.id AS secao_id, lower(s.nome) AS secao_nome, ip.item_id
+            FROM logistica_cardapio_item_pacotes ip
+            JOIN logistica_cardapio_item_secoes ise
+              ON ise.item_tipo = ip.item_tipo AND ise.item_id = ip.item_id
+            JOIN logistica_cardapio_secoes s ON s.id = ise.secao_cardapio_id
+            WHERE ip.pacote_evento_id = :pacote_id
+              AND ip.item_tipo = 'insumo'
+              AND ip.item_id IN (:massa_id, :recheio_id)
+              AND (lower(s.nome) LIKE '%massa%bolo%' OR lower(s.nome) LIKE '%recheio%bolo%')
+        ");
+        $stmt->execute([':pacote_id' => $pacoteId, ':massa_id' => $itens['massa'], ':recheio_id' => $itens['recheio']]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $tipo = str_contains((string)$row['secao_nome'], 'massa') ? 'massa' : 'recheio';
+            if ((int)$row['item_id'] === $itens[$tipo]) {
+                $selecoes[$tipo] = ['secao_id' => (int)$row['secao_id'], 'item_id' => (int)$row['item_id']];
+            }
+        }
+        if (count($selecoes) !== 2) return;
+
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_cardapio_respostas (meeting_id, portal_id, submitted_at, created_at, updated_at)
+            VALUES (:meeting_id, NULL, NULL, NOW(), NOW())
+            ON CONFLICT (meeting_id) DO NOTHING
+        ");
+        $stmt->execute([':meeting_id' => $meetingId]);
+        $stmt = $pdo->prepare("SELECT id FROM eventos_cardapio_respostas WHERE meeting_id = :meeting_id LIMIT 1");
+        $stmt->execute([':meeting_id' => $meetingId]);
+        $respostaId = (int)$stmt->fetchColumn();
+        if ($respostaId <= 0) return;
+
+        foreach ($selecoes as $selecao) {
+            $exists = $pdo->prepare("SELECT 1 FROM eventos_cardapio_resposta_itens WHERE resposta_id = :resposta_id AND secao_cardapio_id = :secao_id LIMIT 1");
+            $exists->execute([':resposta_id' => $respostaId, ':secao_id' => $selecao['secao_id']]);
+            if ($exists->fetchColumn()) continue;
+            $insert = $pdo->prepare("
+                INSERT INTO eventos_cardapio_resposta_itens
+                    (resposta_id, secao_cardapio_id, item_tipo, item_id, created_at)
+                VALUES (:resposta_id, :secao_id, 'insumo', :item_id, NOW())
+                ON CONFLICT (resposta_id, secao_cardapio_id, item_tipo, item_id) DO NOTHING
+            ");
+            $insert->execute([':resposta_id' => $respostaId, ':secao_id' => $selecao['secao_id'], ':item_id' => $selecao['item_id']]);
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_aplicar_bolo_pre_contrato: ' . $e->getMessage());
+    }
 }
 
 // Carregar notificações (se existir)
@@ -2007,6 +2074,8 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
             eventos_reuniao_sync_agenda_from_snapshot($pdo, $snapshot_sync, 'eventos_reuniao_existing');
         }
 
+        eventos_reuniao_aplicar_bolo_pre_contrato($pdo, (int)$reuniao['id'], $defaults_pre_contrato);
+
         return ['ok' => true, 'reuniao' => $reuniao, 'created' => false];
     }
     
@@ -2068,6 +2137,8 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
             $user_id
         );
     }
+
+    eventos_reuniao_aplicar_bolo_pre_contrato($pdo, (int)$reuniao['id'], $defaults_pre_contrato);
 
     eventos_reuniao_sync_agenda_from_snapshot($pdo, $snapshot, 'eventos_reuniao_created');
 

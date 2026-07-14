@@ -124,6 +124,9 @@ try {
         'como_conheceu' => (string)($registro['como_conheceu'] ?? ''),
         'como_conheceu_outro' => (string)($registro['como_conheceu_outro'] ?? ''),
         'pacote_contratado' => (string)($registro['pacote_contratado'] ?? ''),
+        'forma_pagamento' => (string)($registro['forma_pagamento'] ?? ''),
+        'bolo_massa_key' => !empty($registro['bolo_massa_item_id']) ? 'insumo:' . (int)$registro['bolo_massa_item_id'] : '',
+        'bolo_recheio_key' => !empty($registro['bolo_recheio_item_id']) ? 'insumo:' . (int)$registro['bolo_recheio_item_id'] : '',
         'itens_adicionais' => (string)($registro['itens_adicionais'] ?? ''),
         'observacoes' => (string)($registro['observacoes'] ?? ''),
     ];

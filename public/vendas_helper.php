@@ -73,6 +73,109 @@ function vendas_forma_pagamento_infantil_valida(string $forma, string $unidade, 
     return false;
 }
 
+function vendas_bolo_infantil_catalogo(PDO $pdo): array
+{
+    $catalogo = [];
+    try {
+        $stmt = $pdo->query("
+            SELECT p.id AS pacote_id, p.nome AS pacote_nome,
+                   s.id AS secao_id, s.nome AS secao_nome,
+                   ip.item_tipo, ip.item_id, i.nome_oficial AS item_nome
+            FROM logistica_pacotes_evento p
+            JOIN logistica_cardapio_item_pacotes ip ON ip.pacote_evento_id = p.id
+            JOIN logistica_cardapio_item_secoes ise
+              ON ise.item_tipo = ip.item_tipo AND ise.item_id = ip.item_id
+            JOIN logistica_cardapio_secoes s ON s.id = ise.secao_cardapio_id
+            JOIN logistica_insumos i ON ip.item_tipo = 'insumo' AND i.id = ip.item_id
+            WHERE p.deleted_at IS NULL
+              AND COALESCE(p.oculto, FALSE) = FALSE
+              AND lower(COALESCE(p.categoria, '')) = 'pacote'
+              AND lower(COALESCE(p.tipo_evento_real, '')) = 'infantil'
+              AND s.deleted_at IS NULL AND s.ativo = TRUE AND i.ativo = TRUE
+              AND (lower(s.nome) LIKE '%massa%bolo%' OR lower(s.nome) LIKE '%recheio%bolo%')
+            ORDER BY lower(p.nome), s.ordem, lower(i.nome_oficial), i.id
+        ");
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $pacoteNome = trim((string)($row['pacote_nome'] ?? ''));
+            $pacoteKey = vendas_formas_pagamento_normalizar($pacoteNome);
+            $secaoNome = vendas_formas_pagamento_normalizar((string)($row['secao_nome'] ?? ''));
+            $grupo = str_contains($secaoNome, 'massa') ? 'massas' : (str_contains($secaoNome, 'recheio') ? 'recheios' : '');
+            $itemId = (int)($row['item_id'] ?? 0);
+            $itemNome = trim((string)($row['item_nome'] ?? ''));
+            if ($pacoteKey === '' || $grupo === '' || $itemId <= 0 || $itemNome === '') {
+                continue;
+            }
+            if (!isset($catalogo[$pacoteKey])) {
+                $catalogo[$pacoteKey] = ['pacote_id' => (int)$row['pacote_id'], 'pacote_nome' => $pacoteNome, 'massas' => [], 'recheios' => []];
+            }
+            $nomeKey = vendas_formas_pagamento_normalizar($itemNome);
+            if (isset($catalogo[$pacoteKey][$grupo][$nomeKey])) {
+                continue;
+            }
+            $catalogo[$pacoteKey][$grupo][$nomeKey] = [
+                'key' => 'insumo:' . $itemId,
+                'item_tipo' => 'insumo',
+                'item_id' => $itemId,
+                'nome' => $itemNome,
+                'secao_id' => (int)$row['secao_id'],
+            ];
+        }
+    } catch (Throwable $e) {
+        error_log('vendas_bolo_infantil_catalogo: ' . $e->getMessage());
+        return [];
+    }
+
+    foreach ($catalogo as &$pacote) {
+        $pacote['massas'] = array_values($pacote['massas']);
+        $pacote['recheios'] = array_values($pacote['recheios']);
+    }
+    unset($pacote);
+    return $catalogo;
+}
+
+function vendas_bolo_infantil_validar(PDO $pdo, string $pacoteNome, string $massaKey, string $recheioKey): array
+{
+    $pacoteKey = vendas_formas_pagamento_normalizar($pacoteNome);
+    $pacote = vendas_bolo_infantil_catalogo($pdo)[$pacoteKey] ?? null;
+    if (!$pacote) {
+        return ['ok' => false, 'error' => 'O pacote escolhido não possui cardápio de bolo configurado.'];
+    }
+    $massa = null;
+    $recheio = null;
+    foreach ($pacote['massas'] as $item) {
+        if (hash_equals((string)$item['key'], trim($massaKey))) $massa = $item;
+    }
+    foreach ($pacote['recheios'] as $item) {
+        if (hash_equals((string)$item['key'], trim($recheioKey))) $recheio = $item;
+    }
+    if (!$massa || !$recheio) {
+        return ['ok' => false, 'error' => 'Selecione a massa e o recheio do bolo.'];
+    }
+
+    $massaNome = vendas_formas_pagamento_normalizar((string)$massa['nome']);
+    $recheioNome = vendas_formas_pagamento_normalizar((string)$recheio['nome']);
+    $permitidosBranco = ['creme de leite condensado', 'doce de leite', 'doce de leite com coco', 'beijinho', 'ninho', 'abacaxi com coco'];
+    $permitidosChocolate = ['brigadeiro', 'ninho', 'mousse de chocolate', 'sensacao', 'prestigio'];
+    $permitidos = str_contains($massaNome, 'chocolate') ? $permitidosChocolate : $permitidosBranco;
+    if (!in_array($recheioNome, $permitidos, true)) {
+        return ['ok' => false, 'error' => 'O recheio escolhido não está disponível para essa massa.'];
+    }
+
+    return ['ok' => true, 'pacote_id' => (int)$pacote['pacote_id'], 'massa' => $massa, 'recheio' => $recheio];
+}
+
+function vendas_bolo_item_nome(PDO $pdo, int $itemId): string
+{
+    if ($itemId <= 0) return '';
+    try {
+        $stmt = $pdo->prepare("SELECT nome_oficial FROM logistica_insumos WHERE id = :id AND ativo = TRUE LIMIT 1");
+        $stmt->execute([':id' => $itemId]);
+        return trim((string)($stmt->fetchColumn() ?: ''));
+    } catch (Throwable $e) {
+        return '';
+    }
+}
+
 /**
  * Verifica se o usuário pode acessar Vendas > Administração.
  * Mantém compatibilidade com o perfil administrativo já existente.
@@ -735,7 +838,7 @@ function vendas_ensure_schema(PDO $pdo, array &$errors, array &$messages): bool 
     }
 
     // Se tabelas existem mas faltam colunas do 042, tentar aplicar 042
-    $cols042 = ['origem', 'rg', 'cep', 'endereco_completo', 'nome_noivos', 'num_convidados', 'como_conheceu', 'forma_pagamento', 'itens_adicionais', 'observacoes_internas', 'responsavel_comercial_id', 'tipo_evento_real', 'pacote_evento_id'];
+    $cols042 = ['origem', 'rg', 'cep', 'endereco_completo', 'nome_noivos', 'num_convidados', 'como_conheceu', 'forma_pagamento', 'itens_adicionais', 'observacoes_internas', 'responsavel_comercial_id', 'tipo_evento_real', 'pacote_evento_id', 'bolo_massa_item_id', 'bolo_recheio_item_id'];
     $needs042 = false;
     foreach ($cols042 as $c) {
         if (!vendas_has_column($pdo, 'vendas_pre_contratos', $c)) {
@@ -751,10 +854,10 @@ function vendas_ensure_schema(PDO $pdo, array &$errors, array &$messages): bool 
                 $errors[] = 'Base de Vendas desatualizada. Execute os SQLs sql/042_vendas_ajustes.sql, sql/059_vendas_itens_adicionais.sql e sql/060_vendas_organizacao_defaults.sql.';
                 return false;
             }
-            $errors[] = 'Base de Vendas desatualizada. Execute os SQLs sql/042_vendas_ajustes.sql, sql/059_vendas_itens_adicionais.sql e sql/060_vendas_organizacao_defaults.sql.';
+            $errors[] = 'Base de Vendas desatualizada. Execute os SQLs pendentes, incluindo sql/102_vendas_pre_contrato_bolo.sql.';
             return false;
         } catch (Throwable $e) {
-            $errors[] = 'Base de Vendas desatualizada. Execute os SQLs sql/042_vendas_ajustes.sql, sql/059_vendas_itens_adicionais.sql e sql/060_vendas_organizacao_defaults.sql.';
+            $errors[] = 'Base de Vendas desatualizada. Execute os SQLs pendentes, incluindo sql/102_vendas_pre_contrato_bolo.sql.';
             return false;
         }
     }
