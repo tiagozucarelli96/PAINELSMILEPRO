@@ -296,6 +296,7 @@ function eventos_formatura_label_status(string $status): string
     return [
         'pendente' => 'Pendente',
         'pago' => 'Pago',
+        'vencido' => 'Vencido',
         'cancelado' => 'Cancelado',
     ][$status] ?? $status;
 }
