@@ -985,10 +985,16 @@ function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $form
     return ['ok' => true];
 }
 
-function eventos_formatura_sincronizar_status_asaas(PDO $pdo, int $eventoId): int
+function eventos_formatura_sincronizar_status_asaas(PDO $pdo, int $eventoId): array
 {
+    $resultado = [
+        'consultadas' => 0,
+        'atualizadas' => 0,
+        'falhas' => 0,
+    ];
+
     if ($eventoId <= 0) {
-        return 0;
+        return $resultado;
     }
 
     $stmt = $pdo->prepare("
@@ -999,7 +1005,6 @@ function eventos_formatura_sincronizar_status_asaas(PDO $pdo, int $eventoId): in
           AND asaas_payment_id IS NOT NULL
           AND TRIM(asaas_payment_id) <> ''
           AND status NOT IN ('pago', 'cancelado')
-          AND updated_at < NOW() - INTERVAL '2 minutes'
         ORDER BY COALESCE(vencimento, created_at::date) ASC, id ASC
         LIMIT 50
     ");
@@ -1009,27 +1014,28 @@ function eventos_formatura_sincronizar_status_asaas(PDO $pdo, int $eventoId): in
     }, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [])));
 
     if (!$paymentIds) {
-        return 0;
+        return $resultado;
     }
 
     require_once __DIR__ . '/asaas_helper.php';
     $asaas = new AsaasHelper();
-    $updated = 0;
 
     foreach ($paymentIds as $paymentId) {
+        $resultado['consultadas']++;
         try {
             $payment = $asaas->getPaymentStatus($paymentId);
             if (is_array($payment) && !empty($payment['id'])) {
                 if (eventos_formatura_financeiro_atualizar_asaas_payment($pdo, $paymentId, $payment)) {
-                    $updated++;
+                    $resultado['atualizadas']++;
                 }
             }
         } catch (Throwable $e) {
+            $resultado['falhas']++;
             error_log('Falha ao sincronizar status Asaas da formatura: payment_id=' . $paymentId . ' erro=' . $e->getMessage());
         }
     }
 
-    return $updated;
+    return $resultado;
 }
 
 $eventoId = (int)($_GET['evento_id'] ?? $_POST['evento_id'] ?? 0);

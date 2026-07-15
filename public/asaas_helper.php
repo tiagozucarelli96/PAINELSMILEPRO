@@ -25,7 +25,19 @@ class AsaasHelper {
         
         $this->api_key = $chave_a_usar;
         $this->base_url = $env_base ?? ASAAS_BASE_URL;
-        $this->webhook_url = $env_webhook ?? WEBHOOK_URL;
+
+        $webhookUrl = trim((string)($env_webhook ?? (defined('WEBHOOK_URL') ? WEBHOOK_URL : '')));
+        if ($webhookUrl === '' || strpos($webhookUrl, 'seudominio.') !== false) {
+            $appUrl = trim((string)(defined('APP_URL') ? APP_URL : ''));
+            if ($appUrl === '' && !empty($_SERVER['HTTP_HOST'])) {
+                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $appUrl = $scheme . '://' . $_SERVER['HTTP_HOST'];
+            }
+            if ($appUrl !== '') {
+                $webhookUrl = rtrim($appUrl, '/') . '/asaas_webhook.php';
+            }
+        }
+        $this->webhook_url = $webhookUrl;
         
         // Log para debug (nunca logar a chave completa por segurança)
         $tamanho = strlen($this->api_key);
