@@ -973,6 +973,53 @@ function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $form
     return ['ok' => true];
 }
 
+function eventos_formatura_sincronizar_status_asaas(PDO $pdo, int $eventoId): int
+{
+    if ($eventoId <= 0) {
+        return 0;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT asaas_payment_id
+        FROM eventos_formatura_financeiro
+        WHERE evento_id = :evento_id
+          AND carteira = 'asaas'
+          AND asaas_payment_id IS NOT NULL
+          AND TRIM(asaas_payment_id) <> ''
+          AND status NOT IN ('pago', 'cancelado')
+          AND updated_at < NOW() - INTERVAL '2 minutes'
+        ORDER BY COALESCE(vencimento, created_at::date) ASC, id ASC
+        LIMIT 50
+    ");
+    $stmt->execute([':evento_id' => $eventoId]);
+    $paymentIds = array_values(array_filter(array_map(static function ($row): string {
+        return trim((string)($row['asaas_payment_id'] ?? ''));
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [])));
+
+    if (!$paymentIds) {
+        return 0;
+    }
+
+    require_once __DIR__ . '/asaas_helper.php';
+    $asaas = new AsaasHelper();
+    $updated = 0;
+
+    foreach ($paymentIds as $paymentId) {
+        try {
+            $payment = $asaas->getPaymentStatus($paymentId);
+            if (is_array($payment) && !empty($payment['id'])) {
+                if (eventos_formatura_financeiro_atualizar_asaas_payment($pdo, $paymentId, $payment)) {
+                    $updated++;
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('Falha ao sincronizar status Asaas da formatura: payment_id=' . $paymentId . ' erro=' . $e->getMessage());
+        }
+    }
+
+    return $updated;
+}
+
 $eventoId = (int)($_GET['evento_id'] ?? $_POST['evento_id'] ?? 0);
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $messages = [];
@@ -1339,6 +1386,10 @@ if ($requestMethod === 'POST') {
             $errors[] = (string)($result['error'] ?? 'Não foi possível atualizar a cobrança.');
         }
     }
+}
+
+if ($requestMethod !== 'POST') {
+    eventos_formatura_sincronizar_status_asaas($pdo, $eventoId);
 }
 
 if (!empty($_SESSION['eventos_formatura_message'])) {

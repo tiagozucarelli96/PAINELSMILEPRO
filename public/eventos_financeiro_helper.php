@@ -1026,14 +1026,17 @@ function eventos_formatura_financeiro_atualizar_asaas_payment(PDO $pdo, string $
         return false;
     }
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payment_id VARCHAR(120) NULL");
+    $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_invoice_url TEXT NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS asaas_payload JSONB NULL");
     $pdo->exec("ALTER TABLE IF EXISTS eventos_formatura_financeiro ADD COLUMN IF NOT EXISTS pago_em TIMESTAMP NULL");
 
     $status = eventos_financeiro_status_from_asaas((string)($paymentData['status'] ?? ''));
+    $invoiceUrl = trim((string)($paymentData['invoiceUrl'] ?? $paymentData['bankSlipUrl'] ?? ''));
     $stmt = $pdo->prepare("
         UPDATE eventos_formatura_financeiro
         SET status = :status,
             pago_em = CASE WHEN :status_pago = 'pago' THEN COALESCE(pago_em, NOW()) ELSE pago_em END,
+            asaas_invoice_url = COALESCE(NULLIF(:invoice_url, ''), asaas_invoice_url),
             asaas_payload = CASE WHEN :payload <> '' THEN CAST(:payload AS JSONB) ELSE asaas_payload END,
             updated_at = NOW()
         WHERE asaas_payment_id = :payment_id
@@ -1041,6 +1044,7 @@ function eventos_formatura_financeiro_atualizar_asaas_payment(PDO $pdo, string $
     $stmt->execute([
         ':status' => $status,
         ':status_pago' => $status,
+        ':invoice_url' => $invoiceUrl,
         ':payload' => $paymentData ? json_encode($paymentData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
         ':payment_id' => $paymentId,
     ]);
