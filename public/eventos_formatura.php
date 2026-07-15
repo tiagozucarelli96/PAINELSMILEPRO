@@ -900,6 +900,8 @@ function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $form
     $descricao = trim((string)($dados['descricao'] ?? ''));
     $vencimento = trim((string)($dados['vencimento'] ?? ''));
     $valor = eventos_formatura_money($dados['valor'] ?? 0);
+    $statusSolicitado = (string)($dados['status_pagamento'] ?? '');
+    $statusPermitidos = ['pendente', 'pago', 'vencido', 'cancelado'];
 
     if ($cobrancaId <= 0) {
         return ['ok' => false, 'error' => 'Cobrança não encontrada.'];
@@ -931,11 +933,16 @@ function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $form
     if (!$cobranca) {
         return ['ok' => false, 'error' => 'Cobrança não encontrada para este formando.'];
     }
-    if (in_array((string)$cobranca['status'], ['pago', 'cancelado'], true)) {
-        return ['ok' => false, 'error' => 'Cobranças pagas ou canceladas não podem ser editadas.'];
-    }
     if ((string)($cobranca['carteira'] ?? '') === 'pixgo') {
         return ['ok' => false, 'error' => 'A cobrança PixGo é imutável. Gere uma nova cobrança para alterar valor, descrição ou vencimento.'];
+    }
+    if ((string)($cobranca['carteira'] ?? '') === 'asaas' && in_array((string)$cobranca['status'], ['pago', 'cancelado'], true)) {
+        return ['ok' => false, 'error' => 'Cobranças Asaas pagas ou canceladas não podem ser editadas pelo painel.'];
+    }
+
+    $status = (string)$cobranca['status'];
+    if ((string)($cobranca['carteira'] ?? '') === 'manual') {
+        $status = in_array($statusSolicitado, $statusPermitidos, true) ? $statusSolicitado : 'pendente';
     }
 
     $asaasPayload = null;
@@ -954,6 +961,8 @@ function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $form
         SET descricao = :descricao,
             vencimento = :vencimento,
             valor = :valor,
+            status = :status,
+            pago_em = CASE WHEN :status_pago = 'pago' THEN COALESCE(pago_em, NOW()) ELSE NULL END,
             asaas_payload = CASE WHEN :asaas_payload <> '' THEN CAST(:asaas_payload AS JSONB) ELSE asaas_payload END,
             updated_at = NOW()
         WHERE id = :id
@@ -964,6 +973,8 @@ function eventos_formatura_atualizar_cobranca(PDO $pdo, int $eventoId, int $form
         ':descricao' => $descricao,
         ':vencimento' => $vencimento,
         ':valor' => $valor,
+        ':status' => $status,
+        ':status_pago' => $status,
         ':asaas_payload' => $asaasPayload ? json_encode($asaasPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '',
         ':id' => $cobrancaId,
         ':evento_id' => $eventoId,
@@ -2142,7 +2153,12 @@ includeSidebar('Formatura');
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <?php if (!in_array((string)$cobranca['status'], ['pago', 'cancelado'], true)): ?>
+                                        <?php
+                                        $cobrancaCarteira = (string)($cobranca['carteira'] ?? 'manual');
+                                        $bloquearEdicaoCobranca = $cobrancaCarteira === 'pixgo'
+                                            || ($cobrancaCarteira === 'asaas' && in_array((string)$cobranca['status'], ['pago', 'cancelado'], true));
+                                        ?>
+                                        <?php if (!$bloquearEdicaoCobranca): ?>
                                             <button
                                                 type="button"
                                                 class="formatura-icon-btn formatura-icon-btn--text btnEditarCobranca"
@@ -2150,6 +2166,8 @@ includeSidebar('Formatura');
                                                 data-descricao="<?= eventos_formatura_e((string)$cobranca['descricao']) ?>"
                                                 data-vencimento="<?= eventos_formatura_e((string)($cobranca['vencimento'] ?? '')) ?>"
                                                 data-valor="<?= eventos_formatura_e(number_format((float)$cobranca['valor'], 2, ',', '.')) ?>"
+                                                data-status="<?= eventos_formatura_e((string)$cobranca['status']) ?>"
+                                                data-carteira="<?= eventos_formatura_e((string)($cobranca['carteira'] ?? 'manual')) ?>"
                                             >Editar</button>
                                         <?php else: ?>
                                             <span class="formatura-muted">-</span>
@@ -2303,6 +2321,15 @@ includeSidebar('Formatura');
                     <div class="formatura-field">
                         <label for="editarCobrancaValor">Valor</label>
                         <input id="editarCobrancaValor" name="valor" type="text" inputmode="decimal" required>
+                    </div>
+                    <div class="formatura-field">
+                        <label for="editarCobrancaStatus">Status de pagamento</label>
+                        <select id="editarCobrancaStatus" name="status_pagamento">
+                            <option value="pendente">Pendente</option>
+                            <option value="pago">Pago</option>
+                            <option value="vencido">Vencido</option>
+                            <option value="cancelado">Cancelado</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -2575,6 +2602,11 @@ document.querySelectorAll('.btnEditarCobranca').forEach((btn) => {
         document.getElementById('editarCobrancaDescricao').value = btn.dataset.descricao || '';
         document.getElementById('editarCobrancaVencimento').value = btn.dataset.vencimento || '';
         document.getElementById('editarCobrancaValor').value = btn.dataset.valor || '';
+        const editarStatus = document.getElementById('editarCobrancaStatus');
+        if (editarStatus) {
+            editarStatus.value = btn.dataset.status || 'pendente';
+            editarStatus.disabled = (btn.dataset.carteira || 'manual') !== 'manual';
+        }
         openModal(modalEditarCobranca);
     });
 });
