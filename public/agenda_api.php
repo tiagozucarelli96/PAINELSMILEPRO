@@ -170,10 +170,10 @@ try {
         } elseif (isset($evento['tipo']) && $evento['tipo'] === 'bloqueio') {
             $cor = '#dc2626'; // Vermelho para bloqueios
         } elseif (isset($evento['tipo']) && $evento['tipo'] === 'visita') {
-            // Visitas usam a cor configurada do responsável
-            $cor = $evento['cor_agenda'] ?? $evento['cor_evento'] ?? '#3b96f7';
+            // Visitas usam a cor configurada da unidade.
+            $cor = $evento['espaco_cor'] ?? $evento['cor_evento'] ?? '#3b96f7';
         } else {
-            $cor = $evento['cor_agenda'] ?? $evento['cor_evento'] ?? '#3b96f7';
+            $cor = $evento['espaco_cor'] ?? $evento['cor_evento'] ?? $evento['cor_agenda'] ?? '#3b96f7';
         }
         
         $extended_props = [
@@ -186,7 +186,8 @@ try {
             'espaco_nome' => $evento['espaco_nome'] ?? null,
             'criado_por_nome' => $evento['criado_por_nome'] ?? null,
             'responsavel_usuario_id' => $evento['responsavel_usuario_id'] ?? null,
-            'espaco_id' => $evento['espaco_id'] ?? null
+            'espaco_id' => $evento['espaco_id'] ?? null,
+            'espaco_cor' => $evento['espaco_cor'] ?? null
         ];
         
         // Adicionar link do Google se disponível

@@ -44,17 +44,17 @@ $_GET['page'] = 'agenda_config';
 // Processar atualizações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        $userColors = $_POST['user_colors'] ?? [];
-        if (is_array($userColors)) {
-            $stmtColor = $GLOBALS['pdo']->prepare("UPDATE usuarios SET cor_agenda = ? WHERE id = ? AND ativo = TRUE");
-            foreach ($userColors as $targetUserId => $colorValue) {
-                $targetUserId = (int)$targetUserId;
+        $spaceColors = $_POST['space_colors'] ?? [];
+        if (is_array($spaceColors)) {
+            $stmtColor = $GLOBALS['pdo']->prepare("UPDATE agenda_espacos SET cor = ? WHERE id = ? AND ativo = TRUE");
+            foreach ($spaceColors as $targetSpaceId => $colorValue) {
+                $targetSpaceId = (int)$targetSpaceId;
                 $color = agenda_config_normalize_color($colorValue);
-                if ($targetUserId <= 0 || $color === null) {
+                if ($targetSpaceId <= 0 || $color === null) {
                     continue;
                 }
 
-                $stmtColor->execute([$color, $targetUserId]);
+                $stmtColor->execute([$color, $targetSpaceId]);
             }
         } elseif (isset($_POST['cor_agenda'])) {
             $color = agenda_config_normalize_color($_POST['cor_agenda']);
@@ -106,10 +106,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
         }
 
+        $espacos = $agenda->obterEspacos();
         $usuarios = $agenda->obterUsuariosComCores();
         $success = $can_manage_agenda_settings
             ? "Configurações atualizadas com sucesso!"
-            : "Cores da agenda atualizadas com sucesso!";
+            : "Cores das unidades atualizadas com sucesso!";
     } catch (Exception $e) {
         $error = "Erro ao atualizar configurações: " . $e->getMessage();
     }
@@ -209,14 +210,14 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
             vertical-align: middle;
         }
 
-        .user-color-grid {
+        .space-color-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 12px;
             margin-top: 12px;
         }
 
-        .user-color-card {
+        .space-color-card {
             display: grid;
             grid-template-columns: auto 1fr auto;
             align-items: center;
@@ -227,7 +228,7 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
             padding: 12px;
         }
 
-        .user-color-card input[type="color"] {
+        .space-color-card input[type="color"] {
             width: 48px;
             height: 38px;
             border: 0;
@@ -235,12 +236,12 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
             background: transparent;
         }
 
-        .user-color-name {
+        .space-color-name {
             font-weight: 700;
             color: #1f2937;
         }
 
-        .user-color-login {
+        .space-color-slug {
             color: #64748b;
             font-size: .85rem;
             margin-top: 2px;
@@ -388,40 +389,40 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
                 <div class="section">
                     <h3>🎨 Aparência</h3>
                     <div class="form-group">
-                        <label>Cores dos usuários na agenda</label>
-                        <div class="user-color-grid">
-                            <?php foreach ($usuarios as $user): ?>
+                        <label>Cores das unidades na agenda</label>
+                        <div class="space-color-grid">
+                            <?php foreach ($espacos as $espaco): ?>
                                 <?php
-                                    $targetUserId = (int)($user['id'] ?? 0);
-                                    if ($targetUserId <= 0) { continue; }
-                                    $targetColor = agenda_config_normalize_color($user['cor_agenda'] ?? '') ?: AgendaHelper::corUsuarioAgenda($targetUserId, '');
-                                    $targetName = trim((string)($user['nome'] ?? '')) ?: trim((string)($user['login'] ?? 'Usuário'));
-                                    $targetLogin = trim((string)($user['login'] ?? ''));
+                                    $targetSpaceId = (int)($espaco['id'] ?? 0);
+                                    if ($targetSpaceId <= 0) { continue; }
+                                    $targetColor = agenda_config_normalize_color($espaco['cor'] ?? '') ?: AgendaHelper::corEspacoAgenda($targetSpaceId, '');
+                                    $targetName = trim((string)($espaco['nome'] ?? '')) ?: 'Unidade';
+                                    $targetSlug = trim((string)($espaco['slug'] ?? ''));
                                 ?>
-                                <div class="user-color-card">
+                                <div class="space-color-card">
                                     <input
                                         type="color"
-                                        id="user_color_<?= $targetUserId ?>"
-                                        name="user_colors[<?= $targetUserId ?>]"
+                                        id="space_color_<?= $targetSpaceId ?>"
+                                        name="space_colors[<?= $targetSpaceId ?>]"
                                         value="<?= htmlspecialchars($targetColor) ?>"
-                                        data-preview="user_color_preview_<?= $targetUserId ?>"
+                                        data-preview="space_color_preview_<?= $targetSpaceId ?>"
                                     >
-                                    <label for="user_color_<?= $targetUserId ?>">
-                                        <div class="user-color-name"><?= htmlspecialchars($targetName) ?></div>
-                                        <?php if ($targetLogin !== ''): ?>
-                                            <div class="user-color-login"><?= htmlspecialchars($targetLogin) ?></div>
+                                    <label for="space_color_<?= $targetSpaceId ?>">
+                                        <div class="space-color-name"><?= htmlspecialchars($targetName) ?></div>
+                                        <?php if ($targetSlug !== ''): ?>
+                                            <div class="space-color-slug"><?= htmlspecialchars($targetSlug) ?></div>
                                         <?php endif; ?>
                                     </label>
                                     <div
                                         class="color-preview"
-                                        id="user_color_preview_<?= $targetUserId ?>"
+                                        id="space_color_preview_<?= $targetSpaceId ?>"
                                         style="background-color: <?= htmlspecialchars($targetColor) ?>"
                                     ></div>
                                 </div>
                             <?php endforeach; ?>
                         </div>
                         <small style="color: #666; margin-top: 5px; display: block;">
-                            Qualquer usuário logado pode ajustar a cor que identifica cada responsável no calendário.
+                            A cor do evento será definida pela unidade selecionada na visita.
                         </small>
                     </div>
                 </div>

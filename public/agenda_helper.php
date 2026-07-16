@@ -23,6 +23,16 @@ class AgendaHelper {
         '#4f46e5',
         '#be123c',
     ];
+    private const SPACE_COLOR_PALETTE = [
+        '#16a34a',
+        '#f97316',
+        '#9333ea',
+        '#2563eb',
+        '#0891b2',
+        '#db2777',
+        '#65a30d',
+        '#7c3aed',
+    ];
     private $pdo;
     private $emailHelper;
     private $notificationDispatcher;
@@ -40,6 +50,7 @@ class AgendaHelper {
         $this->ensureVisitDetailsSchema();
         $this->ensureVisitWhatsappSchema();
         $this->ensureAgendaSettingsSchema();
+        $this->ensureAgendaSpaceColorsSchema();
         $this->ensureAvailabilitySchema();
     }
 
@@ -51,6 +62,16 @@ class AgendaHelper {
 
         $index = abs((int)$usuario_id) % count(self::USER_COLOR_PALETTE);
         return self::USER_COLOR_PALETTE[$index];
+    }
+
+    public static function corEspacoAgenda($espaco_id, ?string $corAtual): string {
+        $cor = strtolower(trim((string)$corAtual));
+        if (preg_match('/^#[0-9a-f]{6}$/', $cor)) {
+            return $cor;
+        }
+
+        $index = abs((int)$espaco_id) % count(self::SPACE_COLOR_PALETTE);
+        return self::SPACE_COLOR_PALETTE[$index];
     }
 
     /**
@@ -116,6 +137,51 @@ class AgendaHelper {
             $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_agenda_visita_whatsapp_due ON agenda_visita_whatsapp_notificacoes(status, agendada_para)");
         } catch (Throwable $e) {
             error_log('[AGENDA_VISITA_WHATSAPP_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
+        }
+    }
+
+    private function ensureAgendaSpaceColorsSchema(): void {
+        if (!$this->pdo instanceof PDO) {
+            return;
+        }
+
+        try {
+            $this->pdo->exec("ALTER TABLE agenda_espacos ADD COLUMN IF NOT EXISTS cor VARCHAR(7)");
+
+            $stmt = $this->pdo->prepare("SELECT valor FROM agenda_configuracoes WHERE chave = :chave LIMIT 1");
+            $stmt->execute([':chave' => 'space_color_defaults_initialized']);
+            $marker = json_decode((string)$stmt->fetchColumn(), true);
+            if (!$this->normalizeBool($marker)) {
+                $this->pdo->exec("
+                    UPDATE agenda_espacos
+                    SET cor = CASE
+                        WHEN LOWER(slug) IN ('garden', 'espaco_garden') THEN '#16a34a'
+                        WHEN LOWER(slug) IN ('diverkids', 'diver_kids') THEN '#f97316'
+                        WHEN LOWER(slug) IN ('cristal', 'espaco_cristal') THEN '#9333ea'
+                        WHEN LOWER(slug) IN ('lisbon', 'lisbon_un_1') THEN '#2563eb'
+                        ELSE '#0891b2'
+                    END
+                    WHERE cor IS NULL OR cor = '' OR LOWER(cor) = '#3b82f6'
+                ");
+
+                $stmt = $this->pdo->prepare("
+                    INSERT INTO agenda_configuracoes (chave, valor, descricao, atualizado_em)
+                    VALUES (:chave, :valor, :descricao, NOW())
+                    ON CONFLICT (chave) DO UPDATE SET
+                        valor = EXCLUDED.valor,
+                        descricao = EXCLUDED.descricao,
+                        atualizado_em = NOW()
+                ");
+                $stmt->execute([
+                    ':chave' => 'space_color_defaults_initialized',
+                    ':valor' => 'true',
+                    ':descricao' => 'Controla a inicialização única das cores padrão das unidades da agenda.',
+                ]);
+            }
+
+            $this->pdo->exec("ALTER TABLE agenda_espacos ALTER COLUMN cor SET DEFAULT '#3b82f6'");
+        } catch (Throwable $e) {
+            error_log('[AGENDA_SPACE_COLORS_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
         }
     }
 
@@ -811,7 +877,12 @@ class AgendaHelper {
      */
     public function obterEspacos() {
         $stmt = $this->pdo->query("SELECT * FROM agenda_espacos WHERE ativo = TRUE ORDER BY nome");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $espacos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($espacos as &$espaco) {
+            $espaco['cor'] = self::corEspacoAgenda($espaco['id'] ?? 0, (string)($espaco['cor'] ?? ''));
+        }
+        unset($espaco);
+        return $espacos;
     }
     
     /**
@@ -1116,10 +1187,10 @@ class AgendaHelper {
                 }
             }
             
-            // Obter cor do responsável
-            $stmt = $this->pdo->prepare("SELECT cor_agenda FROM usuarios WHERE id = ?");
-            $stmt->execute([$dados['responsavel_usuario_id']]);
-            $cor_responsavel = self::corUsuarioAgenda($dados['responsavel_usuario_id'], (string)$stmt->fetchColumn());
+            // A cor visual da agenda é definida pela unidade da visita.
+            $stmt = $this->pdo->prepare("SELECT cor FROM agenda_espacos WHERE id = ?");
+            $stmt->execute([$dados['espaco_id']]);
+            $cor_evento = self::corEspacoAgenda($dados['espaco_id'], (string)$stmt->fetchColumn());
             
             // Criar evento - valores padrão: checkboxes desmarcados
             $stmt = $this->pdo->prepare("
@@ -1142,7 +1213,7 @@ class AgendaHelper {
                 $dados['espaco_id'],
                 $dados['lembrete_minutos'],
                 json_encode($dados['participantes'] ?? []),
-                $cor_responsavel,
+                $cor_evento,
                 ($dados['tipo'] ?? '') === 'visita' ? trim((string)($dados['visita_tipo'] ?? '')) : null,
                 ($dados['tipo'] ?? '') === 'visita' ? trim((string)($dados['cliente_nome'] ?? '')) : null,
                 ($dados['tipo'] ?? '') === 'visita' ? $this->normalizeVisitPhoneForWhatsapp((string)($dados['cliente_telefone'] ?? '')) : null,
@@ -1384,6 +1455,7 @@ class AgendaHelper {
                 u.login as responsavel_login,
                 u.cor_agenda as cor_agenda,
                 esp.nome as espaco_nome,
+                esp.cor as espaco_cor,
                 criador.nome as criado_por_nome
             FROM agenda_eventos ae
             LEFT JOIN usuarios u ON ae.responsavel_usuario_id = u.id
@@ -1397,7 +1469,9 @@ class AgendaHelper {
         $stmt->execute($params);
         $eventos = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($eventos as &$evento) {
-            if (!empty($evento['responsavel_usuario_id'])) {
+            if (!empty($evento['espaco_id'])) {
+                $evento['espaco_cor'] = self::corEspacoAgenda($evento['espaco_id'], (string)($evento['espaco_cor'] ?? ''));
+            } elseif (!empty($evento['responsavel_usuario_id'])) {
                 $evento['cor_agenda'] = self::corUsuarioAgenda($evento['responsavel_usuario_id'], (string)($evento['cor_agenda'] ?? ''));
             }
         }

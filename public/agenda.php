@@ -657,10 +657,10 @@ includeSidebar('Agenda');
                     <button class="btn btn-outline" onclick="toggleFilters()">
                         🔍 Filtros
                     </button>
-                    <?php if ($is_superadmin): ?>
                     <a href="index.php?page=agenda_config" class="btn btn-outline">
                         ⚙️ Config
                     </a>
+                    <?php if ($is_superadmin): ?>
                     <a href="index.php?page=agenda_disponibilidade" class="btn btn-outline" style="text-decoration: none;">
                         🕒 Disponibilidade
                     </a>
@@ -711,12 +711,11 @@ includeSidebar('Agenda');
                     <div class="legend-color" style="background-color: #dc2626;"></div>
                     <span>Bloqueio</span>
                 </div>
-                <!-- Legenda por usuário -->
-                <?php foreach ($usuarios as $user): ?>
-                    <?php $legend_login = trim((string)($user['login'] ?? '')); ?>
+                <!-- Legenda por unidade -->
+                <?php foreach ($espacos as $espaco): ?>
                     <div class="legend-item">
-                        <div class="legend-color" style="background-color: <?= htmlspecialchars($user['cor_agenda']) ?>"></div>
-                        <span class="legend-text"><?= htmlspecialchars($legend_login !== '' ? $legend_login : $user['nome']) ?></span>
+                        <div class="legend-color" style="background-color: <?= htmlspecialchars($espaco['cor'] ?? '#3b96f7') ?>"></div>
+                        <span class="legend-text"><?= htmlspecialchars((string)($espaco['nome'] ?? 'Unidade')) ?></span>
                     </div>
                 <?php endforeach; ?>
             </div>
