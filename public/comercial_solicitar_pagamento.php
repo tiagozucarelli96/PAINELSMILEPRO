@@ -43,7 +43,13 @@ function comercial_solicitar_pagamento_eventos(PDO $pdo): array
     try {
         $hasCliente = eventos_financeiro_table_exists($pdo, 'comercial_cadastro_clientes')
             && eventos_financeiro_column_exists($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
-        $join = $hasCliente ? "
+        $hasPreContrato = eventos_financeiro_table_exists($pdo, 'vendas_pre_contratos');
+        $joins = [];
+        $clienteNomeCandidates = [];
+        $clienteDocumentoCandidates = [];
+
+        if ($hasCliente) {
+            $joins[] = "
             LEFT JOIN comercial_cadastro_clientes c ON c.id = e.cliente_cadastro_id
             LEFT JOIN LATERAL (
                 SELECT nome_completo, documento_numero
@@ -60,14 +66,48 @@ function comercial_solicitar_pagamento_eventos(PDO $pdo): array
                 ORDER BY updated_at DESC NULLS LAST, id DESC
                 LIMIT 1
             ) c_tel ON TRUE
-        " : '';
-        $clienteSelect = $hasCliente ? "
-            COALESCE(NULLIF(c.nome_completo, ''), NULLIF(c_me.nome_completo, ''), NULLIF(c_tel.nome_completo, ''), '') AS cliente_nome,
-            COALESCE(NULLIF(c.documento_numero, ''), NULLIF(c_me.documento_numero, ''), NULLIF(c_tel.documento_numero, ''), '') AS cliente_documento,
-        " : "
-            '' AS cliente_nome,
-            '' AS cliente_documento,
-        ";
+            ";
+            $clienteNomeCandidates = [
+                "NULLIF(TRIM(c.nome_completo), '')",
+                "NULLIF(TRIM(c_me.nome_completo), '')",
+                "NULLIF(TRIM(c_tel.nome_completo), '')",
+            ];
+            $clienteDocumentoCandidates = [
+                "NULLIF(TRIM(c.documento_numero), '')",
+                "NULLIF(TRIM(c_me.documento_numero), '')",
+                "NULLIF(TRIM(c_tel.documento_numero), '')",
+            ];
+        }
+
+        if ($hasPreContrato) {
+            $joins[] = "
+            LEFT JOIN LATERAL (
+                SELECT nome_completo, cpf
+                FROM vendas_pre_contratos
+                WHERE (e.me_event_id IS NOT NULL AND me_event_id = e.me_event_id)
+                   OR (
+                        regexp_replace(COALESCE(telefone, ''), '\\D', '', 'g') <> ''
+                        AND regexp_replace(COALESCE(telefone, ''), '\\D', '', 'g') = regexp_replace(COALESCE(e.telefone_cliente, e.whatsapp_cliente, ''), '\\D', '', 'g')
+                   )
+                ORDER BY
+                    CASE WHEN e.me_event_id IS NOT NULL AND me_event_id = e.me_event_id THEN 0 ELSE 1 END,
+                    atualizado_em DESC NULLS LAST,
+                    id DESC
+                LIMIT 1
+            ) vp ON TRUE
+            ";
+            $clienteNomeCandidates[] = "NULLIF(TRIM(vp.nome_completo), '')";
+            $clienteDocumentoCandidates[] = "NULLIF(TRIM(vp.cpf), '')";
+        }
+
+        $clienteNomeCandidates[] = "''";
+        $clienteDocumentoCandidates[] = "''";
+        $clienteSelect = sprintf(
+            "COALESCE(%s) AS cliente_nome, COALESCE(%s) AS cliente_documento,",
+            implode(', ', $clienteNomeCandidates),
+            implode(', ', $clienteDocumentoCandidates)
+        );
+        $join = implode("\n", $joins);
         $stmt = $pdo->query("
             SELECT e.id,
                    COALESCE(e.nome_evento, 'Evento') AS nome_evento,
@@ -108,6 +148,19 @@ foreach ($eventos as $evento) {
         'cliente_nome' => (string)$evento['cliente_nome'],
         'cliente_documento' => (string)$evento['cliente_documento'],
     ];
+}
+$eventOptionsJson = json_encode(
+    $eventOptions,
+    JSON_UNESCAPED_UNICODE
+        | JSON_UNESCAPED_SLASHES
+        | JSON_INVALID_UTF8_SUBSTITUTE
+        | JSON_HEX_TAG
+        | JSON_HEX_AMP
+        | JSON_HEX_APOS
+        | JSON_HEX_QUOT
+);
+if (!is_string($eventOptionsJson)) {
+    $eventOptionsJson = '[]';
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
@@ -279,7 +332,12 @@ includeSidebar('Comercial');
                     <input id="evento_label" name="evento_label" type="search" list="eventos-list" value="<?= h($old['evento_label']) ?>" placeholder="Digite para pesquisar ou deixe em branco">
                     <datalist id="eventos-list">
                         <?php foreach ($eventOptions as $option): ?>
-                            <option value="<?= h($option['label']) ?>" data-event-id="<?= h((string)$option['id']) ?>"></option>
+                            <option
+                                value="<?= h($option['label']) ?>"
+                                data-event-id="<?= h((string)$option['id']) ?>"
+                                data-payer-name="<?= h($option['cliente_nome']) ?>"
+                                data-payer-document="<?= h($option['cliente_documento']) ?>"
+                            ></option>
                         <?php endforeach; ?>
                     </datalist>
                     <span class="pay-help">Ao selecionar um evento, nome e CPF/CNPJ serão usados a partir do cliente vinculado ao evento.</span>
@@ -342,15 +400,16 @@ includeSidebar('Comercial');
 </div>
 
 <script>
-const eventOptions = <?= json_encode($eventOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const eventOptions = <?= $eventOptionsJson ?>;
 const eventInput = document.getElementById('evento_label');
 const eventIdInput = document.getElementById('evento_id');
 const payerName = document.getElementById('pagador_nome');
 const payerDocument = document.getElementById('pagador_documento');
-const payerLinkedNotes = Array.from(document.querySelectorAll('.payer-linked-note'));
 const payerNameNote = document.getElementById('payer-name-note');
 const payerDocumentNote = document.getElementById('payer-document-note');
 let lastSelectedEventId = eventIdInput.value || '';
+let payerNameWasFilledFromEvent = false;
+let payerDocumentWasFilledFromEvent = false;
 function normalizeEventLabel(value) {
     return String(value || '')
         .normalize('NFD')
@@ -369,6 +428,14 @@ function findSelectedEvent() {
     if (optionId) {
         const byId = eventOptions.find((item) => String(item.id) === optionId);
         if (byId) return byId;
+        return {
+            id: optionId,
+            label: selectedOption.value,
+            label_base: selectedOption.value,
+            nome_evento: selectedOption.value,
+            cliente_nome: selectedOption.dataset.payerName || '',
+            cliente_documento: selectedOption.dataset.payerDocument || ''
+        };
     }
     return eventOptions.find((item) => normalizeEventLabel(item.label) === selectedKey)
         || eventOptions.find((item) => normalizeEventLabel(item.label_base || '') === selectedKey)
@@ -382,26 +449,46 @@ function findSelectedEvent() {
 function applySelectedEvent() {
     const selected = findSelectedEvent();
     const selectedId = selected ? String(selected.id) : '';
-    const changedEvent = selectedId !== '' && selectedId !== lastSelectedEventId;
+    const changedEvent = selectedId !== lastSelectedEventId;
     eventIdInput.value = selected ? String(selected.id) : '';
     const hasPayerName = !!(selected?.cliente_nome || '').trim();
     const hasPayerDocument = !!(selected?.cliente_documento || '').trim();
     payerName.readOnly = !!selected && hasPayerName;
     payerDocument.readOnly = !!selected && hasPayerDocument;
-    payerLinkedNotes.forEach((note) => { note.hidden = !selected; });
-    if (!selected) return;
+    payerNameNote.hidden = !selected;
+    payerDocumentNote.hidden = !selected;
+
+    if (!selected) {
+        if (changedEvent && payerNameWasFilledFromEvent) payerName.value = '';
+        if (changedEvent && payerDocumentWasFilledFromEvent) payerDocument.value = '';
+        payerNameWasFilledFromEvent = false;
+        payerDocumentWasFilledFromEvent = false;
+        lastSelectedEventId = '';
+        return;
+    }
+
     if (hasPayerName && (changedEvent || !(payerName.value || '').trim())) {
         payerName.value = selected.cliente_nome || '';
+        payerNameWasFilledFromEvent = true;
+    } else if (changedEvent && payerNameWasFilledFromEvent) {
+        payerName.value = '';
+        payerNameWasFilledFromEvent = false;
     }
     if (hasPayerDocument && (changedEvent || !(payerDocument.value || '').trim())) {
         payerDocument.value = selected.cliente_documento || '';
+        payerDocumentWasFilledFromEvent = true;
+        payerDocument.placeholder = '';
         if (payerDocumentNote) payerDocumentNote.textContent = 'Preenchido pelo cliente vinculado ao evento.';
     } else {
+        if (changedEvent && payerDocumentWasFilledFromEvent) payerDocument.value = '';
+        payerDocumentWasFilledFromEvent = false;
         payerDocument.placeholder = 'CPF/CNPJ não cadastrado. Informe manualmente.';
         if (payerDocumentNote) payerDocumentNote.textContent = 'CPF/CNPJ não cadastrado neste cliente. Informe manualmente.';
     }
-    if (payerNameNote && hasPayerName) {
-        payerNameNote.textContent = 'Preenchido pelo cliente vinculado ao evento.';
+    if (payerNameNote) {
+        payerNameNote.textContent = hasPayerName
+            ? 'Preenchido pelo cliente vinculado ao evento.'
+            : 'Nome não cadastrado neste cliente. Informe manualmente.';
     }
     const descricao = document.getElementById('descricao');
     if (!descricao.value || descricao.value === 'Pagamento Smile Eventos') {
