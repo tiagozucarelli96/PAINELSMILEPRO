@@ -338,16 +338,6 @@ function eventosGaleriaPublicPageUrl(int $pagina, string $categoriaFilter, strin
             padding: 10px 12px 12px;
         }
 
-        .card-title {
-            margin: 0 0 5px;
-            font-size: 0.9rem;
-            font-weight: 800;
-            color: var(--ink);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
         .card-meta {
             margin: 0;
             color: var(--muted);
@@ -584,10 +574,8 @@ function eventosGaleriaPublicPageUrl(int $pagina, string $categoriaFilter, strin
                     <?php
                     $img_id = (int)$img['id'];
                     $img_categoria = (string)($img['categoria'] ?? '');
-                    $img_name = trim((string)($img['nome'] ?? ''));
-                    if ($img_name === '') {
-                        $img_name = (string)($categorias[$img_categoria]['label'] ?? 'Imagem');
-                    }
+                    $img_category_label = (string)($categorias[$img_categoria]['label'] ?? 'Evento');
+                    $img_accessible_label = 'Imagem de ' . mb_strtolower($img_category_label, 'UTF-8');
                     $img_desc = (string)($img['descricao'] ?? '');
                     $img_fallback_src = 'eventos_galeria_public_imagem.php?id=' . $img_id;
                     $img_public_url = trim((string)($img['public_url'] ?? ''));
@@ -598,11 +586,11 @@ function eventosGaleriaPublicPageUrl(int $pagina, string $categoriaFilter, strin
                     ?>
                     <article class="card"
                              data-src="<?= htmlspecialchars($img_src) ?>"
-                             data-name="<?= htmlspecialchars($img_name) ?>"
+                             data-label="<?= htmlspecialchars($img_accessible_label) ?>"
                              data-desc="<?= htmlspecialchars($img_desc) ?>">
                         <div class="thumb">
                             <img src="<?= htmlspecialchars($img_card_src) ?>"
-                                 alt="<?= htmlspecialchars($img_name) ?>"
+                                 alt="<?= htmlspecialchars($img_accessible_label) ?>"
                                  loading="lazy"
                                  decoding="async"
                                  data-fallback-src="<?= htmlspecialchars($img_fallback_src) ?>"
@@ -610,7 +598,6 @@ function eventosGaleriaPublicPageUrl(int $pagina, string $categoriaFilter, strin
                                  style="<?= $img_transform !== '' ? 'transform:' . htmlspecialchars($img_transform) . ';' : '' ?>">
                         </div>
                         <div class="card-body">
-                            <h3 class="card-title"><?= htmlspecialchars($img_name) ?></h3>
                             <p class="card-meta">
                                 <span class="meta-icon"><?= htmlspecialchars($categorias[$img_categoria]['symbol'] ?? 'TD') ?></span>
                                 <?= htmlspecialchars($categorias[$img_categoria]['label'] ?? $img_categoria) ?>
@@ -671,10 +658,10 @@ function eventosGaleriaPublicPageUrl(int $pagina, string $categoriaFilter, strin
         const imgEl = document.getElementById('previewImg');
         const descEl = document.getElementById('previewDesc');
 
-        function openPreview(src, name, desc) {
+        function openPreview(src, label, desc) {
             imgEl.src = src || '';
-            imgEl.alt = name || 'Imagem';
-            titleEl.textContent = name || 'Imagem';
+            imgEl.alt = label || 'Imagem';
+            titleEl.textContent = label || 'Imagem';
             descEl.textContent = desc || '';
             modal.classList.add('show');
         }
@@ -687,7 +674,7 @@ function eventosGaleriaPublicPageUrl(int $pagina, string $categoriaFilter, strin
             card.addEventListener('click', () => {
                 openPreview(
                     card.getAttribute('data-src') || '',
-                    card.getAttribute('data-name') || '',
+                    card.getAttribute('data-label') || '',
                     card.getAttribute('data-desc') || ''
                 );
             });
