@@ -357,7 +357,7 @@ $canGenerate = !in_array($status, ['pago', 'gerando_pix'], true);
                 required
             >
             <div class="payer-warning">
-                Digite o CPF/CNPJ da conta que fará o pagamento. Se o Pix for pago por uma conta de outro CPF/CNPJ, ele poderá ser rejeitado e extornado pela PixGo.
+                Digite o CPF/CNPJ da conta que fará o pagamento. Se o Pix for pago por uma conta de outro CPF/CNPJ, ele poderá ser rejeitado e extornado. Somente a conta vinculada ao CPF/CNPJ informado deve realizar o Pix.
             </div>
             <button type="submit" id="generateBtn"><?= $status === 'vencido' ? 'Gerar novo Pix' : 'Gerar Pix' ?></button>
         </form>
