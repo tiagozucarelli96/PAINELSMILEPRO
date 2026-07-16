@@ -12,16 +12,20 @@ if (!function_exists('agenda_config_session_bool')) {
     }
 }
 
+if (!function_exists('agenda_config_normalize_color')) {
+    function agenda_config_normalize_color($value): ?string {
+        $color = strtolower(trim((string)$value));
+        return preg_match('/^#[0-9a-f]{6}$/', $color) ? $color : null;
+    }
+}
+
 if (empty($_SESSION['logado'])) {
     header('Location: index.php?page=login');
     exit;
 }
 
 $is_superadmin = agenda_config_session_bool($_SESSION['perm_superadmin'] ?? false);
-if (!$is_superadmin) {
-    header('Location: index.php?page=dashboard&error=' . urlencode('Acesso permitido apenas para superadmin.'));
-    exit;
-}
+$can_manage_agenda_settings = $is_superadmin;
 
 $agenda = new AgendaHelper();
 $usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
@@ -39,52 +43,73 @@ $_GET['page'] = 'agenda_config';
 
 // Processar atualizações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $cor_agenda = $_POST['cor_agenda'] ?? '#1E40AF';
-    $lembrete_padrao = $_POST['agenda_lembrete_padrao_min'] ?? 60;
-    
     try {
-        $stmt = $GLOBALS['pdo']->prepare("
-            UPDATE usuarios SET 
-                cor_agenda = ?, 
-                agenda_lembrete_padrao_min = ?
-            WHERE id = ?
-        ");
-        $stmt->execute([$cor_agenda, $lembrete_padrao, $usuario_id]);
+        $userColors = $_POST['user_colors'] ?? [];
+        if (is_array($userColors)) {
+            $stmtColor = $GLOBALS['pdo']->prepare("UPDATE usuarios SET cor_agenda = ? WHERE id = ? AND ativo = TRUE");
+            foreach ($userColors as $targetUserId => $colorValue) {
+                $targetUserId = (int)$targetUserId;
+                $color = agenda_config_normalize_color($colorValue);
+                if ($targetUserId <= 0 || $color === null) {
+                    continue;
+                }
 
-        $visit_responsible_logins = [];
-        foreach (($_POST['visit_responsible_logins'] ?? []) as $login) {
-            $login = strtolower(trim((string)$login));
-            if ($login !== '') {
-                $visit_responsible_logins[] = $login;
+                $stmtColor->execute([$color, $targetUserId]);
             }
-        }
-        $visit_responsible_logins = array_values(array_unique($visit_responsible_logins));
-
-        $visit_type_durations = [];
-        foreach (($_POST['visit_type_durations'] ?? []) as $type => $duration) {
-            $type = trim((string)$type);
-            if ($type !== '') {
-                $visit_type_durations[$type] = max(1, (int)$duration);
+        } elseif (isset($_POST['cor_agenda'])) {
+            $color = agenda_config_normalize_color($_POST['cor_agenda']);
+            if ($color !== null) {
+                $stmtColor = $GLOBALS['pdo']->prepare("UPDATE usuarios SET cor_agenda = ? WHERE id = ?");
+                $stmtColor->execute([$color, $usuario_id]);
             }
         }
 
-        $space_transit_groups = [];
-        foreach (($_POST['space_transit_groups'] ?? []) as $slug => $group) {
-            $slug = strtolower(trim((string)$slug));
-            $group = strtolower(trim((string)$group));
-            if ($slug !== '' && $group !== '') {
-                $space_transit_groups[$slug] = $group;
+        if ($can_manage_agenda_settings) {
+            $lembrete_padrao = $_POST['agenda_lembrete_padrao_min'] ?? 60;
+            $stmt = $GLOBALS['pdo']->prepare("
+                UPDATE usuarios SET agenda_lembrete_padrao_min = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([$lembrete_padrao, $usuario_id]);
+
+            $visit_responsible_logins = [];
+            foreach (($_POST['visit_responsible_logins'] ?? []) as $login) {
+                $login = strtolower(trim((string)$login));
+                if ($login !== '') {
+                    $visit_responsible_logins[] = $login;
+                }
             }
+            $visit_responsible_logins = array_values(array_unique($visit_responsible_logins));
+
+            $visit_type_durations = [];
+            foreach (($_POST['visit_type_durations'] ?? []) as $type => $duration) {
+                $type = trim((string)$type);
+                if ($type !== '') {
+                    $visit_type_durations[$type] = max(1, (int)$duration);
+                }
+            }
+
+            $space_transit_groups = [];
+            foreach (($_POST['space_transit_groups'] ?? []) as $slug => $group) {
+                $slug = strtolower(trim((string)$slug));
+                $group = strtolower(trim((string)$group));
+                if ($slug !== '' && $group !== '') {
+                    $space_transit_groups[$slug] = $group;
+                }
+            }
+
+            $agenda->saveAgendaGlobalSettings([
+                'visit_responsible_logins' => $visit_responsible_logins,
+                'visit_type_durations' => $visit_type_durations,
+                'transit_min_minutes' => max(0, (int)($_POST['transit_min_minutes'] ?? 30)),
+                'space_transit_groups' => $space_transit_groups,
+            ]);
         }
 
-        $agenda->saveAgendaGlobalSettings([
-            'visit_responsible_logins' => $visit_responsible_logins,
-            'visit_type_durations' => $visit_type_durations,
-            'transit_min_minutes' => max(0, (int)($_POST['transit_min_minutes'] ?? 30)),
-            'space_transit_groups' => $space_transit_groups,
-        ]);
-        
-        $success = "Configurações atualizadas com sucesso!";
+        $usuarios = $agenda->obterUsuariosComCores();
+        $success = $can_manage_agenda_settings
+            ? "Configurações atualizadas com sucesso!"
+            : "Cores da agenda atualizadas com sucesso!";
     } catch (Exception $e) {
         $error = "Erro ao atualizar configurações: " . $e->getMessage();
     }
@@ -182,6 +207,43 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
             display: inline-block;
             margin-left: 10px;
             vertical-align: middle;
+        }
+
+        .user-color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .user-color-card {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 12px;
+            background: #fff;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .user-color-card input[type="color"] {
+            width: 48px;
+            height: 38px;
+            border: 0;
+            padding: 0;
+            background: transparent;
+        }
+
+        .user-color-name {
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .user-color-login {
+            color: #64748b;
+            font-size: .85rem;
+            margin-top: 2px;
         }
 
         .btn {
@@ -326,20 +388,45 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
                 <div class="section">
                     <h3>🎨 Aparência</h3>
                     <div class="form-group">
-                        <label for="cor_agenda">Cor dos seus eventos na agenda</label>
-                        <div style="display: flex; align-items: center;">
-                            <input type="color" id="cor_agenda" name="cor_agenda" 
-                                   value="<?= htmlspecialchars($config['cor_agenda']) ?>" 
-                                   style="width: 60px; height: 40px; border: none; border-radius: 8px;">
-                            <div class="color-preview" id="colorPreview" 
-                                 style="background-color: <?= htmlspecialchars($config['cor_agenda']) ?>"></div>
+                        <label>Cores dos usuários na agenda</label>
+                        <div class="user-color-grid">
+                            <?php foreach ($usuarios as $user): ?>
+                                <?php
+                                    $targetUserId = (int)($user['id'] ?? 0);
+                                    if ($targetUserId <= 0) { continue; }
+                                    $targetColor = agenda_config_normalize_color($user['cor_agenda'] ?? '') ?: AgendaHelper::corUsuarioAgenda($targetUserId, '');
+                                    $targetName = trim((string)($user['nome'] ?? '')) ?: trim((string)($user['login'] ?? 'Usuário'));
+                                    $targetLogin = trim((string)($user['login'] ?? ''));
+                                ?>
+                                <div class="user-color-card">
+                                    <input
+                                        type="color"
+                                        id="user_color_<?= $targetUserId ?>"
+                                        name="user_colors[<?= $targetUserId ?>]"
+                                        value="<?= htmlspecialchars($targetColor) ?>"
+                                        data-preview="user_color_preview_<?= $targetUserId ?>"
+                                    >
+                                    <label for="user_color_<?= $targetUserId ?>">
+                                        <div class="user-color-name"><?= htmlspecialchars($targetName) ?></div>
+                                        <?php if ($targetLogin !== ''): ?>
+                                            <div class="user-color-login"><?= htmlspecialchars($targetLogin) ?></div>
+                                        <?php endif; ?>
+                                    </label>
+                                    <div
+                                        class="color-preview"
+                                        id="user_color_preview_<?= $targetUserId ?>"
+                                        style="background-color: <?= htmlspecialchars($targetColor) ?>"
+                                    ></div>
+                                </div>
+                            <?php endforeach; ?>
                         </div>
                         <small style="color: #666; margin-top: 5px; display: block;">
-                            Esta cor será usada para identificar seus eventos no calendário
+                            Qualquer usuário logado pode ajustar a cor que identifica cada responsável no calendário.
                         </small>
                     </div>
                 </div>
-                
+
+                <?php if ($can_manage_agenda_settings): ?>
                 <div class="section">
                     <h3>🔔 Notificações</h3>
                     <div class="form-group">
@@ -467,22 +554,27 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
                     </div>
                     <span class="config-note">Unidades no mesmo grupo não exigem tempo de trânsito. Por padrão, Garden e Cristal ficam juntos.</span>
                 </div>
+                <?php endif; ?>
                 
                 <div class="form-actions">
                     <a href="index.php?page=agenda" class="btn btn-outline">
                         ← Voltar para Agenda
                     </a>
                     <button type="submit" class="btn btn-primary">
-                        💾 Salvar Configurações
+                        💾 <?= $can_manage_agenda_settings ? 'Salvar Configurações' : 'Salvar Cores' ?>
                     </button>
                 </div>
             </form>
 </div>
 
 <script>
-        // Atualizar preview da cor
-        document.getElementById('cor_agenda').addEventListener('input', function() {
-            document.getElementById('colorPreview').style.backgroundColor = this.value;
+        document.querySelectorAll('input[type="color"][data-preview]').forEach((input) => {
+            input.addEventListener('input', function() {
+                const preview = document.getElementById(this.dataset.preview);
+                if (preview) {
+                    preview.style.backgroundColor = this.value;
+                }
+            });
         });
         
         // Copiar link ICS
