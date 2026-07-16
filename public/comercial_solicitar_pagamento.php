@@ -43,10 +43,27 @@ function comercial_solicitar_pagamento_eventos(PDO $pdo): array
     try {
         $hasCliente = eventos_financeiro_table_exists($pdo, 'comercial_cadastro_clientes')
             && eventos_financeiro_column_exists($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
-        $join = $hasCliente ? 'LEFT JOIN comercial_cadastro_clientes c ON c.id = e.cliente_cadastro_id' : '';
+        $join = $hasCliente ? "
+            LEFT JOIN comercial_cadastro_clientes c ON c.id = e.cliente_cadastro_id
+            LEFT JOIN LATERAL (
+                SELECT nome_completo, documento_numero
+                FROM comercial_cadastro_clientes
+                WHERE ultimo_me_event_id = e.me_event_id
+                ORDER BY updated_at DESC NULLS LAST, id DESC
+                LIMIT 1
+            ) c_me ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT nome_completo, documento_numero
+                FROM comercial_cadastro_clientes
+                WHERE regexp_replace(COALESCE(telefone_whatsapp, ''), '\\D', '', 'g') <> ''
+                  AND regexp_replace(COALESCE(telefone_whatsapp, ''), '\\D', '', 'g') = regexp_replace(COALESCE(e.telefone_cliente, e.whatsapp_cliente, ''), '\\D', '', 'g')
+                ORDER BY updated_at DESC NULLS LAST, id DESC
+                LIMIT 1
+            ) c_tel ON TRUE
+        " : '';
         $clienteSelect = $hasCliente ? "
-            COALESCE(c.nome_completo, '') AS cliente_nome,
-            COALESCE(c.documento_numero, '') AS cliente_documento,
+            COALESCE(NULLIF(c.nome_completo, ''), NULLIF(c_me.nome_completo, ''), NULLIF(c_tel.nome_completo, ''), '') AS cliente_nome,
+            COALESCE(NULLIF(c.documento_numero, ''), NULLIF(c_me.documento_numero, ''), NULLIF(c_tel.documento_numero, ''), '') AS cliente_documento,
         " : "
             '' AS cliente_nome,
             '' AS cliente_documento,
@@ -282,13 +299,13 @@ includeSidebar('Comercial');
                 <div class="pay-field">
                     <label for="pagador_nome">Nome do pagador</label>
                     <input id="pagador_nome" name="pagador_nome" value="<?= h($old['pagador_nome']) ?>" required>
-                    <span class="pay-help payer-linked-note" hidden>Preenchido pelo cliente vinculado ao evento.</span>
+                    <span class="pay-help payer-linked-note" id="payer-name-note" hidden>Preenchido pelo cliente vinculado ao evento.</span>
                 </div>
 
                 <div class="pay-field">
                     <label for="pagador_documento">CPF/CNPJ do pagador</label>
                     <input id="pagador_documento" name="pagador_documento" value="<?= h($old['pagador_documento']) ?>" required>
-                    <span class="pay-help payer-linked-note" hidden>Preenchido pelo cliente vinculado ao evento.</span>
+                    <span class="pay-help payer-linked-note" id="payer-document-note" hidden>Preenchido pelo cliente vinculado ao evento.</span>
                 </div>
 
                 <div class="pay-actions">
@@ -326,22 +343,42 @@ const eventIdInput = document.getElementById('evento_id');
 const payerName = document.getElementById('pagador_nome');
 const payerDocument = document.getElementById('pagador_documento');
 const payerLinkedNotes = Array.from(document.querySelectorAll('.payer-linked-note'));
+const payerNameNote = document.getElementById('payer-name-note');
+const payerDocumentNote = document.getElementById('payer-document-note');
 function applySelectedEvent() {
-    const selected = eventOptions.find(item => item.label === eventInput.value);
+    const selectedLabel = (eventInput.value || '').trim();
+    const selected = eventOptions.find(item => item.label === selectedLabel)
+        || eventOptions.find(item => (item.label || '').toLowerCase() === selectedLabel.toLowerCase());
     eventIdInput.value = selected ? String(selected.id) : '';
-    payerName.readOnly = !!selected;
-    payerDocument.readOnly = !!selected;
+    const hasPayerName = !!(selected?.cliente_nome || '').trim();
+    const hasPayerDocument = !!(selected?.cliente_documento || '').trim();
+    payerName.readOnly = !!selected && hasPayerName;
+    payerDocument.readOnly = !!selected && hasPayerDocument;
     payerLinkedNotes.forEach((note) => { note.hidden = !selected; });
     if (!selected) return;
-    payerName.value = selected.cliente_nome || '';
-    payerDocument.value = selected.cliente_documento || '';
+    if (hasPayerName) {
+        payerName.value = selected.cliente_nome || '';
+    }
+    if (hasPayerDocument) {
+        payerDocument.value = selected.cliente_documento || '';
+        if (payerDocumentNote) payerDocumentNote.textContent = 'Preenchido pelo cliente vinculado ao evento.';
+    } else {
+        payerDocument.value = '';
+        payerDocument.placeholder = 'CPF/CNPJ não cadastrado. Informe manualmente.';
+        if (payerDocumentNote) payerDocumentNote.textContent = 'CPF/CNPJ não cadastrado neste cliente. Informe manualmente.';
+    }
+    if (payerNameNote && hasPayerName) {
+        payerNameNote.textContent = 'Preenchido pelo cliente vinculado ao evento.';
+    }
     const descricao = document.getElementById('descricao');
     if (!descricao.value || descricao.value === 'Pagamento Smile Eventos') {
         descricao.value = 'Pagamento relacionado ao evento ' + selected.nome_evento;
     }
 }
+eventInput.addEventListener('input', applySelectedEvent);
 eventInput.addEventListener('change', applySelectedEvent);
 eventInput.addEventListener('blur', applySelectedEvent);
+applySelectedEvent();
 </script>
 
 <?php endSidebar(); ?>
