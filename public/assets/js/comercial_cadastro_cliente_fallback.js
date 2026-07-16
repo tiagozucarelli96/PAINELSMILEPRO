@@ -1,4 +1,6 @@
 (function () {
+    var hydrateAttempts = 0;
+
     function onlyDigits(value) {
         return String(value || '').replace(/\D/g, '');
     }
@@ -100,13 +102,20 @@
 
     function hydrate() {
         document.documentElement.setAttribute('data-cliente-fallback', 'started');
+        hydrateAttempts += 1;
 
         var form = document.getElementById('clienteForm');
         if (!form || form.querySelector('input[name="id"]')) return;
 
         var match = String(window.location.href || '').match(/[?&#](?:edit_id|cliente_id|id)=([0-9]+)/);
         var editId = match ? match[1] : '';
-        if (!editId || !/^\d+$/.test(editId)) return;
+        if (!editId || !/^\d+$/.test(editId)) {
+            document.documentElement.setAttribute('data-cliente-fallback-reason', 'no-id');
+            if (hydrateAttempts < 12) {
+                window.setTimeout(hydrate, 500);
+            }
+            return;
+        }
 
         var fallbackForm = document.createElement('form');
         fallbackForm.method = 'post';
