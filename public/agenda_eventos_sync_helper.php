@@ -4,6 +4,11 @@
  * Mantem a tabela local da Agenda Geral atualizada a partir de payloads da ME.
  */
 
+$comercialClienteSyncHelper = __DIR__ . '/comercial_cliente_sync_helper.php';
+if (is_file($comercialClienteSyncHelper)) {
+    require_once $comercialClienteSyncHelper;
+}
+
 if (!function_exists('agenda_eventos_sync_table_exists')) {
     function agenda_eventos_sync_table_exists(PDO $pdo, string $table): bool
     {
@@ -198,6 +203,10 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
             return ['ok' => false, 'error' => 'Payload ME sem id de evento.'];
         }
 
+        if (function_exists('comercial_cliente_sync_enrich_payload_with_me_client')) {
+            $eventoData = comercial_cliente_sync_enrich_payload_with_me_client($eventoData);
+        }
+
         $webhookEvent = strtolower(trim($webhookEvent));
         if (in_array($webhookEvent, ['event_canceled', 'event_deleted', 'deleted'], true) || agenda_eventos_sync_payload_cancelado($eventoData)) {
             $stmt = $pdo->prepare("
@@ -339,12 +348,23 @@ if (!function_exists('agenda_eventos_sync_me_payload')) {
             ]);
         }
 
+        $clienteSync = null;
+        if (function_exists('comercial_cliente_sync_upsert_from_event')) {
+            try {
+                $clienteSync = comercial_cliente_sync_upsert_from_event($pdo, $eventoData, $webhookEvent !== '' ? 'me_' . $webhookEvent : 'me_agenda_sync', false);
+            } catch (Throwable $e) {
+                error_log('[AGENDA SYNC] Falha ao sincronizar cliente comercial: ' . $e->getMessage());
+                $clienteSync = ['ok' => false, 'error' => 'Falha ao sincronizar cliente comercial.'];
+            }
+        }
+
         return [
             'ok' => true,
             'action' => 'upserted',
             'me_event_id' => $meEventId,
             'status_mapeamento' => $statusMapeamento,
             'space_visivel' => $spaceVisivel,
+            'cliente_sync' => $clienteSync,
         ];
     }
 }

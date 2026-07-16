@@ -345,6 +345,13 @@ function backfill_me_clients_sync_events_from_me(PDO $pdo, string $from, string 
     ];
 
     foreach ($fetch['events'] as $event) {
+        if (!is_array($event)) {
+            continue;
+        }
+        if (function_exists('comercial_cliente_sync_enrich_payload_with_me_client')) {
+            $event = comercial_cliente_sync_enrich_payload_with_me_client($event);
+        }
+
         $meEventId = (int)backfill_me_clients_pick($event, ['id', 'idevento', 'id_evento'], '0');
         if (!backfill_me_clients_event_has_identity($event)) {
             $summary['skipped']++;
@@ -488,6 +495,9 @@ if ($syncEvents) {
 
 foreach ($rows as $row) {
     $payload = backfill_me_clients_payload_from_row($pdo, $row, $useApi);
+    if (function_exists('comercial_cliente_sync_enrich_payload_with_me_client')) {
+        $payload = comercial_cliente_sync_enrich_payload_with_me_client($payload);
+    }
     $clientPayload = comercial_cliente_sync_payload($payload, false);
 
     if (trim((string)$clientPayload['nome_completo']) === '') {

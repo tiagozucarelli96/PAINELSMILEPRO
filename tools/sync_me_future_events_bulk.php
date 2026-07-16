@@ -438,15 +438,21 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || !preg_match('/^\d{4}-\d{2}-\d
 comercial_cliente_sync_ensure_schema($pdo);
 $fetch = sync_me_bulk_fetch_events($from, $to, $pageLimit, $maxPages);
 $mappings = sync_me_bulk_load_mappings($pdo);
-
-$eventRows = [];
-$invalidEvents = [];
-$canceledEventIds = [];
+$events = [];
 foreach ($fetch['events'] as $event) {
     if (!is_array($event)) {
         continue;
     }
+    if (function_exists('comercial_cliente_sync_enrich_payload_with_me_client')) {
+        $event = comercial_cliente_sync_enrich_payload_with_me_client($event);
+    }
+    $events[] = $event;
+}
 
+$eventRows = [];
+$invalidEvents = [];
+$canceledEventIds = [];
+foreach ($events as $event) {
     $eventId = (int)sync_me_bulk_pick($event, ['id', 'idevento', 'id_evento'], '0');
     if ($eventId > 0 && eventos_me_evento_cancelado($event)) {
         $canceledEventIds[] = $eventId;
@@ -464,13 +470,13 @@ foreach ($fetch['events'] as $event) {
     $eventRows[] = $row;
 }
 
-$clientData = sync_me_bulk_client_rows($fetch['events']);
+$clientData = sync_me_bulk_client_rows($events);
 $summary = [
     'ok' => true,
     'from' => $from,
     'to' => $to,
     'dry_run' => $dryRun,
-    'fetched' => count($fetch['events']),
+    'fetched' => count($events),
     'valid_events' => count($eventRows),
     'invalid_events' => count($invalidEvents),
     'canceled_events' => count(array_unique($canceledEventIds)),

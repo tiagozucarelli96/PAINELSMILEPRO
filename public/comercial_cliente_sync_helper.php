@@ -200,17 +200,8 @@ if (!function_exists('comercial_cliente_sync_enrich_payload_with_me_client')) {
             return $eventoData;
         }
 
-        $meClientId = (int)comercial_cliente_sync_pick($eventoData, ['idcliente', 'id_cliente', 'cliente.id', 'client_id', 'clienteId'], '0');
+        $meClientId = (int)comercial_cliente_sync_pick($eventoData, ['idcliente', 'idCliente', 'id_cliente', 'id_client', 'cliente.id', 'client_id', 'clienteId'], '0');
         if ($meClientId <= 0) {
-            return $eventoData;
-        }
-
-        $currentDocument = comercial_cliente_sync_digits(comercial_cliente_sync_pick($eventoData, [
-            'cpf', 'cpfcliente', 'cpfCliente', 'client_cpf', 'cliente.cpf',
-            'cnpj', 'cnpjcliente', 'cliente.cnpj', 'documento',
-        ]));
-        $currentEmail = comercial_cliente_sync_pick($eventoData, ['emailcliente', 'emailCliente', 'client_email', 'cliente.email', 'email']);
-        if ($currentDocument !== '' && $currentEmail !== '') {
             return $eventoData;
         }
 
@@ -316,7 +307,7 @@ if (!function_exists('comercial_cliente_sync_payload')) {
     function comercial_cliente_sync_payload(array $eventoData, bool $allowEventNameFallback = true): array
     {
         $meEventId = (int)comercial_cliente_sync_pick($eventoData, ['id', 'id_evento', 'idevento'], '0');
-        $meClienteId = (int)comercial_cliente_sync_pick($eventoData, ['idcliente', 'id_cliente', 'cliente.id', 'client_id'], '0');
+        $meClienteId = (int)comercial_cliente_sync_pick($eventoData, ['idcliente', 'idCliente', 'id_cliente', 'id_client', 'cliente.id', 'client_id', 'clienteId'], '0');
 
         $nome = comercial_cliente_sync_pick($eventoData, [
             'nomecliente',
