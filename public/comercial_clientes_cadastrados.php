@@ -82,6 +82,14 @@ function comercial_clientes_cadastrados_lista(PDO $pdo, string $search): array
             c.telefone_whatsapp,
             c.documento_tipo,
             c.documento_numero,
+            c.rg,
+            c.cep,
+            c.endereco_logradouro,
+            c.endereco_numero,
+            c.endereco_complemento,
+            c.endereco_bairro,
+            c.endereco_cidade,
+            c.endereco_estado,
             c.origem_cliente,
             c.tipo_interesse,
             c.created_at,
@@ -293,13 +301,30 @@ includeSidebar('Clientes cadastrados');
                             $tipoLabel = $tipoPessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física';
                             $editId = (int)$cliente['id'];
                             $editHref = 'index.php?page=comercial_cadastro_cliente';
+                            $clienteEditPayload = [
+                                'id' => $editId,
+                                'tipo_pessoa' => $tipoPessoa,
+                                'documento_numero' => (string)($cliente['documento_numero'] ?? ''),
+                                'nome_completo' => (string)($cliente['nome_completo'] ?? ''),
+                                'rg' => (string)($cliente['rg'] ?? ''),
+                                'telefone_whatsapp' => (string)($cliente['telefone_whatsapp'] ?? ''),
+                                'email' => (string)($cliente['email'] ?? ''),
+                                'cep' => (string)($cliente['cep'] ?? ''),
+                                'endereco_numero' => (string)($cliente['endereco_numero'] ?? ''),
+                                'endereco_complemento' => (string)($cliente['endereco_complemento'] ?? ''),
+                                'endereco_logradouro' => (string)($cliente['endereco_logradouro'] ?? ''),
+                                'endereco_bairro' => (string)($cliente['endereco_bairro'] ?? ''),
+                                'endereco_cidade' => (string)($cliente['endereco_cidade'] ?? ''),
+                                'endereco_estado' => (string)($cliente['endereco_estado'] ?? ''),
+                            ];
+                            $clienteEditPayloadJson = json_encode($clienteEditPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
                             ?>
                             <tr>
                                 <td>
                                     <form class="clientes-edit-form" method="post" action="<?= comercial_clientes_cadastrados_e($editHref) ?>">
                                         <input type="hidden" name="action" value="open_cliente_edit">
                                         <input type="hidden" name="id" value="<?= $editId ?>">
-                                        <button class="clientes-name" type="submit"><?= comercial_clientes_cadastrados_e((string)$cliente['nome_completo']) ?></button>
+                                        <button class="clientes-name" type="submit" data-cliente-edit="<?= comercial_clientes_cadastrados_e($clienteEditPayloadJson) ?>"><?= comercial_clientes_cadastrados_e((string)$cliente['nome_completo']) ?></button>
                                     </form>
                                     <br>
                                     <span class="clientes-type"><?= comercial_clientes_cadastrados_e($tipoLabel) ?></span>
@@ -322,7 +347,7 @@ includeSidebar('Clientes cadastrados');
                                     <form class="clientes-edit-form" method="post" action="<?= comercial_clientes_cadastrados_e($editHref) ?>">
                                         <input type="hidden" name="action" value="open_cliente_edit">
                                         <input type="hidden" name="id" value="<?= $editId ?>">
-                                        <button class="clientes-edit" type="submit">Editar</button>
+                                        <button class="clientes-edit" type="submit" data-cliente-edit="<?= comercial_clientes_cadastrados_e($clienteEditPayloadJson) ?>">Editar</button>
                                     </form>
                                 </td>
                             </tr>
@@ -333,3 +358,26 @@ includeSidebar('Clientes cadastrados');
         </div>
     </section>
 </div>
+
+<script>
+(function () {
+    document.addEventListener('submit', function (event) {
+        var form = event.target && event.target.closest ? event.target.closest('.clientes-edit-form') : null;
+        if (!form) return;
+        var button = form.querySelector('[data-cliente-edit]');
+        if (!button) return;
+        event.preventDefault();
+        try {
+            var cliente = JSON.parse(button.getAttribute('data-cliente-edit') || '{}');
+            window.name = JSON.stringify({
+                type: 'comercial_cliente_edit',
+                expires: Date.now() + 120000,
+                cliente: cliente
+            });
+        } catch (err) {
+            window.name = '';
+        }
+        window.location.href = form.getAttribute('action') || 'index.php?page=comercial_cadastro_cliente';
+    }, true);
+})();
+</script>

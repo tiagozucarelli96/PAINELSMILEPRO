@@ -114,6 +114,23 @@
         }
         if (form.querySelector('input[name="id"]')) return;
 
+        try {
+            var namedPayload = JSON.parse(window.name || '{}');
+            if (
+                namedPayload &&
+                namedPayload.type === 'comercial_cliente_edit' &&
+                namedPayload.cliente &&
+                namedPayload.cliente.id &&
+                Number(namedPayload.expires || 0) > Date.now()
+            ) {
+                window.name = '';
+                applyCliente(namedPayload.cliente, namedPayload.cliente.id);
+                return;
+            }
+        } catch (err) {
+            window.name = '';
+        }
+
         var match = String(window.location.href || '').match(/[?&#](?:edit_id|cliente_id|id)=([0-9]+)/);
         var editId = match ? match[1] : '';
         if (!editId) {
