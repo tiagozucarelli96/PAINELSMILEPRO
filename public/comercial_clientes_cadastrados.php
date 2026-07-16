@@ -284,7 +284,8 @@ includeSidebar('Clientes cadastrados');
                             // O id e suficiente para abrir a edicao. Manter o termo de busca
                             // no link fazia alguns proxies entregarem os parametros seguintes
                             // como "amp;id"/"amp;search", fazendo o formulario cair no modo novo.
-                            $editHref = 'comercial_cadastro_cliente.php?' . http_build_query([
+                            $editHref = 'index.php?' . http_build_query([
+                                'page' => 'comercial_cadastro_cliente',
                                 'edit_id' => (int)$cliente['id'],
                             ]);
                             ?>

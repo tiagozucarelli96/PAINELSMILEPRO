@@ -252,7 +252,7 @@ if ($clienteNome === '') {
     $clienteNome = 'Cliente não identificado';
 }
 $clienteCadastroHref = $clienteCadastroId > 0
-    ? 'comercial_cadastro_cliente.php?edit_id=' . $clienteCadastroId
+    ? 'index.php?page=comercial_cadastro_cliente&edit_id=' . $clienteCadastroId
     : 'index.php?page=comercial_clientes_cadastrados';
 $clienteEmail = trim((string)($evento['cliente_email'] ?? ''));
 $clienteTelefone = trim((string)($evento['cliente_telefone'] ?? ''));

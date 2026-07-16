@@ -1908,7 +1908,7 @@ a.event-function-card:hover {
         $clienteRg = trim((string)($eventoSelecionado['cliente_rg'] ?? ''));
         $eventoFotoUrl = trim((string)($eventoSelecionado['foto_evento_url'] ?? ''));
         $clienteCadastroHref = $clienteCadastroId > 0
-            ? 'comercial_cadastro_cliente.php?edit_id=' . $clienteCadastroId
+            ? 'index.php?page=comercial_cadastro_cliente&edit_id=' . $clienteCadastroId
             : 'index.php?page=comercial_clientes_cadastrados' . ($clienteNome !== '' ? '&search=' . urlencode($clienteNome) : '');
 
         $cards = [
