@@ -400,7 +400,13 @@ $search = trim(comercial_cadastro_cliente_request_value('search'));
 $openClienteEditId = (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'open_cliente_edit')
     ? max(0, (int)($_POST['id'] ?? 0))
     : 0;
-$clienteId = $openClienteEditId > 0 ? $openClienteEditId : comercial_cadastro_cliente_request_id();
+$routeClienteId = comercial_cadastro_cliente_request_id();
+$cookieClienteEditId = max(0, (int)($_COOKIE['comercial_cliente_edit_id'] ?? 0));
+$clienteId = $openClienteEditId > 0 ? $openClienteEditId : ($routeClienteId > 0 ? $routeClienteId : $cookieClienteEditId);
+if ($cookieClienteEditId > 0) {
+    setcookie('comercial_cliente_edit_id', '', time() - 3600, '/');
+    unset($_COOKIE['comercial_cliente_edit_id']);
+}
 $clienteAtual = comercial_cadastro_cliente_buscar($pdo, $clienteId);
 if (!$clienteAtual && $search !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     $clienteAtual = comercial_cadastro_cliente_buscar_por_search($pdo, $search);

@@ -283,7 +283,7 @@ includeSidebar('Clientes cadastrados');
                             $tipoLabel = $tipoPessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física';
                             $editId = (int)$cliente['id'];
                             $editHref = 'index.php?page=comercial_cadastro_cliente';
-                            $editOnClick = "try{sessionStorage.setItem('comercial_cliente_edit_id','{$editId}');}catch(e){}";
+                            $editOnClick = "document.cookie='comercial_cliente_edit_id={$editId}; path=/; max-age=60; SameSite=Lax'";
                             ?>
                             <tr>
                                 <td>

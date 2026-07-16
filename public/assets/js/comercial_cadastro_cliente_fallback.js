@@ -117,12 +117,8 @@
         var match = String(window.location.href || '').match(/[?&#](?:edit_id|cliente_id|id)=([0-9]+)/);
         var editId = match ? match[1] : '';
         if (!editId) {
-            try {
-                editId = sessionStorage.getItem('comercial_cliente_edit_id') || '';
-                sessionStorage.removeItem('comercial_cliente_edit_id');
-            } catch (err) {
-                editId = '';
-            }
+            var cookieMatch = String(document.cookie || '').match(/(?:^|;\s*)comercial_cliente_edit_id=([0-9]+)/);
+            editId = cookieMatch ? cookieMatch[1] : '';
         }
         if (!editId || !/^\d+$/.test(editId)) {
             document.documentElement.setAttribute('data-cliente-fallback-reason', 'no-id');

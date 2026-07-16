@@ -255,7 +255,7 @@ $clienteCadastroHref = $clienteCadastroId > 0
     ? 'index.php?page=comercial_cadastro_cliente'
     : 'index.php?page=comercial_clientes_cadastrados';
 $clienteCadastroOnClick = $clienteCadastroId > 0
-    ? "try{sessionStorage.setItem('comercial_cliente_edit_id','" . $clienteCadastroId . "');}catch(e){}"
+    ? "document.cookie='comercial_cliente_edit_id=" . $clienteCadastroId . "; path=/; max-age=60; SameSite=Lax'"
     : '';
 $clienteEmail = trim((string)($evento['cliente_email'] ?? ''));
 $clienteTelefone = trim((string)($evento['cliente_telefone'] ?? ''));

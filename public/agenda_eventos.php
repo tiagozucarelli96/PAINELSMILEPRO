@@ -1911,7 +1911,7 @@ a.event-function-card:hover {
             ? 'index.php?page=comercial_cadastro_cliente'
             : 'index.php?page=comercial_clientes_cadastrados' . ($clienteNome !== '' ? '&search=' . urlencode($clienteNome) : '');
         $clienteCadastroOnClick = $clienteCadastroId > 0
-            ? "try{sessionStorage.setItem('comercial_cliente_edit_id','" . $clienteCadastroId . "');}catch(e){}"
+            ? "document.cookie='comercial_cliente_edit_id=" . $clienteCadastroId . "; path=/; max-age=60; SameSite=Lax'"
             : '';
 
         $cards = [
