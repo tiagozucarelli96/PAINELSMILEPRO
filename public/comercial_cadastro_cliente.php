@@ -987,17 +987,27 @@ async function hydrateClienteFromUrlFallback() {
         body.set('action', 'cliente_lookup');
         body.set('id', editId);
 
-        const response = await fetch('comercial_cadastro_cliente.php', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body
+        const payload = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'comercial_cadastro_cliente.php', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState !== 4) return;
+                if (xhr.status < 200 || xhr.status >= 300) {
+                    reject(new Error('cliente_lookup_status_' + xhr.status));
+                    return;
+                }
+                try {
+                    resolve(JSON.parse(xhr.responseText));
+                } catch (parseError) {
+                    reject(parseError);
+                }
+            };
+            xhr.onerror = () => reject(new Error('cliente_lookup_network'));
+            xhr.send(body.toString());
         });
-        const payload = await response.json();
-        if (!response.ok || !payload.success || !payload.cliente) return;
+        if (!payload.success || !payload.cliente) return;
 
         const cliente = payload.cliente;
         const hidden = document.createElement('input');
