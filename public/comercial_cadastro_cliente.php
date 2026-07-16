@@ -509,8 +509,6 @@ if (!empty($_SESSION['comercial_cadastro_cliente_success'])) {
     unset($_SESSION['comercial_cadastro_cliente_success']);
 }
 
-$clientes = comercial_cadastro_cliente_recentes($pdo, $search);
-
 includeSidebar('Cadastro do cliente');
 ?>
 <!-- comercial-cadastro-cliente:v2 cliente-id=<?= (int)$clienteId ?> editing=<?= $isEditing ? '1' : '0' ?> -->
@@ -571,10 +569,7 @@ includeSidebar('Cadastro do cliente');
     border-color: #fecaca;
 }
 .cliente-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
-    gap: 1rem;
-    align-items: start;
+    max-width: 860px;
 }
 .cliente-card {
     background: #fff;
@@ -850,41 +845,6 @@ includeSidebar('Cadastro do cliente');
             </form>
         </section>
 
-        <aside class="cliente-card">
-            <div class="cliente-card-header">
-                <h2 class="cliente-card-title">Clientes recentes</h2>
-                <p class="cliente-card-subtitle">Últimos cadastros feitos no Comercial.</p>
-            </div>
-            <form method="get" class="cliente-search">
-                <input type="hidden" name="page" value="comercial_cadastro_cliente">
-                <input type="text" name="search" value="<?= comercial_cadastro_cliente_e($search) ?>" placeholder="Buscar por nome, e-mail, telefone ou documento">
-                <button class="cliente-btn secondary" type="submit">Buscar</button>
-            </form>
-            <div class="clientes-list">
-                <?php if (empty($clientes)): ?>
-                    <div class="cliente-empty">Nenhum cliente cadastrado ainda.</div>
-                <?php else: ?>
-                    <?php foreach ($clientes as $cliente): ?>
-                        <?php
-                        $clienteHref = 'index.php?page=comercial_cadastro_cliente&edit_id=' . (int)$cliente['id'];
-                        ?>
-                        <a class="cliente-list-item" href="<?= comercial_cadastro_cliente_e($clienteHref) ?>">
-                            <div class="cliente-list-name"><?= comercial_cadastro_cliente_e((string)$cliente['nome_completo']) ?></div>
-                            <div class="cliente-list-meta">
-                                <?= comercial_cadastro_cliente_e((string)$cliente['documento_tipo']) ?> <?= comercial_cadastro_cliente_e((string)$cliente['documento_numero']) ?><br>
-                                <?= comercial_cadastro_cliente_e((string)$cliente['telefone_whatsapp']) ?> · <?= comercial_cadastro_cliente_e((string)$cliente['email']) ?><br>
-                                <?php if (!empty($cliente['tipo_interesse'])): ?>
-                                    Interesse: <?= comercial_cadastro_cliente_e((string)$cliente['tipo_interesse']) ?><br>
-                                <?php endif; ?>
-                                <?php if (!empty($cliente['responsavel_nome'])): ?>
-                                    Responsável: <?= comercial_cadastro_cliente_e((string)$cliente['responsavel_nome']) ?>
-                                <?php endif; ?>
-                            </div>
-                        </a>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-        </aside>
     </div>
 </div>
 
