@@ -301,6 +301,27 @@ includeSidebar('Agenda');
             width: 100%;
         }
 
+        .fc .fc-daygrid-event {
+            border-radius: 4px;
+            font-weight: 700;
+            margin: 1px 2px;
+            padding: 1px 4px;
+        }
+
+        .fc .fc-daygrid-event .fc-event-main {
+            overflow: hidden;
+        }
+
+        .fc .fc-daygrid-event .fc-event-title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .fc .fc-daygrid-event-dot {
+            display: none;
+        }
+
         .legend {
             display: flex;
             gap: 20px;
@@ -1143,6 +1164,7 @@ includeSidebar('Agenda');
                 initialView: 'dayGridMonth',
                 locale: 'pt-br',
                 firstDay: 1, // Segunda-feira
+                eventDisplay: 'block',
                 headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',

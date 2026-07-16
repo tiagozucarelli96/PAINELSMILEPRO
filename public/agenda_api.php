@@ -162,6 +162,20 @@ try {
         return substr($value, 0, 19);
     };
 
+    $getTextColorForBackground = static function ($hexColor) {
+        $hexColor = ltrim((string)$hexColor, '#');
+        if (!preg_match('/^[0-9a-fA-F]{6}$/', $hexColor)) {
+            return '#111827';
+        }
+
+        $red = hexdec(substr($hexColor, 0, 2));
+        $green = hexdec(substr($hexColor, 2, 2));
+        $blue = hexdec(substr($hexColor, 4, 2));
+        $luma = (0.299 * $red) + (0.587 * $green) + (0.114 * $blue);
+
+        return $luma < 145 ? '#ffffff' : '#111827';
+    };
+
     $eventos_formatados = [];
     foreach ($eventos as $evento) {
         // Definir cor baseada no tipo
@@ -175,6 +189,7 @@ try {
         } else {
             $cor = $evento['espaco_cor'] ?? $evento['cor_evento'] ?? $evento['cor_agenda'] ?? '#3b96f7';
         }
+        $textColor = $getTextColorForBackground($cor);
         
         $extended_props = [
             'tipo' => $evento['tipo'] ?? 'evento',
@@ -244,6 +259,10 @@ try {
             'title' => $evento['titulo'],
             'start' => $start_formatted,
             'color' => $cor,
+            'backgroundColor' => $cor,
+            'borderColor' => $cor,
+            'textColor' => $textColor,
+            'display' => 'block',
             'extendedProps' => $extended_props,
             // Eventos do Google são read-only (não editáveis, mas podem ter checkboxes)
             'editable' => !isset($evento['tipo']) || $evento['tipo'] !== 'google'
