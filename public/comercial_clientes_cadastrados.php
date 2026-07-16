@@ -281,7 +281,7 @@ includeSidebar('Clientes cadastrados');
                             <?php
                             $tipoPessoa = (string)($cliente['tipo_pessoa'] ?? 'PF');
                             $tipoLabel = $tipoPessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física';
-                            $editHref = 'comercial_cadastro_cliente.php?edit_id=' . (int)$cliente['id'];
+                            $editHref = 'index.php?page=comercial_cadastro_cliente_' . (int)$cliente['id'];
                             ?>
                             <tr>
                                 <td>

@@ -202,6 +202,13 @@ if (!empty($_SESSION['logado']) && empty($action) && !$is_ajax_request && $googl
 }
 
 $page = $_GET['page'] ?? '';
+if (is_string($page) && preg_match('/^comercial_cadastro_cliente_(\d+)$/', $page, $clienteEditRouteMatch)) {
+  $_GET['page'] = 'comercial_cadastro_cliente';
+  $_GET['edit_id'] = $clienteEditRouteMatch[1];
+  $_REQUEST['page'] = 'comercial_cadastro_cliente';
+  $_REQUEST['edit_id'] = $clienteEditRouteMatch[1];
+  $page = 'comercial_cadastro_cliente';
+}
 if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {
     header('Location: index.php?page=dashboard');

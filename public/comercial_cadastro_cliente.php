@@ -525,7 +525,7 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') !== 'open_cliente_edit
                 $stmt->execute($params);
 
                 $_SESSION['comercial_cadastro_cliente_success'] = 'Cliente atualizado com sucesso.';
-                header('Location: comercial_cadastro_cliente.php?edit_id=' . (int)$clienteAtual['id']);
+                header('Location: index.php?page=comercial_cadastro_cliente_' . (int)$clienteAtual['id']);
                 exit;
             }
 
