@@ -98,6 +98,145 @@ if (!function_exists('comercial_cliente_sync_digits')) {
     }
 }
 
+if (!function_exists('comercial_cliente_sync_is_list')) {
+    function comercial_cliente_sync_is_list(array $value): bool
+    {
+        return $value === [] || array_keys($value) === range(0, count($value) - 1);
+    }
+}
+
+if (!function_exists('comercial_cliente_sync_data_payload')) {
+    function comercial_cliente_sync_data_payload($payload): array
+    {
+        if (!is_array($payload)) {
+            return [];
+        }
+
+        $current = $payload;
+        for ($i = 0; $i < 4; $i++) {
+            if (!isset($current['data']) || !is_array($current['data'])) {
+                break;
+            }
+
+            $data = $current['data'];
+            if ($data === []) {
+                return [];
+            }
+
+            $current = comercial_cliente_sync_is_list($data) ? ($data[0] ?? []) : $data;
+            if (!is_array($current)) {
+                return [];
+            }
+        }
+
+        if (isset($current['cliente']) && is_array($current['cliente'])) {
+            $current = $current['cliente'];
+        } elseif (isset($current['client']) && is_array($current['client'])) {
+            $current = $current['client'];
+        }
+
+        if (comercial_cliente_sync_is_list($current)) {
+            $first = $current[0] ?? [];
+            return is_array($first) ? $first : [];
+        }
+
+        return $current;
+    }
+}
+
+if (!function_exists('comercial_cliente_sync_put_value')) {
+    function comercial_cliente_sync_put_value(array &$target, string $key, string $value): void
+    {
+        $value = trim($value);
+        if ($value !== '') {
+            $target[$key] = $value;
+        }
+    }
+}
+
+if (!function_exists('comercial_cliente_sync_normalize_me_client')) {
+    function comercial_cliente_sync_normalize_me_client(array $client, int $meClientId): array
+    {
+        if ($client === []) {
+            return [];
+        }
+
+        $nome = comercial_cliente_sync_pick($client, ['nome', 'nomecliente', 'nomeCliente', 'name', 'razaosocial', 'razao_social', 'cliente.nome']);
+        $email = comercial_cliente_sync_pick($client, ['email', 'emailcliente', 'emailCliente', 'email2', 'mail', 'cliente.email']);
+        $telefone = comercial_cliente_sync_pick($client, ['celular', 'telefone', 'telefone2', 'telefonecliente', 'telefoneCliente', 'whatsapp', 'phone', 'mobile', 'cliente.telefone', 'cliente.celular']);
+        $ddi = comercial_cliente_sync_pick($client, ['ddicelular', 'dditelefone', 'ddi']);
+        if ($ddi !== '' && $telefone !== '' && strpos($telefone, $ddi) !== 0) {
+            $telefone = trim($ddi . ' ' . $telefone);
+        }
+        $cpf = comercial_cliente_sync_pick($client, ['cpf', 'cpfcliente', 'cpfCliente', 'documento', 'cliente.cpf']);
+        $cnpj = comercial_cliente_sync_pick($client, ['cnpj', 'cnpjpj', 'cnpjcliente', 'cnpjCliente', 'cliente.cnpj']);
+
+        $normalized = [
+            'idcliente' => (string)$meClientId,
+            'cliente' => array_merge($client, ['id' => $meClientId]),
+        ];
+        comercial_cliente_sync_put_value($normalized, 'nomecliente', $nome);
+        comercial_cliente_sync_put_value($normalized, 'emailcliente', $email);
+        comercial_cliente_sync_put_value($normalized, 'telefonecliente', $telefone);
+        comercial_cliente_sync_put_value($normalized, 'cpf', $cpf);
+        comercial_cliente_sync_put_value($normalized, 'cnpj', $cnpj);
+        comercial_cliente_sync_put_value($normalized, 'rg', comercial_cliente_sync_pick($client, ['rg', 'rgcliente', 'cliente.rg']));
+        comercial_cliente_sync_put_value($normalized, 'cepcliente', comercial_cliente_sync_pick($client, ['cep', 'cepcliente', 'cliente.cep']));
+        comercial_cliente_sync_put_value($normalized, 'logradourocliente', comercial_cliente_sync_pick($client, ['endereco', 'logradouro', 'rua', 'cliente.endereco', 'cliente.logradouro']));
+        comercial_cliente_sync_put_value($normalized, 'numerocliente', comercial_cliente_sync_pick($client, ['numero', 'numeroendereco', 'cliente.numero']));
+        comercial_cliente_sync_put_value($normalized, 'complementocliente', comercial_cliente_sync_pick($client, ['complemento', 'cliente.complemento']));
+        comercial_cliente_sync_put_value($normalized, 'bairrocliente', comercial_cliente_sync_pick($client, ['bairro', 'cliente.bairro']));
+        comercial_cliente_sync_put_value($normalized, 'cidadecliente', comercial_cliente_sync_pick($client, ['cidade', 'cliente.cidade']));
+        comercial_cliente_sync_put_value($normalized, 'estadocliente', comercial_cliente_sync_pick($client, ['estado', 'uf', 'cliente.uf']));
+
+        return $normalized;
+    }
+}
+
+if (!function_exists('comercial_cliente_sync_enrich_payload_with_me_client')) {
+    function comercial_cliente_sync_enrich_payload_with_me_client(array $eventoData): array
+    {
+        if (!function_exists('eventos_me_request')) {
+            return $eventoData;
+        }
+
+        $meClientId = (int)comercial_cliente_sync_pick($eventoData, ['idcliente', 'id_cliente', 'cliente.id', 'client_id', 'clienteId'], '0');
+        if ($meClientId <= 0) {
+            return $eventoData;
+        }
+
+        $currentDocument = comercial_cliente_sync_digits(comercial_cliente_sync_pick($eventoData, [
+            'cpf', 'cpfcliente', 'cpfCliente', 'client_cpf', 'cliente.cpf',
+            'cnpj', 'cnpjcliente', 'cliente.cnpj', 'documento',
+        ]));
+        $currentEmail = comercial_cliente_sync_pick($eventoData, ['emailcliente', 'emailCliente', 'client_email', 'cliente.email', 'email']);
+        if ($currentDocument !== '' && $currentEmail !== '') {
+            return $eventoData;
+        }
+
+        static $clientCache = [];
+        if (!array_key_exists($meClientId, $clientCache)) {
+            try {
+                $result = eventos_me_request('GET', '/api/v1/clients/' . $meClientId);
+                $clientData = [];
+                if (!empty($result['ok']) && is_array($result['data'] ?? null)) {
+                    $clientData = comercial_cliente_sync_data_payload($result['data']);
+                }
+                $clientCache[$meClientId] = comercial_cliente_sync_normalize_me_client($clientData, $meClientId);
+            } catch (Throwable $e) {
+                error_log('comercial_cliente_sync_enrich_payload_with_me_client: ' . $e->getMessage());
+                $clientCache[$meClientId] = [];
+            }
+        }
+
+        if (empty($clientCache[$meClientId])) {
+            return $eventoData;
+        }
+
+        return array_replace_recursive($eventoData, $clientCache[$meClientId]);
+    }
+}
+
 if (!function_exists('comercial_cliente_sync_ensure_schema')) {
     function comercial_cliente_sync_ensure_schema(PDO $pdo): void
     {
@@ -259,6 +398,7 @@ if (!function_exists('comercial_cliente_sync_upsert_from_event')) {
     {
         comercial_cliente_sync_ensure_schema($pdo);
 
+        $eventoData = comercial_cliente_sync_enrich_payload_with_me_client($eventoData);
         $payload = comercial_cliente_sync_payload($eventoData, $allowEventNameFallback);
         if ((int)$payload['me_event_id'] <= 0) {
             return ['ok' => false, 'error' => 'Evento ME sem id.'];

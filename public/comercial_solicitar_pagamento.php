@@ -91,7 +91,9 @@ $eventos = comercial_solicitar_pagamento_eventos($pdo);
 $eventOptions = [];
 foreach ($eventos as $evento) {
     $label = trim((string)$evento['nome_evento']);
+    $labelBase = $label;
     if (!empty($evento['data_evento'])) {
+        $labelBase .= ' - ' . brDateOnly((string)$evento['data_evento']);
         $label .= ' - ' . brDateOnly((string)$evento['data_evento']);
     }
     if (!empty($evento['cliente_nome'])) {
@@ -100,6 +102,7 @@ foreach ($eventos as $evento) {
     $eventOptions[] = [
         'id' => (int)$evento['id'],
         'label' => $label,
+        'label_base' => $labelBase,
         'search' => mb_strtolower($label . ' ' . ($evento['local_evento'] ?? ''), 'UTF-8'),
         'nome_evento' => (string)$evento['nome_evento'],
         'cliente_nome' => (string)$evento['cliente_nome'],
@@ -276,7 +279,7 @@ includeSidebar('Comercial');
                     <input id="evento_label" name="evento_label" type="search" list="eventos-list" value="<?= h($old['evento_label']) ?>" placeholder="Digite para pesquisar ou deixe em branco">
                     <datalist id="eventos-list">
                         <?php foreach ($eventOptions as $option): ?>
-                            <option value="<?= h($option['label']) ?>"></option>
+                            <option value="<?= h($option['label']) ?>" data-event-id="<?= h((string)$option['id']) ?>"></option>
                         <?php endforeach; ?>
                     </datalist>
                     <span class="pay-help">Ao selecionar um evento, nome e CPF/CNPJ serão usados a partir do cliente vinculado ao evento.</span>
@@ -347,10 +350,39 @@ const payerDocument = document.getElementById('pagador_documento');
 const payerLinkedNotes = Array.from(document.querySelectorAll('.payer-linked-note'));
 const payerNameNote = document.getElementById('payer-name-note');
 const payerDocumentNote = document.getElementById('payer-document-note');
-function applySelectedEvent() {
+let lastSelectedEventId = eventIdInput.value || '';
+function normalizeEventLabel(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+function findSelectedEvent() {
     const selectedLabel = (eventInput.value || '').trim();
-    const selected = eventOptions.find(item => item.label === selectedLabel)
-        || eventOptions.find(item => (item.label || '').toLowerCase() === selectedLabel.toLowerCase());
+    const selectedKey = normalizeEventLabel(selectedLabel);
+    if (!selectedKey) return null;
+    const selectedOption = Array.from(document.querySelectorAll('#eventos-list option'))
+        .find((option) => normalizeEventLabel(option.value) === selectedKey);
+    const optionId = selectedOption ? String(selectedOption.dataset.eventId || '') : '';
+    if (optionId) {
+        const byId = eventOptions.find((item) => String(item.id) === optionId);
+        if (byId) return byId;
+    }
+    return eventOptions.find((item) => normalizeEventLabel(item.label) === selectedKey)
+        || eventOptions.find((item) => normalizeEventLabel(item.label_base || '') === selectedKey)
+        || eventOptions.find((item) => {
+            const labelKey = normalizeEventLabel(item.label);
+            const baseKey = normalizeEventLabel(item.label_base || item.label);
+            return labelKey.startsWith(selectedKey) || selectedKey.startsWith(baseKey);
+        })
+        || null;
+}
+function applySelectedEvent() {
+    const selected = findSelectedEvent();
+    const selectedId = selected ? String(selected.id) : '';
+    const changedEvent = selectedId !== '' && selectedId !== lastSelectedEventId;
     eventIdInput.value = selected ? String(selected.id) : '';
     const hasPayerName = !!(selected?.cliente_nome || '').trim();
     const hasPayerDocument = !!(selected?.cliente_documento || '').trim();
@@ -358,14 +390,13 @@ function applySelectedEvent() {
     payerDocument.readOnly = !!selected && hasPayerDocument;
     payerLinkedNotes.forEach((note) => { note.hidden = !selected; });
     if (!selected) return;
-    if (hasPayerName) {
+    if (hasPayerName && (changedEvent || !(payerName.value || '').trim())) {
         payerName.value = selected.cliente_nome || '';
     }
-    if (hasPayerDocument) {
+    if (hasPayerDocument && (changedEvent || !(payerDocument.value || '').trim())) {
         payerDocument.value = selected.cliente_documento || '';
         if (payerDocumentNote) payerDocumentNote.textContent = 'Preenchido pelo cliente vinculado ao evento.';
     } else {
-        payerDocument.value = '';
         payerDocument.placeholder = 'CPF/CNPJ não cadastrado. Informe manualmente.';
         if (payerDocumentNote) payerDocumentNote.textContent = 'CPF/CNPJ não cadastrado neste cliente. Informe manualmente.';
     }
@@ -376,6 +407,7 @@ function applySelectedEvent() {
     if (!descricao.value || descricao.value === 'Pagamento Smile Eventos') {
         descricao.value = 'Pagamento relacionado ao evento ' + selected.nome_evento;
     }
+    lastSelectedEventId = selectedId;
 }
 eventInput.addEventListener('input', applySelectedEvent);
 eventInput.addEventListener('change', applySelectedEvent);

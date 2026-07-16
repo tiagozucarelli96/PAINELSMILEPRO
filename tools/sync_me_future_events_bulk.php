@@ -264,6 +264,9 @@ function sync_me_bulk_client_rows(array $events): array
         if (!is_array($event)) {
             continue;
         }
+        if (function_exists('comercial_cliente_sync_enrich_payload_with_me_client')) {
+            $event = comercial_cliente_sync_enrich_payload_with_me_client($event);
+        }
         $payload = comercial_cliente_sync_payload($event, false);
         $meClientId = (int)$payload['me_cliente_id'];
         $meEventId = (int)$payload['me_event_id'];
