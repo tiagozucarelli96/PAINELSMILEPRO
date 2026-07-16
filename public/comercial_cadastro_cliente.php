@@ -8,6 +8,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+if (empty($_GET['page']) && basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) === 'comercial_cadastro_cliente.php') {
+    $_GET['page'] = 'comercial_cadastro_cliente';
+}
+
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
