@@ -557,9 +557,20 @@ if (!empty($_SESSION['comercial_cadastro_cliente_success'])) {
     unset($_SESSION['comercial_cadastro_cliente_success']);
 }
 
+$clienteRouteDebug = [
+    'get' => array_keys($_GET),
+    'request' => array_keys($_REQUEST),
+    'qs' => (string)($_SERVER['QUERY_STRING'] ?? ''),
+    'uri' => (string)($_SERVER['REQUEST_URI'] ?? ''),
+    'script' => (string)($_SERVER['SCRIPT_NAME'] ?? ''),
+    'self' => (string)($_SERVER['PHP_SELF'] ?? ''),
+    'redirect_qs' => (string)($_SERVER['REDIRECT_QUERY_STRING'] ?? ''),
+    'original_url' => (string)($_SERVER['HTTP_X_ORIGINAL_URL'] ?? ''),
+];
+
 includeSidebar('Cadastro do cliente');
 ?>
-<!-- comercial-cadastro-cliente:v3 cliente-id=<?= (int)$clienteId ?> editing=<?= $isEditing ? '1' : '0' ?> -->
+<!-- comercial-cadastro-cliente:v4 cliente-id=<?= (int)$clienteId ?> editing=<?= $isEditing ? '1' : '0' ?> dbg=<?= comercial_cadastro_cliente_e(json_encode($clienteRouteDebug, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}') ?> -->
 
 <style>
 .cliente-page {
