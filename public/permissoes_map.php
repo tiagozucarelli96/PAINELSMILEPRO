@@ -70,6 +70,7 @@ return [
     'comercial_novo_evento' => 'perm_comercial',
     'comercial_cadastro_cliente' => 'perm_comercial',
     'comercial_clientes_cadastrados' => 'perm_comercial',
+    'comercial_clientes_me_backfill' => 'perm_comercial',
     'comercial_clientes' => 'perm_comercial',
     'comercial_pagamento' => 'perm_comercial',
     'comercial_solicitar_pagamento' => 'perm_comercial',
