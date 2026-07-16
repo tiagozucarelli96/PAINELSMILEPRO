@@ -407,9 +407,12 @@ const payerName = document.getElementById('pagador_nome');
 const payerDocument = document.getElementById('pagador_documento');
 const payerNameNote = document.getElementById('payer-name-note');
 const payerDocumentNote = document.getElementById('payer-document-note');
+const descriptionInput = document.getElementById('descricao');
 let lastSelectedEventId = eventIdInput.value || '';
 let payerNameWasFilledFromEvent = false;
 let payerDocumentWasFilledFromEvent = false;
+let descriptionWasFilledFromEvent = isAutoPaymentDescription(descriptionInput?.value || '');
+
 function normalizeEventLabel(value) {
     return String(value || '')
         .normalize('NFD')
@@ -417,6 +420,15 @@ function normalizeEventLabel(value) {
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase();
+}
+function eventPaymentDescription(selected) {
+    return 'Pagamento relacionado ao evento ' + (selected?.nome_evento || 'Evento');
+}
+function isAutoPaymentDescription(value) {
+    const description = String(value || '').trim();
+    return description === ''
+        || description === 'Pagamento Smile Eventos'
+        || /^Pagamento relacionado ao evento\s+.+/i.test(description);
 }
 function findSelectedEvent() {
     const selectedLabel = (eventInput.value || '').trim();
@@ -461,8 +473,10 @@ function applySelectedEvent() {
     if (!selected) {
         if (changedEvent && payerNameWasFilledFromEvent) payerName.value = '';
         if (changedEvent && payerDocumentWasFilledFromEvent) payerDocument.value = '';
+        if (changedEvent && descriptionWasFilledFromEvent && descriptionInput) descriptionInput.value = 'Pagamento Smile Eventos';
         payerNameWasFilledFromEvent = false;
         payerDocumentWasFilledFromEvent = false;
+        descriptionWasFilledFromEvent = isAutoPaymentDescription(descriptionInput?.value || '');
         lastSelectedEventId = '';
         return;
     }
@@ -490,12 +504,21 @@ function applySelectedEvent() {
             ? 'Preenchido pelo cliente vinculado ao evento.'
             : 'Nome não cadastrado neste cliente. Informe manualmente.';
     }
-    const descricao = document.getElementById('descricao');
-    if (!descricao.value || descricao.value === 'Pagamento Smile Eventos') {
-        descricao.value = 'Pagamento relacionado ao evento ' + selected.nome_evento;
+    if (descriptionInput) {
+        const currentDescription = descriptionInput.value || '';
+        const shouldUpdateDescription = changedEvent
+            ? (descriptionWasFilledFromEvent || isAutoPaymentDescription(currentDescription))
+            : isAutoPaymentDescription(currentDescription);
+        if (shouldUpdateDescription) {
+            descriptionInput.value = eventPaymentDescription(selected);
+            descriptionWasFilledFromEvent = true;
+        }
     }
     lastSelectedEventId = selectedId;
 }
+descriptionInput?.addEventListener('input', () => {
+    descriptionWasFilledFromEvent = isAutoPaymentDescription(descriptionInput.value);
+});
 eventInput.addEventListener('input', applySelectedEvent);
 eventInput.addEventListener('change', applySelectedEvent);
 eventInput.addEventListener('blur', applySelectedEvent);
