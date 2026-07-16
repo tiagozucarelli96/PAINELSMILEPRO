@@ -252,8 +252,11 @@ if ($clienteNome === '') {
     $clienteNome = 'Cliente não identificado';
 }
 $clienteCadastroHref = $clienteCadastroId > 0
-    ? 'index.php?page=comercial_cadastro_cliente_' . $clienteCadastroId
+    ? 'index.php?page=comercial_cadastro_cliente'
     : 'index.php?page=comercial_clientes_cadastrados';
+$clienteCadastroOnClick = $clienteCadastroId > 0
+    ? "try{sessionStorage.setItem('comercial_cliente_edit_id','" . $clienteCadastroId . "');}catch(e){}"
+    : '';
 $clienteEmail = trim((string)($evento['cliente_email'] ?? ''));
 $clienteTelefone = trim((string)($evento['cliente_telefone'] ?? ''));
 $clienteDocumentoTipo = trim((string)($evento['cliente_documento_tipo'] ?? ''));
@@ -350,7 +353,7 @@ label{font-weight:800;color:#475569;font-size:.86rem}input,select,textarea{width
 
             <div class="finance-info-block finance-info-block--client">
                 <span class="finance-info-label">ℹ️ Dados do Cliente</span>
-                <div>👤 <a class="finance-client-link" href="<?= h($clienteCadastroHref) ?>"><?= h($clienteNome) ?></a></div>
+                <div>👤 <a class="finance-client-link" href="<?= h($clienteCadastroHref) ?>" <?= $clienteCadastroOnClick !== '' ? 'onclick="' . h($clienteCadastroOnClick) . '"' : '' ?>><?= h($clienteNome) ?></a></div>
                 <?php if ($clienteEmail !== ''): ?><div>✉️ <?= h($clienteEmail) ?></div><?php endif; ?>
                 <?php if ($clienteTelefone !== ''): ?><div>☎ <?= h($clienteTelefone) ?></div><?php endif; ?>
                 <?php if ($clienteDocumentoNumero !== ''): ?><div><?= h($clienteDocumentoTipo !== '' ? $clienteDocumentoTipo : 'Documento') ?>: <?= h($clienteDocumentoNumero) ?></div><?php endif; ?>

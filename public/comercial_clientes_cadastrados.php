@@ -281,11 +281,13 @@ includeSidebar('Clientes cadastrados');
                             <?php
                             $tipoPessoa = (string)($cliente['tipo_pessoa'] ?? 'PF');
                             $tipoLabel = $tipoPessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física';
-                            $editHref = 'index.php?page=comercial_cadastro_cliente_' . (int)$cliente['id'];
+                            $editId = (int)$cliente['id'];
+                            $editHref = 'index.php?page=comercial_cadastro_cliente';
+                            $editOnClick = "try{sessionStorage.setItem('comercial_cliente_edit_id','{$editId}');}catch(e){}";
                             ?>
                             <tr>
                                 <td>
-                                    <a class="clientes-name" href="<?= comercial_clientes_cadastrados_e($editHref) ?>">
+                                    <a class="clientes-name" href="<?= comercial_clientes_cadastrados_e($editHref) ?>" onclick="<?= comercial_clientes_cadastrados_e($editOnClick) ?>">
                                         <?= comercial_clientes_cadastrados_e((string)$cliente['nome_completo']) ?>
                                     </a>
                                     <br>
@@ -306,7 +308,7 @@ includeSidebar('Clientes cadastrados');
                                     <?= comercial_clientes_cadastrados_e((string)($cliente['tipo_interesse'] ?? '')) ?>
                                 </td>
                                 <td>
-                                    <a class="clientes-edit" href="<?= comercial_clientes_cadastrados_e($editHref) ?>">Editar</a>
+                                    <a class="clientes-edit" href="<?= comercial_clientes_cadastrados_e($editHref) ?>" onclick="<?= comercial_clientes_cadastrados_e($editOnClick) ?>">Editar</a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

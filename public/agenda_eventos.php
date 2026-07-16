@@ -1908,8 +1908,11 @@ a.event-function-card:hover {
         $clienteRg = trim((string)($eventoSelecionado['cliente_rg'] ?? ''));
         $eventoFotoUrl = trim((string)($eventoSelecionado['foto_evento_url'] ?? ''));
         $clienteCadastroHref = $clienteCadastroId > 0
-            ? 'index.php?page=comercial_cadastro_cliente_' . $clienteCadastroId
+            ? 'index.php?page=comercial_cadastro_cliente'
             : 'index.php?page=comercial_clientes_cadastrados' . ($clienteNome !== '' ? '&search=' . urlencode($clienteNome) : '');
+        $clienteCadastroOnClick = $clienteCadastroId > 0
+            ? "try{sessionStorage.setItem('comercial_cliente_edit_id','" . $clienteCadastroId . "');}catch(e){}"
+            : '';
 
         $cards = [
             ['icon' => '☑️', 'title' => 'Checklist', 'pill' => '10% / 90%'],
@@ -1970,7 +1973,7 @@ a.event-function-card:hover {
                 <div class="event-info-block">
                     <span class="event-info-label">ℹ️ Dados do Cliente</span>
                     <div>
-                        👤 <a class="event-client-link" href="<?= h($clienteCadastroHref) ?>"><?= h($clienteNome) ?></a>
+                        👤 <a class="event-client-link" href="<?= h($clienteCadastroHref) ?>" <?= $clienteCadastroOnClick !== '' ? 'onclick="' . h($clienteCadastroOnClick) . '"' : '' ?>><?= h($clienteNome) ?></a>
                     </div>
                     <?php if ($clienteEmail !== ''): ?>
                         <div>✉️ <?= h($clienteEmail) ?></div>

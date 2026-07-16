@@ -116,6 +116,14 @@
 
         var match = String(window.location.href || '').match(/[?&#](?:edit_id|cliente_id|id)=([0-9]+)/);
         var editId = match ? match[1] : '';
+        if (!editId) {
+            try {
+                editId = sessionStorage.getItem('comercial_cliente_edit_id') || '';
+                sessionStorage.removeItem('comercial_cliente_edit_id');
+            } catch (err) {
+                editId = '';
+            }
+        }
         if (!editId || !/^\d+$/.test(editId)) {
             document.documentElement.setAttribute('data-cliente-fallback-reason', 'no-id');
             if (hydrateAttempts < 12) {
