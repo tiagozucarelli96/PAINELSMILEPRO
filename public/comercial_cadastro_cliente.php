@@ -1097,3 +1097,4 @@ if (document.readyState === 'loading') {
     initClienteForm();
 }
 </script>
+<script src="assets/js/comercial_cadastro_cliente_fallback.js?v=<?= (int)@filemtime(__DIR__ . '/assets/js/comercial_cadastro_cliente_fallback.js') ?>"></script>
