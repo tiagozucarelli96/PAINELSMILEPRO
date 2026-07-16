@@ -114,6 +114,24 @@ final class PixGoHelper
         return hash_equals($expected, $signature);
     }
 
+    public static function normalizeTimestampForDatabase(?string $value): string
+    {
+        $value = trim((string)$value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i', $value)) {
+            return $value;
+        }
+
+        try {
+            return (new DateTimeImmutable($value, new DateTimeZone('America/Sao_Paulo')))->format(DateTimeInterface::ATOM);
+        } catch (Throwable $e) {
+            return $value;
+        }
+    }
+
     private function assertConfigured(): void
     {
         if (!$this->enabled) {

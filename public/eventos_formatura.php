@@ -863,6 +863,7 @@ function eventos_formatura_criar_pix_pixgo(PDO $pdo, int $eventoId, array $event
             throw new RuntimeException('A PixGo não retornou o identificador da cobrança.');
         }
         $paymentUrl = eventos_financeiro_pixgo_payment_url($paymentId);
+        $expiresAt = PixGoHelper::normalizeTimestampForDatabase((string)($payment['expires_at'] ?? ''));
         $stmt = $pdo->prepare("
             UPDATE eventos_formatura_financeiro
             SET pixgo_payment_id = :payment_id,
@@ -881,7 +882,7 @@ function eventos_formatura_criar_pix_pixgo(PDO $pdo, int $eventoId, array $event
             ':payment_url' => $paymentUrl,
             ':qr_code' => $payment['qr_code'] ?? null,
             ':qr_image_url' => $payment['qr_image_url'] ?? null,
-            ':expires_at' => $payment['expires_at'] ?? '',
+            ':expires_at' => $expiresAt,
             ':idempotency_key' => $idempotencyKey,
             ':payload' => json_encode($payment, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ':status' => eventos_financeiro_status_from_pixgo((string)($payment['status'] ?? 'pending')),

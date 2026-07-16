@@ -79,6 +79,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
             }
 
             $payloadJson = json_encode($payment, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $expiresAt = PixGoHelper::normalizeTimestampForDatabase((string)($payment['expires_at'] ?? ''));
             $pdo->beginTransaction();
             $stmt = $pdo->prepare("
                 INSERT INTO comercial_pagamento_pixgo_tentativas
@@ -101,7 +102,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                 ':status' => eventos_financeiro_status_from_pixgo((string)($payment['status'] ?? 'pending')),
                 ':qr_code' => $payment['qr_code'] ?? null,
                 ':qr_image_url' => $payment['qr_image_url'] ?? null,
-                ':expires_at' => $payment['expires_at'] ?? '',
+                ':expires_at' => $expiresAt,
                 ':payload' => $payloadJson,
             ]);
             $stmt = $pdo->prepare("
@@ -122,7 +123,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                 ':payment_id' => $paymentId,
                 ':qr_code' => $payment['qr_code'] ?? null,
                 ':qr_image_url' => $payment['qr_image_url'] ?? null,
-                ':expires_at' => $payment['expires_at'] ?? '',
+                ':expires_at' => $expiresAt,
                 ':idempotency_key' => $idempotencyKey,
                 ':payload' => $payloadJson,
                 ':id' => (int)$locked['id'],
