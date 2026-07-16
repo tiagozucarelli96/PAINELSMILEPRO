@@ -284,9 +284,11 @@ function comercial_cadastro_cliente_request_value(string $key, string $default =
     if (isset($_POST[$key]) && is_scalar($_POST[$key])) {
         return (string)$_POST[$key];
     }
-    foreach ($candidateKeys as $candidateKey) {
-        if (isset($_GET[$candidateKey]) && is_scalar($_GET[$candidateKey])) {
-            return (string)$_GET[$candidateKey];
+    foreach ([$_GET, $_REQUEST] as $requestSource) {
+        foreach ($candidateKeys as $candidateKey) {
+            if (isset($requestSource[$candidateKey]) && is_scalar($requestSource[$candidateKey])) {
+                return (string)$requestSource[$candidateKey];
+            }
         }
     }
     foreach ($candidateKeys as $candidateKey) {

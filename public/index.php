@@ -70,6 +70,7 @@ if (isset($_GET['ping'])) {
   header('Content-Type: text/plain; charset=utf-8');
   echo "PONG\nPHP ".PHP_VERSION."\n";
   echo "BUILD catalog-modal-direct-route-20260627\n";
+  echo "ROUTE customer-edit-v3\n";
   exit;
 }
 if (isset($_GET['diag'])) {
@@ -704,6 +705,28 @@ if ($path && is_file($path)) {
   $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] = $_GET;
   $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] = (string)($_SERVER['QUERY_STRING'] ?? '');
   $GLOBALS['PAINEL_CURRENT_ROUTE_URI'] = (string)($_SERVER['REQUEST_URI'] ?? '');
+  if ($page === 'comercial_cadastro_cliente') {
+    $routeQuery = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
+    $querySources = [
+      (string)($_SERVER['QUERY_STRING'] ?? ''),
+      $routeQuery,
+      (string)($GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] ?? ''),
+    ];
+    foreach ($querySources as $querySource) {
+      if ($querySource === '') {
+        continue;
+      }
+      parse_str(str_replace('&amp;', '&', html_entity_decode($querySource, ENT_QUOTES, 'UTF-8')), $routeQueryParams);
+      foreach (['edit_id', 'cliente_id', 'id'] as $routeParamName) {
+        if (!empty($routeQueryParams[$routeParamName]) && is_scalar($routeQueryParams[$routeParamName])) {
+          $_GET[$routeParamName] = (string)$routeQueryParams[$routeParamName];
+          break 2;
+        }
+      }
+    }
+    $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY'] = $_GET;
+    $GLOBALS['PAINEL_CURRENT_ROUTE_QUERY_STRING'] = http_build_query($_GET);
+  }
   if ($page === 'financeiro_analise') {
     $routeQuery = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
     if ($routeQuery !== '') {
