@@ -982,13 +982,13 @@ function hydrateClienteFromUrlFallback() {
     const form = document.getElementById('clienteForm');
     if (!form || form.querySelector('input[name="id"]')) return;
 
-    const match = String(window.location.href || '').match(/[?&](?:edit_id|cliente_id|id)=([0-9]+)/);
+    const match = String(window.location.href || '').match(/[?&#](?:edit_id|cliente_id|id)=([0-9]+)/);
     const editId = match ? match[1] : '';
     if (!editId || !/^\d+$/.test(editId)) return;
     if (typeof XMLHttpRequest === 'undefined') return;
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', 'index.php?page=comercial_cadastro_cliente', true);
+    xhr.open('POST', 'comercial_cadastro_cliente.php', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
     xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
     xhr.onreadystatechange = function () {
