@@ -347,6 +347,50 @@ function comercial_cadastro_cliente_request_id(): int
 
 comercial_cadastro_cliente_ensure_schema($pdo);
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'cliente_lookup') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $clienteLookupId = max(0, (int)($_POST['id'] ?? 0));
+    $clienteLookup = comercial_cadastro_cliente_buscar($pdo, $clienteLookupId);
+
+    if (!$clienteLookup) {
+        http_response_code(404);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Cliente não encontrado.',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $allowedFields = [
+        'id',
+        'tipo_pessoa',
+        'documento_numero',
+        'nome_completo',
+        'rg',
+        'telefone_whatsapp',
+        'email',
+        'cep',
+        'endereco_numero',
+        'endereco_complemento',
+        'endereco_logradouro',
+        'endereco_bairro',
+        'endereco_cidade',
+        'endereco_estado',
+    ];
+    $clientePayload = [];
+    foreach ($allowedFields as $field) {
+        $clientePayload[$field] = (string)($clienteLookup[$field] ?? '');
+    }
+    $clientePayload['id'] = (int)$clienteLookup['id'];
+
+    echo json_encode([
+        'success' => true,
+        'cliente' => $clientePayload,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $search = trim(comercial_cadastro_cliente_request_value('search'));
 $clienteId = comercial_cadastro_cliente_request_id();
@@ -511,7 +555,7 @@ if (!empty($_SESSION['comercial_cadastro_cliente_success'])) {
 
 includeSidebar('Cadastro do cliente');
 ?>
-<!-- comercial-cadastro-cliente:v2 cliente-id=<?= (int)$clienteId ?> editing=<?= $isEditing ? '1' : '0' ?> -->
+<!-- comercial-cadastro-cliente:v3 cliente-id=<?= (int)$clienteId ?> editing=<?= $isEditing ? '1' : '0' ?> -->
 
 <style>
 .cliente-page {
@@ -930,6 +974,79 @@ async function buscarCep(cepDigits) {
     }
 }
 
+async function hydrateClienteFromUrlFallback() {
+    const form = document.getElementById('clienteForm');
+    if (!form || form.querySelector('input[name="id"]')) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get('edit_id') || params.get('cliente_id') || params.get('id');
+    if (!editId || !/^\d+$/.test(editId)) return;
+
+    try {
+        const body = new URLSearchParams();
+        body.set('action', 'cliente_lookup');
+        body.set('id', editId);
+
+        const response = await fetch('comercial_cadastro_cliente.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success || !payload.cliente) return;
+
+        const cliente = payload.cliente;
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'id';
+        hidden.value = cliente.id || editId;
+        form.prepend(hidden);
+
+        const setValue = (id, value) => {
+            const field = document.getElementById(id);
+            if (field) field.value = value || '';
+        };
+
+        setValue('tipo_pessoa', cliente.tipo_pessoa || 'PF');
+        setValue('documento_numero', cliente.documento_numero);
+        setValue('nome_completo', cliente.nome_completo);
+        setValue('rg', cliente.rg);
+        setValue('telefone_whatsapp', cliente.telefone_whatsapp);
+        setValue('email', cliente.email);
+        setValue('cep', cliente.cep);
+        setValue('endereco_numero', cliente.endereco_numero);
+        setValue('endereco_complemento', cliente.endereco_complemento);
+        setValue('endereco_logradouro', cliente.endereco_logradouro);
+        setValue('endereco_bairro', cliente.endereco_bairro);
+        setValue('endereco_cidade', cliente.endereco_cidade);
+        setValue('endereco_estado', cliente.endereco_estado);
+
+        const pageTitle = document.querySelector('.cliente-title');
+        const cardTitle = document.querySelector('.cliente-card-title');
+        const cardSubtitle = document.querySelector('.cliente-card-subtitle');
+        const cancelLink = document.querySelector('.cliente-actions .cliente-btn.secondary');
+        const submitButton = document.querySelector('.cliente-actions .cliente-btn.primary');
+
+        if (pageTitle) pageTitle.textContent = 'Editar cliente';
+        if (cardTitle) cardTitle.textContent = 'Editar cadastro';
+        if (cardSubtitle) cardSubtitle.textContent = 'Altere os dados necessários e salve o cadastro.';
+        if (cancelLink) cancelLink.href = 'index.php?page=comercial_clientes_cadastrados';
+        if (submitButton) submitButton.textContent = 'Salvar alterações';
+
+        syncDocumentoMask();
+        const phone = document.getElementById('telefone_whatsapp');
+        const cep = document.getElementById('cep');
+        if (phone) phone.value = formatPhone(phone.value);
+        if (cep) cep.value = formatCep(cep.value);
+    } catch (err) {
+        // Mantem o formulário utilizável mesmo se a busca de contingência falhar.
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const tipo = document.getElementById('tipo_pessoa');
     const doc = document.getElementById('documento_numero');
@@ -959,5 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         cep.value = formatCep(cep.value);
     }
+
+    hydrateClienteFromUrlFallback();
 });
 </script>
