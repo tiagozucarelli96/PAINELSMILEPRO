@@ -397,7 +397,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $search = trim(comercial_cadastro_cliente_request_value('search'));
-$clienteId = comercial_cadastro_cliente_request_id();
+$openClienteEditId = (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'open_cliente_edit')
+    ? max(0, (int)($_POST['id'] ?? 0))
+    : 0;
+$clienteId = $openClienteEditId > 0 ? $openClienteEditId : comercial_cadastro_cliente_request_id();
 $clienteAtual = comercial_cadastro_cliente_buscar($pdo, $clienteId);
 if (!$clienteAtual && $search !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     $clienteAtual = comercial_cadastro_cliente_buscar_por_search($pdo, $search);
@@ -414,7 +417,7 @@ if ($clienteId > 0 && !$isEditing && $_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $requestMethod = (string)($_SERVER['REQUEST_METHOD'] ?? 'GET');
-if ($requestMethod === 'POST') {
+if ($requestMethod === 'POST' && ($_POST['action'] ?? '') !== 'open_cliente_edit') {
     $tipoPessoa = strtoupper(trim((string)($_POST['tipo_pessoa'] ?? 'PF')));
     $tipoPessoa = in_array($tipoPessoa, ['PF', 'PJ'], true) ? $tipoPessoa : 'PF';
     $documentoTipo = $tipoPessoa === 'PJ' ? 'CNPJ' : 'CPF';
