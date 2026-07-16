@@ -98,6 +98,7 @@
         if (phone) phone.value = formatPhone(phone.value);
         if (cep) cep.value = formatCep(cep.value);
         document.documentElement.setAttribute('data-cliente-fallback', 'applied');
+        document.documentElement.removeAttribute('data-cliente-fallback-reason');
     }
 
     function hydrate() {
