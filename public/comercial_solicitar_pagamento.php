@@ -154,21 +154,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         }
     }
     if ($eventoSelecionado) {
-        $old['pagador_nome'] = trim((string)$eventoSelecionado['cliente_nome']);
-        $old['pagador_documento'] = trim((string)$eventoSelecionado['cliente_documento']);
+        $clienteNomeEvento = trim((string)$eventoSelecionado['cliente_nome']);
+        $clienteDocumentoEvento = trim((string)$eventoSelecionado['cliente_documento']);
+        if ($old['pagador_nome'] === '' && $clienteNomeEvento !== '') {
+            $old['pagador_nome'] = $clienteNomeEvento;
+        }
+        if (preg_replace('/\D+/', '', $old['pagador_documento']) === '' && $clienteDocumentoEvento !== '') {
+            $old['pagador_documento'] = $clienteDocumentoEvento;
+        }
     }
 
     $documento = preg_replace('/\D+/', '', $old['pagador_documento']);
     if (!eventos_financeiro_documento_valido($documento)) {
-        $errors[] = $eventoSelecionado
-            ? 'O cliente vinculado ao evento não possui CPF/CNPJ válido. Atualize o cadastro do cliente antes de gerar o link.'
-            : 'Informe um CPF/CNPJ válido do pagador. A PixGo exige esse dado para gerar o QR Code.';
+        $errors[] = 'Informe um CPF/CNPJ válido do pagador. A PixGo exige esse dado para gerar o QR Code.';
     }
 
     if (mb_strlen($old['pagador_nome'], 'UTF-8') < 2) {
-        $errors[] = $eventoSelecionado
-            ? 'O cliente vinculado ao evento não possui nome válido. Atualize o cadastro do cliente antes de gerar o link.'
-            : 'Informe o nome do pagador.';
+        $errors[] = 'Informe o nome do pagador.';
     }
 
     if (!$errors) {
