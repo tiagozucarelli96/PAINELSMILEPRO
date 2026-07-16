@@ -25,6 +25,7 @@ if (!$solicitacao) {
 
 $error = '';
 $notice = '';
+$payerDocumentInput = trim((string)($_POST['pagador_documento_conta'] ?? ''));
 
 function comercial_public_payment_pending(array $row): bool
 {
@@ -50,6 +51,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
             $pdo->commit();
             $notice = 'Já existe um Pix válido para esta solicitação.';
         } else {
+            $payerDocument = preg_replace('/\D+/', '', $payerDocumentInput);
+            if (!eventos_financeiro_documento_valido($payerDocument)) {
+                throw new RuntimeException('Informe um CPF/CNPJ válido da conta que fará o Pix.');
+            }
+
             $stmt = $pdo->prepare("UPDATE comercial_pagamento_solicitacoes SET status = 'gerando_pix', ultimo_erro = NULL, updated_at = NOW() WHERE id = :id");
             $stmt->execute([':id' => (int)$locked['id']]);
             $pdo->commit();
@@ -62,13 +68,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
             $idempotencyKey = 'smile-comercial-' . (int)$locked['id'] . '-' . bin2hex(random_bytes(8));
             $descricao = trim((string)$locked['descricao']);
             $eventoNome = trim((string)($locked['evento_nome'] ?? ''));
+            $payerName = trim((string)($locked['pagador_nome'] ?? ''));
+            if ($payerName === '') {
+                $payerName = 'Cliente Smile Eventos';
+            }
             $pixgo = new PixGoHelper();
             $payment = $pixgo->createPayment([
                 'amount' => (float)$calculo['total'],
                 'description' => mb_substr($descricao . ($eventoNome !== '' ? ' - ' . $eventoNome : ''), 0, 200, 'UTF-8'),
                 'external_id' => 'comercial_pagto:' . (int)$locked['id'],
-                'receiver_name' => (string)$locked['pagador_nome'],
-                'receiver_cpf' => (string)$locked['pagador_documento'],
+                'receiver_name' => $payerName,
+                'receiver_cpf' => $payerDocument,
                 'receiver_email' => (string)($locked['pagador_email'] ?? ''),
                 'receiver_phone' => (string)($locked['pagador_telefone'] ?? ''),
                 'idempotency_key' => $idempotencyKey,
@@ -108,6 +118,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
             $stmt = $pdo->prepare("
                 UPDATE comercial_pagamento_solicitacoes
                 SET status = :status,
+                    pagador_documento = :pagador_documento,
                     pixgo_payment_id = :payment_id,
                     pixgo_qr_code = :qr_code,
                     pixgo_qr_image_url = :qr_image_url,
@@ -120,6 +131,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
             ");
             $stmt->execute([
                 ':status' => eventos_financeiro_status_from_pixgo((string)($payment['status'] ?? 'pending')),
+                ':pagador_documento' => $payerDocument,
                 ':payment_id' => $paymentId,
                 ':qr_code' => $payment['qr_code'] ?? null,
                 ':qr_image_url' => $payment['qr_image_url'] ?? null,
@@ -280,6 +292,10 @@ $canGenerate = !in_array($status, ['pago', 'gerando_pix'], true);
             background: #fff;
         }
         textarea { width: 100%; min-height: 96px; resize: none; padding: 12px; border: 1px solid #cbd5e1; border-radius: 12px; font: 12px/1.4 ui-monospace, monospace; background: #f8fafc; }
+        .payer-document-form { display: grid; gap: 12px; margin-top: 16px; }
+        .payer-document-form label { font-weight: 900; color: #334155; }
+        .payer-document-form input { width: 100%; border: 1px solid #cbd5e1; border-radius: 12px; padding: 13px 14px; font: inherit; background: #fff; }
+        .payer-warning { border: 1px solid #fed7aa; border-radius: 12px; padding: 12px 14px; background: #fff7ed; color: #9a3412; line-height: 1.45; font-size: .92rem; }
         .copy { margin-top: 10px; background: linear-gradient(135deg, var(--smile-blue), var(--smile-blue-soft)); box-shadow: 0 12px 28px rgba(37, 99, 235, .22); }
         .footer-note { margin: 18px 0 0; text-align: center; color: #94a3b8; font-size: .82rem; }
         @media (max-width: 560px) {
@@ -328,8 +344,21 @@ $canGenerate = !in_array($status, ['pago', 'gerando_pix'], true);
         <button class="copy" type="button" id="copyPix">Copiar código PIX</button>
         <?php if ($expiresAt !== ''): ?><p class="muted">Válido até <?= h(date('d/m/Y H:i', strtotime($expiresAt))) ?>. Esta página atualiza automaticamente.</p><?php endif; ?>
     <?php elseif ($canGenerate): ?>
-        <form method="post">
+        <form method="post" class="payer-document-form">
             <input type="hidden" name="action" value="gerar_pix">
+            <label for="payerDocument">CPF/CNPJ da conta pagadora</label>
+            <input
+                id="payerDocument"
+                name="pagador_documento_conta"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="Digite somente números"
+                value="<?= h($payerDocumentInput) ?>"
+                required
+            >
+            <div class="payer-warning">
+                Digite o CPF/CNPJ da conta que fará o pagamento. Se o Pix for pago por uma conta de outro CPF/CNPJ, ele poderá ser rejeitado e extornado pela PixGo.
+            </div>
             <button type="submit" id="generateBtn"><?= $status === 'vencido' ? 'Gerar novo Pix' : 'Gerar Pix' ?></button>
         </form>
     <?php endif; ?>

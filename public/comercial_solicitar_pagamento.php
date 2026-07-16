@@ -171,7 +171,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         'valor' => trim((string)($_POST['valor'] ?? '')),
         'vencimento' => trim((string)($_POST['vencimento'] ?? '')),
         'pagador_nome' => trim((string)($_POST['pagador_nome'] ?? '')),
-        'pagador_documento' => trim((string)($_POST['pagador_documento'] ?? '')),
+        'pagador_documento' => '',
     ]);
 
     if (!hash_equals($csrf, (string)($_POST['csrf'] ?? ''))) {
@@ -211,23 +211,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     }
     if ($eventoSelecionado) {
         $clienteNomeEvento = trim((string)$eventoSelecionado['cliente_nome']);
-        $clienteDocumentoEvento = trim((string)$eventoSelecionado['cliente_documento']);
         if ($old['pagador_nome'] === '' && $clienteNomeEvento !== '') {
             $old['pagador_nome'] = $clienteNomeEvento;
         }
-        if (preg_replace('/\D+/', '', $old['pagador_documento']) === '' && $clienteDocumentoEvento !== '') {
-            $old['pagador_documento'] = $clienteDocumentoEvento;
-        }
     }
-
-    $documento = preg_replace('/\D+/', '', $old['pagador_documento']);
-    if (!eventos_financeiro_documento_valido($documento)) {
-        $errors[] = 'Informe um CPF/CNPJ válido do pagador. A PixGo exige esse dado para gerar o QR Code.';
-    }
-
-    if (mb_strlen($old['pagador_nome'], 'UTF-8') < 2) {
-        $errors[] = 'Informe o nome do pagador.';
-    }
+    $pagadorNome = trim($old['pagador_nome']) !== '' ? trim($old['pagador_nome']) : 'Cliente Smile Eventos';
 
     if (!$errors) {
         $token = bin2hex(random_bytes(32));
@@ -247,8 +235,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             ':descricao' => $old['descricao'] !== '' ? $old['descricao'] : 'Pagamento Smile Eventos',
             ':valor_original' => $valor,
             ':vencimento' => $old['vencimento'],
-            ':pagador_nome' => $old['pagador_nome'],
-            ':pagador_documento' => $documento,
+            ':pagador_nome' => $pagadorNome,
+            ':pagador_documento' => '',
             ':created_by' => !empty($_SESSION['usuario_id']) ? (int)$_SESSION['usuario_id'] : null,
         ]);
         $created = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -287,6 +275,7 @@ includeSidebar('Comercial');
 .pay-field input, .pay-field textarea { border: 1px solid #cbd5e1; border-radius: 8px; padding: .78rem .85rem; font: inherit; }
 .pay-field textarea { min-height: 82px; resize: vertical; }
 .pay-help { color: #64748b; font-size: .82rem; line-height: 1.45; }
+.pay-info { grid-column: 1 / -1; border: 1px solid #bfdbfe; border-radius: 10px; padding: .85rem 1rem; background: #eff6ff; color: #1e3a8a; font-size: .9rem; line-height: 1.45; }
 .pay-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
 .pay-btn { border: 0; border-radius: 8px; padding: .85rem 1.2rem; font-weight: 800; cursor: pointer; background: #2563eb; color: #fff; }
 .pay-link-box { background: #f8fafc; border: 1px solid #dbeafe; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
@@ -340,7 +329,7 @@ includeSidebar('Comercial');
                             ></option>
                         <?php endforeach; ?>
                     </datalist>
-                    <span class="pay-help">Ao selecionar um evento, nome e CPF/CNPJ serão usados a partir do cliente vinculado ao evento.</span>
+                    <span class="pay-help">Ao selecionar um evento, o nome do cliente será usado apenas para identificação interna.</span>
                 </div>
 
                 <div class="pay-field span-2">
@@ -359,16 +348,11 @@ includeSidebar('Comercial');
                     <span class="pay-help">Após o vencimento: 2% de multa + 1% ao mês proporcional por dia.</span>
                 </div>
 
-                <div class="pay-field">
-                    <label for="pagador_nome">Nome do pagador</label>
-                    <input id="pagador_nome" name="pagador_nome" value="<?= h($old['pagador_nome']) ?>" required>
-                    <span class="pay-help payer-linked-note" id="payer-name-note" hidden>Preenchido pelo cliente vinculado ao evento.</span>
-                </div>
+                <input type="hidden" id="pagador_nome" name="pagador_nome" value="<?= h($old['pagador_nome']) ?>">
+                <input type="hidden" id="pagador_documento" name="pagador_documento" value="">
 
-                <div class="pay-field">
-                    <label for="pagador_documento">CPF/CNPJ do pagador</label>
-                    <input id="pagador_documento" name="pagador_documento" value="<?= h($old['pagador_documento']) ?>" required>
-                    <span class="pay-help payer-linked-note" id="payer-document-note" hidden>Preenchido pelo cliente vinculado ao evento.</span>
+                <div class="pay-info">
+                    O CPF/CNPJ da conta pagadora será solicitado ao cliente no link de pagamento. Esse documento precisa ser da conta que fará o Pix.
                 </div>
 
                 <div class="pay-actions">
@@ -467,8 +451,8 @@ function applySelectedEvent() {
     const hasPayerDocument = !!(selected?.cliente_documento || '').trim();
     payerName.readOnly = !!selected && hasPayerName;
     payerDocument.readOnly = !!selected && hasPayerDocument;
-    payerNameNote.hidden = !selected;
-    payerDocumentNote.hidden = !selected;
+    if (payerNameNote) payerNameNote.hidden = !selected;
+    if (payerDocumentNote) payerDocumentNote.hidden = !selected;
 
     if (!selected) {
         if (changedEvent && payerNameWasFilledFromEvent) payerName.value = '';
