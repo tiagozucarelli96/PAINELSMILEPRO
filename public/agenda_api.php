@@ -176,18 +176,39 @@ try {
         return $luma < 145 ? '#ffffff' : '#111827';
     };
 
+    $normalizeHexColor = static function ($hexColor) {
+        $hexColor = strtolower(trim((string)$hexColor));
+        return preg_match('/^#[0-9a-f]{6}$/', $hexColor) ? $hexColor : null;
+    };
+
     $eventos_formatados = [];
     foreach ($eventos as $evento) {
+        $espacoCor = $normalizeHexColor($evento['espaco_cor'] ?? null);
+        $responsavelCor = $normalizeHexColor($evento['cor_agenda'] ?? null);
+        $gradient = null;
+
         // Definir cor baseada no tipo
         if (isset($evento['tipo']) && $evento['tipo'] === 'google') {
-            $cor = '#10b981'; // Verde para eventos do Google
+            $cor = '#111827'; // Preto para eventos do Google
         } elseif (isset($evento['tipo']) && $evento['tipo'] === 'bloqueio') {
             $cor = '#dc2626'; // Vermelho para bloqueios
         } elseif (isset($evento['tipo']) && $evento['tipo'] === 'visita') {
-            // Visitas usam a cor configurada da unidade.
-            $cor = $evento['espaco_cor'] ?? $evento['cor_evento'] ?? '#3b96f7';
+            // Visitas usam a cor configurada da unidade e degradê com a cor do responsável.
+            $cor = $espacoCor ?? $normalizeHexColor($evento['cor_evento'] ?? null) ?? '#3b96f7';
+            if ($espacoCor !== null && $responsavelCor !== null && $espacoCor !== $responsavelCor) {
+                $gradient = [
+                    'start' => $espacoCor,
+                    'end' => $responsavelCor,
+                ];
+            }
         } else {
-            $cor = $evento['espaco_cor'] ?? $evento['cor_evento'] ?? $evento['cor_agenda'] ?? '#3b96f7';
+            $cor = $espacoCor ?? $normalizeHexColor($evento['cor_evento'] ?? null) ?? $responsavelCor ?? '#3b96f7';
+            if ($espacoCor !== null && $responsavelCor !== null && $espacoCor !== $responsavelCor) {
+                $gradient = [
+                    'start' => $espacoCor,
+                    'end' => $responsavelCor,
+                ];
+            }
         }
         $textColor = $getTextColorForBackground($cor);
         
@@ -202,7 +223,9 @@ try {
             'criado_por_nome' => $evento['criado_por_nome'] ?? null,
             'responsavel_usuario_id' => $evento['responsavel_usuario_id'] ?? null,
             'espaco_id' => $evento['espaco_id'] ?? null,
-            'espaco_cor' => $evento['espaco_cor'] ?? null
+            'espaco_cor' => $espacoCor,
+            'responsavel_cor' => $responsavelCor,
+            'event_gradient' => $gradient
         ];
         
         // Adicionar link do Google se disponível

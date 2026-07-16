@@ -1189,6 +1189,12 @@ includeSidebar('Agenda');
                     }
                 },
                 eventDidMount: function(info) {
+                    const gradient = info.event.extendedProps.event_gradient;
+                    if (gradient && gradient.start && gradient.end) {
+                        info.el.style.background = `linear-gradient(90deg, ${gradient.start} 0%, ${gradient.end} 100%)`;
+                        info.el.style.borderColor = gradient.start;
+                    }
+
                     const startText = info.event.start
                         ? info.event.start.toLocaleString('pt-BR')
                         : '';

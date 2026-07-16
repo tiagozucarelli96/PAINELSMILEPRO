@@ -1471,7 +1471,8 @@ class AgendaHelper {
         foreach ($eventos as &$evento) {
             if (!empty($evento['espaco_id'])) {
                 $evento['espaco_cor'] = self::corEspacoAgenda($evento['espaco_id'], (string)($evento['espaco_cor'] ?? ''));
-            } elseif (!empty($evento['responsavel_usuario_id'])) {
+            }
+            if (!empty($evento['responsavel_usuario_id'])) {
                 $evento['cor_agenda'] = self::corUsuarioAgenda($evento['responsavel_usuario_id'], (string)($evento['cor_agenda'] ?? ''));
             }
         }

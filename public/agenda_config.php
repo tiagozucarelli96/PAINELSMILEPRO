@@ -56,6 +56,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $stmtColor->execute([$color, $targetSpaceId]);
             }
+        }
+
+        $userColors = $_POST['user_colors'] ?? [];
+        if (is_array($userColors)) {
+            $stmtColor = $GLOBALS['pdo']->prepare("UPDATE usuarios SET cor_agenda = ? WHERE id = ? AND ativo = TRUE");
+            foreach ($userColors as $targetUserId => $colorValue) {
+                $targetUserId = (int)$targetUserId;
+                $color = agenda_config_normalize_color($colorValue);
+                if ($targetUserId <= 0 || $color === null) {
+                    continue;
+                }
+
+                $stmtColor->execute([$color, $targetUserId]);
+            }
         } elseif (isset($_POST['cor_agenda'])) {
             $color = agenda_config_normalize_color($_POST['cor_agenda']);
             if ($color !== null) {
@@ -110,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $usuarios = $agenda->obterUsuariosComCores();
         $success = $can_manage_agenda_settings
             ? "Configurações atualizadas com sucesso!"
-            : "Cores das unidades atualizadas com sucesso!";
+            : "Cores da agenda atualizadas com sucesso!";
     } catch (Exception $e) {
         $error = "Erro ao atualizar configurações: " . $e->getMessage();
     }
@@ -422,7 +436,45 @@ $ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (in
                             <?php endforeach; ?>
                         </div>
                         <small style="color: #666; margin-top: 5px; display: block;">
-                            A cor do evento será definida pela unidade selecionada na visita.
+                            A primeira cor da faixa vem da unidade selecionada na visita.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Cores dos responsáveis na agenda</label>
+                        <div class="space-color-grid">
+                            <?php foreach ($usuarios as $user): ?>
+                                <?php
+                                    $targetUserId = (int)($user['id'] ?? 0);
+                                    if ($targetUserId <= 0) { continue; }
+                                    $targetColor = agenda_config_normalize_color($user['cor_agenda'] ?? '') ?: AgendaHelper::corUsuarioAgenda($targetUserId, '');
+                                    $targetName = trim((string)($user['nome'] ?? '')) ?: 'Usuário';
+                                    $targetLogin = trim((string)($user['login'] ?? ''));
+                                ?>
+                                <div class="space-color-card">
+                                    <input
+                                        type="color"
+                                        id="user_color_<?= $targetUserId ?>"
+                                        name="user_colors[<?= $targetUserId ?>]"
+                                        value="<?= htmlspecialchars($targetColor) ?>"
+                                        data-preview="user_color_preview_<?= $targetUserId ?>"
+                                    >
+                                    <label for="user_color_<?= $targetUserId ?>">
+                                        <div class="space-color-name"><?= htmlspecialchars($targetName) ?></div>
+                                        <?php if ($targetLogin !== ''): ?>
+                                            <div class="space-color-slug"><?= htmlspecialchars($targetLogin) ?></div>
+                                        <?php endif; ?>
+                                    </label>
+                                    <div
+                                        class="color-preview"
+                                        id="user_color_preview_<?= $targetUserId ?>"
+                                        style="background-color: <?= htmlspecialchars($targetColor) ?>"
+                                    ></div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <small style="color: #666; margin-top: 5px; display: block;">
+                            Quando houver unidade e responsável, a faixa usa degradê da unidade para o responsável.
                         </small>
                     </div>
                 </div>
