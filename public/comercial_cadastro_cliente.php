@@ -974,41 +974,28 @@ async function buscarCep(cepDigits) {
     }
 }
 
-async function hydrateClienteFromUrlFallback() {
+function hydrateClienteFromUrlFallback() {
     const form = document.getElementById('clienteForm');
     if (!form || form.querySelector('input[name="id"]')) return;
 
-    const params = new URLSearchParams(window.location.search);
-    const editId = params.get('edit_id') || params.get('cliente_id') || params.get('id');
+    const match = String(window.location.href || '').match(/[?&](?:edit_id|cliente_id|id)=([0-9]+)/);
+    const editId = match ? match[1] : '';
     if (!editId || !/^\d+$/.test(editId)) return;
+    if (typeof XMLHttpRequest === 'undefined') return;
 
-    try {
-        const body = new URLSearchParams();
-        body.set('action', 'cliente_lookup');
-        body.set('id', editId);
-
-        const payload = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', 'comercial_cadastro_cliente.php', true);
-            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
-            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-            xhr.onreadystatechange = () => {
-                if (xhr.readyState !== 4) return;
-                if (xhr.status < 200 || xhr.status >= 300) {
-                    reject(new Error('cliente_lookup_status_' + xhr.status));
-                    return;
-                }
-                try {
-                    resolve(JSON.parse(xhr.responseText));
-                } catch (parseError) {
-                    reject(parseError);
-                }
-            };
-            xhr.onerror = () => reject(new Error('cliente_lookup_network'));
-            xhr.send(body.toString());
-        });
-        if (!payload.success || !payload.cliente) return;
-
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'index.php?page=comercial_cadastro_cliente', true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4 || xhr.status < 200 || xhr.status >= 300) return;
+        let payload = null;
+        try {
+            payload = JSON.parse(xhr.responseText);
+        } catch (err) {
+            return;
+        }
+        if (!payload || !payload.success || !payload.cliente) return;
         const cliente = payload.cliente;
         const hidden = document.createElement('input');
         hidden.type = 'hidden';
@@ -1052,12 +1039,11 @@ async function hydrateClienteFromUrlFallback() {
         const cep = document.getElementById('cep');
         if (phone) phone.value = formatPhone(phone.value);
         if (cep) cep.value = formatCep(cep.value);
-    } catch (err) {
-        // Mantem o formulário utilizável mesmo se a busca de contingência falhar.
-    }
+    };
+    xhr.send('action=cliente_lookup&id=' + encodeURIComponent(editId));
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initClienteForm() {
     const tipo = document.getElementById('tipo_pessoa');
     const doc = document.getElementById('documento_numero');
     const phone = document.getElementById('telefone_whatsapp');
@@ -1088,5 +1074,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     hydrateClienteFromUrlFallback();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initClienteForm);
+} else {
+    initClienteForm();
+}
 </script>
