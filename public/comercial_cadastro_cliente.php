@@ -518,7 +518,7 @@ if ($requestMethod === 'POST') {
                 $stmt->execute($params);
 
                 $_SESSION['comercial_cadastro_cliente_success'] = 'Cliente atualizado com sucesso.';
-                header('Location: index.php?page=comercial_cadastro_cliente&edit_id=' . (int)$clienteAtual['id']);
+                header('Location: comercial_cadastro_cliente.php?edit_id=' . (int)$clienteAtual['id']);
                 exit;
             }
 
