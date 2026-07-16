@@ -107,39 +107,15 @@
         var match = String(window.location.href || '').match(/[?&#](?:edit_id|cliente_id|id)=([0-9]+)/);
         var editId = match ? match[1] : '';
         if (!editId || !/^\d+$/.test(editId)) return;
-        if (typeof XMLHttpRequest === 'undefined') {
-            var fallbackForm = document.createElement('form');
-            fallbackForm.method = 'post';
-            fallbackForm.action = 'index.php?page=comercial_cadastro_cliente';
-            fallbackForm.style.display = 'none';
-            fallbackForm.innerHTML = '<input type="hidden" name="action" value="open_cliente_edit"><input type="hidden" name="id" value="' + editId + '">';
-            document.body.appendChild(fallbackForm);
-            fallbackForm.submit();
-            return;
-        }
 
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', 'index.php?page=comercial_cadastro_cliente', true);
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
-        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-        xhr.onreadystatechange = function () {
-            var payload;
-            if (xhr.readyState !== 4) return;
-            document.documentElement.setAttribute('data-cliente-fallback-status', String(xhr.status));
-            if (xhr.status < 200 || xhr.status >= 300) return;
-            try {
-                payload = JSON.parse(xhr.responseText);
-            } catch (err) {
-                document.documentElement.setAttribute('data-cliente-fallback', 'parse-error');
-                return;
-            }
-            if (!payload || !payload.success || !payload.cliente) return;
-            applyCliente(payload.cliente, editId);
-        };
-        xhr.onerror = function () {
-            document.documentElement.setAttribute('data-cliente-fallback', 'network-error');
-        };
-        xhr.send('action=cliente_lookup&id=' + encodeURIComponent(editId));
+        var fallbackForm = document.createElement('form');
+        fallbackForm.method = 'post';
+        fallbackForm.action = 'index.php?page=comercial_cadastro_cliente';
+        fallbackForm.style.display = 'none';
+        fallbackForm.innerHTML = '<input type="hidden" name="action" value="open_cliente_edit"><input type="hidden" name="id" value="' + editId + '">';
+        document.body.appendChild(fallbackForm);
+        document.documentElement.setAttribute('data-cliente-fallback', 'posting');
+        fallbackForm.submit();
     }
 
     if (document.readyState === 'loading') {
