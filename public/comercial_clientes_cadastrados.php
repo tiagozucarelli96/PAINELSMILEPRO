@@ -193,9 +193,17 @@ includeSidebar('Clientes cadastrados');
     vertical-align: top;
 }
 .clientes-name {
+    border: 0;
+    background: transparent;
     color: #0f6ea8;
+    cursor: pointer;
+    font: inherit;
     font-weight: 800;
+    padding: 0;
     text-decoration: none;
+}
+.clientes-edit-form {
+    margin: 0;
 }
 .clientes-type {
     display: inline-flex;
@@ -222,10 +230,12 @@ includeSidebar('Clientes cadastrados');
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
     border-radius: 8px;
     background: #f8fafc;
     border: 1px solid #dbe3ef;
     color: #1e3a8a;
+    font: inherit;
     text-decoration: none;
     font-weight: 800;
     padding: 0.48rem 0.7rem;
@@ -283,13 +293,14 @@ includeSidebar('Clientes cadastrados');
                             $tipoLabel = $tipoPessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física';
                             $editId = (int)$cliente['id'];
                             $editHref = 'index.php?page=comercial_cadastro_cliente';
-                            $editOnClick = "var f=document.createElement('form');f.method='post';f.action='index.php?page=comercial_cadastro_cliente';var a=document.createElement('input');a.type='hidden';a.name='action';a.value='open_cliente_edit';f.appendChild(a);var i=document.createElement('input');i.type='hidden';i.name='id';i.value='{$editId}';f.appendChild(i);document.body.appendChild(f);f.submit();return false;";
                             ?>
                             <tr>
                                 <td>
-                                    <a class="clientes-name" href="<?= comercial_clientes_cadastrados_e($editHref) ?>" onclick="<?= comercial_clientes_cadastrados_e($editOnClick) ?>">
-                                        <?= comercial_clientes_cadastrados_e((string)$cliente['nome_completo']) ?>
-                                    </a>
+                                    <form class="clientes-edit-form" method="post" action="<?= comercial_clientes_cadastrados_e($editHref) ?>">
+                                        <input type="hidden" name="action" value="open_cliente_edit">
+                                        <input type="hidden" name="id" value="<?= $editId ?>">
+                                        <button class="clientes-name" type="submit"><?= comercial_clientes_cadastrados_e((string)$cliente['nome_completo']) ?></button>
+                                    </form>
                                     <br>
                                     <span class="clientes-type"><?= comercial_clientes_cadastrados_e($tipoLabel) ?></span>
                                 </td>
@@ -308,7 +319,11 @@ includeSidebar('Clientes cadastrados');
                                     <?= comercial_clientes_cadastrados_e((string)($cliente['tipo_interesse'] ?? '')) ?>
                                 </td>
                                 <td>
-                                    <a class="clientes-edit" href="<?= comercial_clientes_cadastrados_e($editHref) ?>" onclick="<?= comercial_clientes_cadastrados_e($editOnClick) ?>">Editar</a>
+                                    <form class="clientes-edit-form" method="post" action="<?= comercial_clientes_cadastrados_e($editHref) ?>">
+                                        <input type="hidden" name="action" value="open_cliente_edit">
+                                        <input type="hidden" name="id" value="<?= $editId ?>">
+                                        <button class="clientes-edit" type="submit">Editar</button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
