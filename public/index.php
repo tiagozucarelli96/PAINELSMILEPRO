@@ -348,6 +348,7 @@ $routes = [
   'comercial_pagamento' => 'comercial_pagamento.php',
   'comercial_solicitar_pagamento' => 'comercial_solicitar_pagamento.php',
   'comercial_gerenciar_pix' => 'comercial_gerenciar_pix.php',
+  'comercial_calculadora_taxas' => 'comercial_calculadora_taxas.php',
   'comercial_solicitacao_pagamento_public' => 'comercial_solicitacao_pagamento_public.php',
   'comercial_inscritos_cadastrados' => 'comercial_inscritos_cadastrados.php',
   'comercial_lista_espera' => 'comercial_lista_espera.php',
