@@ -547,6 +547,11 @@ includeSidebar('Comercial');
                     <span class="funcionalidade-item-text">Gerenciar Pix</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </a>
+                <a href="index.php?page=comercial_calculadora_taxas" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">🧮</span>
+                    <span class="funcionalidade-item-text">Calculadora de taxas</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
             </div>
         </div>
 
