@@ -615,6 +615,27 @@ function vendas_me_verificar_conflito_agenda(string $data, string $unidade, stri
  * Criar evento na ME
  * Se client_id for null, o evento será criado com dados do cliente inline
  */
+function vendas_me_resposta_indica_conflito_local(array $resp): bool {
+    $partes = [
+        (string)($resp['error'] ?? ''),
+        is_string($resp['raw'] ?? null) ? (string)$resp['raw'] : '',
+        isset($resp['data']) ? json_encode($resp['data'], JSON_UNESCAPED_UNICODE) : '',
+    ];
+    $texto = strtolower(implode(' ', array_filter($partes)));
+    $texto_ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
+    if (is_string($texto_ascii) && $texto_ascii !== '') {
+        $texto = strtolower($texto_ascii);
+    }
+
+    foreach (['conflito', 'conflict', 'ocupad', 'indispon', 'agenda', 'horario', 'local'] as $termo) {
+        if (strpos($texto, $termo) !== false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function vendas_me_criar_evento(array $dados_evento): array {
     // Conforme docs: POST /api/v1/events (campos obrigatórios: idcliente, tipoevento, nomeevento, dataevento, idvendedor)
     $unidade_nome = (string)($dados_evento['local'] ?? $dados_evento['unidade'] ?? '');
@@ -678,7 +699,35 @@ function vendas_me_criar_evento(array $dados_evento): array {
         }
     }
 
+    $override_conflito_local = !empty($dados_evento['forcar_conflito_local']);
+    $fallback_sem_id_local = false;
+
     $resp = vendas_me_request('POST', '/api/v1/events', [], $payload);
+    if (
+        !$resp['ok']
+        && $override_conflito_local
+        && !empty($payload['idlocalevento'])
+        && vendas_me_resposta_indica_conflito_local($resp)
+    ) {
+        $erro_original = $resp['error'] ?? 'erro desconhecido';
+        $payload_fallback = $payload;
+        unset($payload_fallback['idlocalevento']);
+
+        $resp_fallback = vendas_me_request('POST', '/api/v1/events', [], $payload_fallback);
+        if ($resp_fallback['ok']) {
+            $resp = $resp_fallback;
+            $payload = $payload_fallback;
+            $fallback_sem_id_local = true;
+            error_log('[VENDAS] Evento ME criado com override sem idlocalevento após bloqueio: ' . $erro_original);
+        } else {
+            throw new Exception(
+                'Erro ao criar evento na ME com override. Tentativa padrão: '
+                . $erro_original
+                . ' | Tentativa sem vínculo do local: '
+                . ($resp_fallback['error'] ?? 'erro desconhecido')
+            );
+        }
+    }
     if (!$resp['ok']) {
         throw new Exception('Erro ao criar evento na ME: ' . ($resp['error'] ?? 'erro desconhecido'));
     }
@@ -690,7 +739,12 @@ function vendas_me_criar_evento(array $dados_evento): array {
         throw new Exception('ME não retornou ID do evento na criação.');
     }
 
-    return ['id' => $evento_id, 'data' => $evento, 'payload' => $payload];
+    return [
+        'id' => $evento_id,
+        'data' => $evento,
+        'payload' => $payload,
+        'override_local_sem_id' => $fallback_sem_id_local,
+    ];
 }
 
 /**

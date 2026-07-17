@@ -774,7 +774,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 return $v;
                             })(),
                             // Observação deve ficar apenas interna no Painel.
-                            'enviar_observacao' => false
+                            'enviar_observacao' => false,
+                            'forcar_conflito_local' => $override_conflito,
                         ];
 
                         $evento_me = vendas_me_criar_evento($dados_evento);
@@ -799,6 +800,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ],
                     'evento' => [
                         'idvendedor' => (int)$idvendedor,
+                        'override_local_sem_id' => !empty($evento_me['override_local_sem_id']),
                         'payload' => $evento_me['payload'] ?? null,
                         'response' => $evento_me['data'] ?? null
                     ],
@@ -884,6 +886,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'me_event_id' => $me_event_id,
                     'override' => $override_conflito,
                     'override_superadmin_id' => $override_conflito ? (int)($override_superadmin['id'] ?? 0) : null,
+                    'override_local_sem_id' => !empty($evento_me['override_local_sem_id']),
                     'kanban_card_id' => $kanban_card_id,
                     'financeiro_pedido_sync' => $pedido_sync_result ?? null
                 ])]);
