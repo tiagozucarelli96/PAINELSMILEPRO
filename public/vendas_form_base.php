@@ -34,6 +34,11 @@ function vendas_form_normalizar_texto(string $valor): string
     return trim(preg_replace('/\s+/', ' ', $valor) ?? '');
 }
 
+function vendas_form_tamanho_texto(string $valor): int
+{
+    return function_exists('mb_strlen') ? mb_strlen($valor, 'UTF-8') : strlen($valor);
+}
+
 function vendas_form_unidade_infantil_grupo(string $unidade, string $spaceVisivel = ''): string
 {
     $normalizado = vendas_form_normalizar_texto(trim($unidade . ' ' . $spaceVisivel));
@@ -236,6 +241,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         if (empty($rg)) {
             throw new Exception('RG é obrigatório');
         }
+        if (vendas_form_tamanho_texto($rg) > 50) {
+            throw new Exception('RG deve ter no máximo 50 caracteres');
+        }
 
         if (empty($cep) || strlen($cep) !== 8) {
             throw new Exception('CEP é obrigatório e deve ter 8 dígitos');
@@ -247,6 +255,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
 
         if (empty($numero)) {
             throw new Exception('Número do endereço é obrigatório');
+        }
+        if (vendas_form_tamanho_texto($numero) > 50) {
+            throw new Exception('Número do endereço deve ter no máximo 50 caracteres');
         }
 
         if (empty($bairro)) {
@@ -491,6 +502,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         
         $success = true;
         
+    } catch (PDOException $e) {
+        error_log('[VENDAS] Erro ao salvar pré-contrato público: ' . $e->getMessage());
+        $error = 'Não foi possível enviar seus dados neste momento. Por favor, tente novamente em alguns instantes.';
     } catch (Exception $e) {
         $error = $e->getMessage();
     }
@@ -786,7 +800,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                         </div>
                         <div class="form-group">
                             <label for="rg">RG <span class="required">*</span></label>
-                            <input type="text" id="rg" name="rg" required value="<?php echo htmlspecialchars($_POST['rg'] ?? ''); ?>">
+                            <input type="text" id="rg" name="rg" required maxlength="50" value="<?php echo htmlspecialchars($_POST['rg'] ?? ''); ?>">
                         </div>
                     </div>
 
@@ -830,7 +844,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     <div class="form-row">
                         <div class="form-group">
                             <label for="numero">Número <span class="required">*</span></label>
-                            <input type="text" id="numero" name="numero" required value="<?php echo htmlspecialchars($_POST['numero'] ?? ''); ?>">
+                            <input type="text" id="numero" name="numero" required maxlength="50" value="<?php echo htmlspecialchars($_POST['numero'] ?? ''); ?>">
                         </div>
                         <div class="form-group">
                             <label for="complemento">Complemento</label>
