@@ -410,24 +410,23 @@ $temTabelaReunioes = agenda_eventos_has_table($pdo, 'eventos_reunioes');
 $temTabelaComercialEventosPainel = agenda_eventos_has_table($pdo, 'comercial_eventos_painel');
 $temColunaClienteCadastro = $temTabelaEventos && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'cliente_cadastro_id');
 $temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
-$temColunaFotoEvento = false;
-if ($temTabelaEventos) {
-    try {
-        $pdo->exec("ALTER TABLE logistica_eventos_espelho ADD COLUMN IF NOT EXISTS foto_evento_url TEXT NULL");
-        $temColunaFotoEvento = agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'foto_evento_url');
-    } catch (Throwable $e) {
-        error_log('[AGENDA_EVENTOS_FOTO_SCHEMA] ' . $e->getMessage());
-    }
-}
+$temColunaFotoEvento = $temTabelaEventos
+    && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'foto_evento_url');
 
 $mesAtual = new DateTimeImmutable('first day of this month');
+$mesSelecionadoParam = trim((string)($_GET['mes'] ?? 'atual'));
+$mesSolicitado = agenda_eventos_parse_month($mesSelecionadoParam, $mesAtual)
+    ->modify('first day of this month');
 $forcarSyncAgenda = isset($_GET['sync']) || isset($_GET['refresh']);
 if ($temTabelaEventos) {
     try {
+        // Sincronizar somente o mês que o usuário abriu. A implementação anterior
+        // buscava 21 meses em blocos de 90 dias durante a requisição da página,
+        // fazendo várias chamadas externas e centenas de upserts antes de renderizar.
         agenda_eventos_sync_me_range(
             $pdo,
-            (new DateTimeImmutable('first day of this month'))->modify('-2 months'),
-            (new DateTimeImmutable('first day of this month'))->modify('+18 months')->modify('last day of this month'),
+            $mesSolicitado,
+            $mesSolicitado->modify('last day of this month'),
             $forcarSyncAgenda
         );
     } catch (Throwable $e) {
@@ -449,8 +448,7 @@ $mesLimiteFinal = $ultimaDataEvento instanceof DateTimeImmutable
     : $mesAtual;
 $hojeIso = (new DateTimeImmutable('today'))->format('Y-m-d');
 
-$mesSelecionadoParam = trim((string)($_GET['mes'] ?? 'atual'));
-$mesSelecionado = agenda_eventos_parse_month($mesSelecionadoParam, $mesAtual)->modify('first day of this month');
+$mesSelecionado = $mesSolicitado;
 $mesSelecionado = agenda_eventos_clamp_month($mesSelecionado, $mesLimiteInicial, $mesLimiteFinal);
 $inicioPeriodo = $primeiraDataEvento instanceof DateTimeImmutable ? $primeiraDataEvento : $mesLimiteInicial;
 $fimPeriodo = $ultimaDataEvento instanceof DateTimeImmutable ? $ultimaDataEvento : $mesLimiteFinal->modify('last day of this month');
@@ -528,7 +526,9 @@ if ($eventoSelecionadoId > 0 && !$canViewEventDetails) {
     $errors[] = 'Você não possui permissão para visualizar os detalhes completos dos eventos.';
 }
 
-if ($temTabelaEventos) {
+// A lista mensal não precisa atualizar até 500 cadastros de clientes. Essa
+// reconciliação fica restrita à abertura de um detalhe ou a um refresh explícito.
+if ($temTabelaEventos && ($eventoSelecionadoId > 0 || $forcarSyncAgenda)) {
     $lastClienteSync = (int)($_SESSION['agenda_eventos_cliente_sync_at'] ?? 0);
     if ($lastClienteSync <= 0 || (time() - $lastClienteSync) > 600) {
         try {

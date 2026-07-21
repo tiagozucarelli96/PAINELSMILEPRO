@@ -45,13 +45,31 @@ class AgendaHelper {
         // EmailHelper agora usa EmailGlobalHelper internamente (sistema_email_config)
         $this->emailHelper = new EmailHelper();
         $this->notificationDispatcher = new NotificationDispatcher($this->pdo);
-        $this->notificationDispatcher->ensureInternalSchema();
-        $this->ensureGoogleSyncSchema();
-        $this->ensureVisitDetailsSchema();
-        $this->ensureVisitWhatsappSchema();
-        $this->ensureAgendaSettingsSchema();
-        $this->ensureAgendaSpaceColorsSchema();
-        $this->ensureAvailabilitySchema();
+        // Evita executar uma sequência de ALTER TABLE / CREATE TABLE em toda
+        // abertura da página e novamente no AJAX que carrega o calendário.
+        // Mantemos a compatibilidade com instalações antigas, mas validamos o
+        // schema apenas uma vez por instância dentro do TTL configurado.
+        if (!$this->isSchemaMarkerFresh()) {
+            $this->notificationDispatcher->ensureInternalSchema();
+            $this->ensureGoogleSyncSchema();
+            $this->ensureVisitDetailsSchema();
+            $this->ensureVisitWhatsappSchema();
+            $this->ensureAgendaSettingsSchema();
+            $this->ensureAgendaSpaceColorsSchema();
+            $this->ensureAvailabilitySchema();
+            $this->touchSchemaMarker();
+        }
+    }
+
+    private function isSchemaMarkerFresh(): bool {
+        $ttlEnv = getenv('AGENDA_SCHEMA_TTL_SECONDS');
+        $ttl = max(300, (int)($ttlEnv !== false && $ttlEnv !== '' ? $ttlEnv : 86400));
+        $mtime = @filemtime('/tmp/painel_smile_agenda_schema_ready');
+        return $mtime !== false && (time() - $mtime) < $ttl;
+    }
+
+    private function touchSchemaMarker(): void {
+        @touch('/tmp/painel_smile_agenda_schema_ready');
     }
 
     public static function corUsuarioAgenda($usuario_id, ?string $corAtual): string {
