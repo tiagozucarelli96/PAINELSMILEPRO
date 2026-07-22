@@ -510,6 +510,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $me_event_id = null;
         $evento_me = null;
         $already_exists = false;
+        $me_call_started = false;
         
         try {
             if ($idvendedor <= 0) {
@@ -548,6 +549,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $kanban_card_id = null;
 
                 // Buscar/verificar cliente na ME
+                $me_call_started = true;
                 $clientes_encontrados = vendas_me_buscar_cliente(
                     $pre_contrato['cpf'] ?? '',
                     $pre_contrato['email'] ?? '',
@@ -955,7 +957,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'ok' => false,
                 'message' => ($me_event_id ? 'Evento criado/válido na ME, mas houve erro ao salvar no Painel.' : 'Erro ao criar na ME.'),
                 'error' => $e->getMessage(),
-                'me_last' => $_SESSION['vendas_me_last'] ?? null,
+                'me_last' => $me_call_started ? ($_SESSION['vendas_me_last'] ?? null) : null,
                 'me_client_id' => $me_client_id ? (int)$me_client_id : null,
                 'me_event_id' => $me_event_id ? (int)$me_event_id : null,
             ];
@@ -2719,6 +2721,8 @@ function submeterAprovacao() {
     const motivoTextarea = document.getElementById('override_motivo');
     const superadminSenha = document.getElementById('override_superadmin_senha');
     const vendedor = document.getElementById('idvendedor_select');
+    const tipoEventoReal = document.getElementById('tipo_evento_real');
+    const pacoteEvento = document.getElementById('pacote_evento_id');
     const actionInput = document.getElementById('action_comercial');
     const formComercial = actionInput ? actionInput.form : null;
 
@@ -2735,6 +2739,27 @@ function submeterAprovacao() {
     }
 
     if (!formComercial || !actionInput) {
+        return;
+    }
+
+    if (tipoEventoReal && !String(tipoEventoReal.value || '').trim()) {
+        fecharModalAprovacao();
+        alert('Selecione o tipo de evento da organização antes de aprovar.');
+        tipoEventoReal.focus();
+        tipoEventoReal.reportValidity?.();
+        return;
+    }
+
+    if (pacoteEvento && !String(pacoteEvento.value || '').trim()) {
+        fecharModalAprovacao();
+        alert('Selecione o pacote da organização antes de aprovar.');
+        pacoteEvento.focus();
+        pacoteEvento.reportValidity?.();
+        return;
+    }
+
+    if (typeof formComercial.reportValidity === 'function' && !formComercial.reportValidity()) {
+        fecharModalAprovacao();
         return;
     }
 
