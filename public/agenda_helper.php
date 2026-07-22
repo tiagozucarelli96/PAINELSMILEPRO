@@ -231,7 +231,7 @@ class AgendaHelper {
             "📅 *Data:* {$data}\n" .
             "⏰ *Horário:* {$hora}\n\n" .
             "No próprio dia, entraremos em contato para confirmar sua presença.\n\n" .
-            "⚠️ É importante responder a essa confirmação para que a visita permaneça ativa em nossa agenda.\n\n" .
+            "⚠️ É importante responder a confirmação enviada no dia,  para que a visita permaneça ativa em nossa agenda.\n\n" .
             "Obrigada! 💙"
         );
     }
@@ -461,14 +461,16 @@ class AgendaHelper {
         $stmt = $this->pdo->prepare("
             UPDATE agenda_visita_whatsapp_notificacoes
             SET status = :status,
-                tentativas = CASE WHEN :status = 'erro' THEN tentativas + 1 ELSE tentativas END,
-                enviado_em = CASE WHEN :status = 'enviada' THEN NOW() ELSE enviado_em END,
+                tentativas = CASE WHEN :status_tentativas = 'erro' THEN tentativas + 1 ELSE tentativas END,
+                enviado_em = CASE WHEN :status_enviado = 'enviada' THEN NOW() ELSE enviado_em END,
                 ultimo_erro = :erro,
                 atualizado_em = NOW()
             WHERE id = :id
         ");
         $stmt->execute([
             ':status' => $status,
+            ':status_tentativas' => $status,
+            ':status_enviado' => $status,
             ':erro' => $erro,
             ':id' => $notificacaoId,
         ]);
@@ -969,31 +971,6 @@ class AgendaHelper {
             $resultado['tipo_conflito'] = 'responsavel';
             $resultado['mensagem_conflito'] = 'Este responsável já possui compromisso neste mesmo horário.';
             return $this->preencherDadosConflito($resultado, $conflitoResponsavel);
-        }
-
-        if ($espaco_id) {
-            $stmt = $this->pdo->prepare("
-                SELECT ae.id, ae.titulo, ae.inicio, ae.fim, ae.espaco_id, esp.nome AS espaco_nome, esp.slug AS espaco_slug
-                FROM agenda_eventos ae
-                LEFT JOIN agenda_espacos esp ON esp.id = ae.espaco_id
-                WHERE ae.espaco_id = :espaco_id
-                  AND ae.tipo = 'visita'
-                  AND ae.status != 'cancelado'
-                  AND (:evento_id = 0 OR ae.id != :evento_id)
-                  AND ae.inicio < :fim
-                  AND ae.fim > :inicio
-                ORDER BY ae.inicio ASC
-                LIMIT 1
-            ");
-            $stmt->execute($paramsBase + [':espaco_id' => (int)$espaco_id]);
-            $conflitoEspaco = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($conflitoEspaco) {
-                $resultado['conflito_espaco'] = true;
-                $resultado['tipo_conflito'] = 'espaco';
-                $resultado['mensagem_conflito'] = 'Este espaço já possui visita neste mesmo horário.';
-                return $this->preencherDadosConflito($resultado, $conflitoEspaco);
-            }
         }
 
         $conflitoTransito = $this->verificarConflitoTransito(
