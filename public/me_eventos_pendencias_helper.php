@@ -307,7 +307,6 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
         return ['ok' => false, 'error' => 'Reunião local não vinculada ao evento ME.'];
     }
 
-    $pdo->beginTransaction();
     try {
         $pkgResult = eventos_reuniao_atualizar_pacote_evento($pdo, $meetingId, $pacoteId);
         if (empty($pkgResult['ok'])) {
@@ -317,6 +316,8 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
         if (empty($tipoResult['ok'])) {
             throw new RuntimeException((string)($tipoResult['error'] ?? 'Erro ao salvar tipo real do evento.'));
         }
+
+        $pdo->beginTransaction();
 
         $snapshotStmt = $pdo->prepare("SELECT me_event_snapshot FROM eventos_reunioes WHERE id = :id LIMIT 1");
         $snapshotStmt->execute([':id' => $meetingId]);
@@ -386,6 +387,9 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
             ':observacoes' => trim((string)($dados['observacoes'] ?? '')) ?: null,
             ':completed_by_user_id' => $userId > 0 ? $userId : null,
         ]);
+        $pendenciaConcluida = $updatePendencia->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        $pdo->commit();
 
         if (function_exists('eventos_historico_registrar')) {
             eventos_historico_registrar(
@@ -401,8 +405,7 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
             );
         }
 
-        $pdo->commit();
-        return ['ok' => true, 'pendencia' => $updatePendencia->fetch(PDO::FETCH_ASSOC) ?: null];
+        return ['ok' => true, 'pendencia' => $pendenciaConcluida];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
