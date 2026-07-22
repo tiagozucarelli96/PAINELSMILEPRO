@@ -202,6 +202,13 @@ if (empty($me_pendencias_enabled)) {
                     <select name="pacote_evento_id" id="mePendingPacote" required></select>
                 </div>
                 <div class="me-pending-field">
+                    <label for="mePendingClienteTipo">Tipo de cliente</label>
+                    <select name="cliente_tipo" id="mePendingClienteTipo" required>
+                        <option value="PF">Pessoa física</option>
+                        <option value="PJ">Pessoa jurídica</option>
+                    </select>
+                </div>
+                <div class="me-pending-field">
                     <label for="mePendingRazao">Razão social</label>
                     <input type="text" name="pj_razao_social" id="mePendingRazao" maxlength="255" required>
                 </div>
@@ -252,6 +259,7 @@ if (empty($me_pendencias_enabled)) {
         contato: document.getElementById('mePendingContato'),
         tipo: document.getElementById('mePendingTipo'),
         pacote: document.getElementById('mePendingPacote'),
+        clienteTipo: document.getElementById('mePendingClienteTipo'),
         razao: document.getElementById('mePendingRazao'),
         fantasia: document.getElementById('mePendingFantasia'),
         cnpj: document.getElementById('mePendingCnpj'),
@@ -274,6 +282,37 @@ if (empty($me_pendencias_enabled)) {
         const parts = raw.split('-');
         if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
         return raw;
+    }
+
+    function updateClienteTipoFields() {
+        const isPJ = els.clienteTipo.value === 'PJ';
+        const labels = {
+            razao: document.querySelector('label[for="mePendingRazao"]'),
+            cnpj: document.querySelector('label[for="mePendingCnpj"]'),
+            responsavel: document.querySelector('label[for="mePendingResponsavel"]'),
+            cpf: document.querySelector('label[for="mePendingCpf"]')
+        };
+
+        if (labels.razao) labels.razao.textContent = isPJ ? 'Razão social' : 'Nome do cliente';
+        if (labels.cnpj) labels.cnpj.textContent = isPJ ? 'CNPJ' : 'CPF do cliente';
+        if (labels.responsavel) labels.responsavel.textContent = 'Responsável pela PJ';
+        if (labels.cpf) labels.cpf.textContent = 'CPF do responsável';
+
+        els.fantasia.closest('.me-pending-field').style.display = isPJ ? '' : 'none';
+        els.responsavel.closest('.me-pending-field').style.display = isPJ ? '' : 'none';
+        els.cpf.closest('.me-pending-field').style.display = isPJ ? '' : 'none';
+
+        els.razao.required = true;
+        els.cnpj.required = isPJ;
+        els.responsavel.required = isPJ;
+        els.cnpj.maxLength = isPJ ? 18 : 14;
+        els.cnpj.placeholder = isPJ ? '00.000.000/0000-00' : '000.000.000-00';
+
+        if (!isPJ) {
+            els.fantasia.value = '';
+            els.responsavel.value = '';
+            els.cpf.value = '';
+        }
     }
 
     function openModal() {
@@ -320,10 +359,11 @@ if (empty($me_pendencias_enabled)) {
         els.id.value = String(pendencia.id || '');
         els.evento.textContent = text(pendencia.evento_nome, 'Evento sem nome');
         els.data.textContent = formatDate(pendencia.data_evento);
-        els.cliente.textContent = text(pendencia.cliente_nome, 'Cliente PJ');
+        els.cliente.textContent = text(pendencia.cliente_nome, 'Cliente');
         els.contato.textContent = [pendencia.cliente_email, pendencia.cliente_telefone].map((v) => String(v || '').trim()).filter(Boolean).join(' | ') || '-';
         fillTipos(tipos || {}, pendencia.tipo_evento_real || '');
         fillPackages(packages || [], pendencia.pacote_evento_id);
+        els.clienteTipo.value = 'PF';
         els.razao.value = text(pendencia.cliente_nome, '');
         els.fantasia.value = '';
         els.cnpj.value = '';
@@ -334,6 +374,7 @@ if (empty($me_pendencias_enabled)) {
         const meetingId = Number(pendencia.meeting_id || 0);
         els.link.style.display = meetingId > 0 ? 'inline-flex' : 'none';
         els.link.href = meetingId > 0 ? `index.php?page=eventos_organizacao&id=${meetingId}` : '#';
+        updateClienteTipoFields();
         openModal();
     }
 
@@ -394,6 +435,7 @@ if (empty($me_pendencias_enabled)) {
 
     document.getElementById('mePendingClose')?.addEventListener('click', closeModal);
     document.getElementById('mePendingLater')?.addEventListener('click', closeModal);
+    els.clienteTipo?.addEventListener('change', updateClienteTipoFields);
     window.setTimeout(loadNext, 1200);
     window.setInterval(loadNext, 120000);
 })();

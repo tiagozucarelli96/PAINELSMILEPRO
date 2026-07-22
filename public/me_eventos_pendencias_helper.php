@@ -3,7 +3,7 @@
  * Pendências de eventos criados diretamente na ME.
  *
  * O webhook cria a reunião/portal automaticamente e registra uma pendência
- * para o comercial completar pacote e dados mínimos de PJ.
+ * para o comercial completar pacote e dados mínimos do cliente.
  */
 
 require_once __DIR__ . '/conexao.php';
@@ -277,18 +277,29 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
         return ['ok' => false, 'error' => 'Pacote do evento não encontrado.'];
     }
 
+    $clienteTipo = strtoupper(trim((string)($dados['cliente_tipo'] ?? 'PF')));
+    if (!in_array($clienteTipo, ['PF', 'PJ'], true)) {
+        $clienteTipo = 'PF';
+    }
+
     $razaoSocial = trim((string)($dados['pj_razao_social'] ?? ''));
-    $cnpj = preg_replace('/\D+/', '', (string)($dados['pj_cnpj'] ?? ''));
+    $documentoCliente = preg_replace('/\D+/', '', (string)($dados['pj_cnpj'] ?? ''));
     $responsavelNome = trim((string)($dados['pj_responsavel_nome'] ?? ''));
+    $responsavelCpf = preg_replace('/\D+/', '', (string)($dados['pj_responsavel_cpf'] ?? ''));
 
     if ($razaoSocial === '') {
-        return ['ok' => false, 'error' => 'Informe a razão social da pessoa jurídica.'];
+        return ['ok' => false, 'error' => $clienteTipo === 'PJ' ? 'Informe a razão social da pessoa jurídica.' : 'Informe o nome do cliente.'];
     }
-    if ($cnpj === '' || strlen($cnpj) !== 14) {
-        return ['ok' => false, 'error' => 'Informe um CNPJ com 14 dígitos.'];
-    }
-    if ($responsavelNome === '') {
-        return ['ok' => false, 'error' => 'Informe o responsável pela PJ.'];
+
+    if ($clienteTipo === 'PJ') {
+        if ($documentoCliente === '' || strlen($documentoCliente) !== 14) {
+            return ['ok' => false, 'error' => 'Informe um CNPJ com 14 dígitos.'];
+        }
+        if ($responsavelNome === '') {
+            return ['ok' => false, 'error' => 'Informe o responsável pela PJ.'];
+        }
+    } elseif ($documentoCliente !== '' && strlen($documentoCliente) !== 11) {
+        return ['ok' => false, 'error' => 'Informe um CPF com 11 dígitos ou deixe o CPF em branco.'];
     }
 
     $meetingId = (int)($pendencia['meeting_id'] ?? 0);
@@ -313,13 +324,23 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
         if (!is_array($snapshot)) {
             $snapshot = [];
         }
-        $snapshot['cliente_pj'] = [
-            'razao_social' => $razaoSocial,
-            'nome_fantasia' => trim((string)($dados['pj_nome_fantasia'] ?? '')),
-            'cnpj' => $cnpj,
-            'responsavel_nome' => $responsavelNome,
-            'responsavel_cpf' => preg_replace('/\D+/', '', (string)($dados['pj_responsavel_cpf'] ?? '')),
-        ];
+        $snapshot['cliente_tipo'] = $clienteTipo;
+        if ($clienteTipo === 'PJ') {
+            $snapshot['cliente_pj'] = [
+                'razao_social' => $razaoSocial,
+                'nome_fantasia' => trim((string)($dados['pj_nome_fantasia'] ?? '')),
+                'cnpj' => $documentoCliente,
+                'responsavel_nome' => $responsavelNome,
+                'responsavel_cpf' => $responsavelCpf,
+            ];
+            unset($snapshot['cliente_pf']);
+        } else {
+            $snapshot['cliente_pf'] = [
+                'nome' => $razaoSocial,
+                'cpf' => $documentoCliente,
+            ];
+            unset($snapshot['cliente_pj']);
+        }
         $snapshot['pacote_evento_id'] = $pacoteId;
         $snapshot['pacote_evento_nome'] = (string)($pacote['nome'] ?? '');
         $snapshot['tipo_evento_real'] = $tipoEventoReal;
@@ -358,10 +379,10 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
             ':tipo_evento_real' => $tipoEventoReal,
             ':pacote_evento_id' => $pacoteId,
             ':pj_razao_social' => $razaoSocial,
-            ':pj_nome_fantasia' => trim((string)($dados['pj_nome_fantasia'] ?? '')) ?: null,
-            ':pj_cnpj' => $cnpj,
-            ':pj_responsavel_nome' => $responsavelNome,
-            ':pj_responsavel_cpf' => preg_replace('/\D+/', '', (string)($dados['pj_responsavel_cpf'] ?? '')) ?: null,
+            ':pj_nome_fantasia' => $clienteTipo === 'PJ' ? (trim((string)($dados['pj_nome_fantasia'] ?? '')) ?: null) : null,
+            ':pj_cnpj' => $clienteTipo === 'PJ' ? $documentoCliente : null,
+            ':pj_responsavel_nome' => $clienteTipo === 'PJ' ? $responsavelNome : null,
+            ':pj_responsavel_cpf' => $clienteTipo === 'PJ' ? ($responsavelCpf ?: null) : ($documentoCliente ?: null),
             ':observacoes' => trim((string)($dados['observacoes'] ?? '')) ?: null,
             ':completed_by_user_id' => $userId > 0 ? $userId : null,
         ]);
@@ -372,7 +393,7 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
                 $meetingId,
                 'me_manual_complementado',
                 'Evento ME manual complementado',
-                'Comercial informou pacote e dados de pessoa jurídica para evento criado diretamente na ME.',
+                'Comercial informou pacote e dados do cliente para evento criado diretamente na ME.',
                 null,
                 ['pendencia_id' => $pendenciaId, 'pacote_evento_id' => $pacoteId],
                 ['pendencia_id' => $pendenciaId, 'pacote_evento_id' => $pacoteId, 'tipo_evento_real' => $tipoEventoReal],
