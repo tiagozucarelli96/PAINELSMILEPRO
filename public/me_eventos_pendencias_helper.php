@@ -399,9 +399,8 @@ function me_eventos_pendencias_concluir(PDO $pdo, int $pendenciaId, array $dados
                 'Evento ME manual complementado',
                 'Comercial informou pacote e dados do cliente para evento criado diretamente na ME.',
                 null,
-                ['pendencia_id' => $pendenciaId, 'pacote_evento_id' => $pacoteId],
                 ['pendencia_id' => $pendenciaId, 'pacote_evento_id' => $pacoteId, 'tipo_evento_real' => $tipoEventoReal],
-                $userId
+                (int)$userId
             );
         }
 
