@@ -65,12 +65,7 @@ function vendas_formas_pagamento_infantil(string $unidade, string $pacote): arra
 
 function vendas_forma_pagamento_infantil_valida(string $forma, string $unidade, string $pacote): bool
 {
-    foreach (vendas_formas_pagamento_infantil($unidade, $pacote) as $opcao) {
-        if (hash_equals((string)$opcao['descricao'], trim($forma))) {
-            return true;
-        }
-    }
-    return false;
+    return trim($forma) !== '';
 }
 
 function vendas_bolo_infantil_catalogo(PDO $pdo): array
