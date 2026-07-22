@@ -59,6 +59,7 @@ class AgendaHelper {
             $this->ensureAvailabilitySchema();
             $this->touchSchemaMarker();
         }
+        $this->ensureOnlineVisitFormat();
     }
 
     private function isSchemaMarkerFresh(): bool {
@@ -203,6 +204,114 @@ class AgendaHelper {
         }
     }
 
+    private function ensureOnlineVisitFormat(): void {
+        if (!$this->pdo instanceof PDO) {
+            return;
+        }
+
+        try {
+            $columns = $this->pdo->query("
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'agenda_espacos'
+            ")->fetchAll(PDO::FETCH_COLUMN);
+            $columns = array_map('strtolower', $columns ?: []);
+
+            $selectColumns = ['id', 'nome', 'slug'];
+            foreach (['descricao', 'cor', 'ativo'] as $optionalColumn) {
+                if (in_array($optionalColumn, $columns, true)) {
+                    $selectColumns[] = $optionalColumn;
+                }
+            }
+
+            $stmt = $this->pdo->prepare("
+                SELECT " . implode(', ', $selectColumns) . "
+                FROM agenda_espacos
+                WHERE LOWER(slug) = 'online' OR LOWER(nome) = 'online'
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $online = $stmt->fetch(PDO::FETCH_ASSOC);
+            $onlineId = (int)($online['id'] ?? 0);
+
+            if ($onlineId > 0) {
+                $needsUpdate = strtolower(trim((string)($online['nome'] ?? ''))) !== 'online'
+                    || strtolower(trim((string)($online['slug'] ?? ''))) !== 'online';
+                if (in_array('ativo', $columns, true)) {
+                    $needsUpdate = $needsUpdate || !$this->normalizeBool($online['ativo'] ?? false);
+                }
+                if (in_array('descricao', $columns, true)) {
+                    $needsUpdate = $needsUpdate || trim((string)($online['descricao'] ?? '')) === '';
+                }
+                if (in_array('cor', $columns, true)) {
+                    $needsUpdate = $needsUpdate || trim((string)($online['cor'] ?? '')) === '';
+                }
+                if (!$needsUpdate) {
+                    return;
+                }
+
+                $sets = ['nome = :nome', 'slug = :slug'];
+                $params = [
+                    ':nome' => 'Online',
+                    ':slug' => 'online',
+                    ':id' => $onlineId,
+                ];
+
+                if (in_array('descricao', $columns, true)) {
+                    $sets[] = "descricao = COALESCE(NULLIF(descricao, ''), :descricao)";
+                    $params[':descricao'] = 'Reunião online com cliente';
+                }
+                if (in_array('cor', $columns, true)) {
+                    $sets[] = "cor = COALESCE(NULLIF(cor, ''), :cor)";
+                    $params[':cor'] = '#64748b';
+                }
+                if (in_array('ativo', $columns, true)) {
+                    $sets[] = 'ativo = TRUE';
+                }
+
+                $stmt = $this->pdo->prepare('UPDATE agenda_espacos SET ' . implode(', ', $sets) . ' WHERE id = :id');
+                $stmt->execute($params);
+                return;
+            }
+
+            $insertColumns = ['nome', 'slug'];
+            $placeholders = [':nome', ':slug'];
+            $params = [
+                ':nome' => 'Online',
+                ':slug' => 'online',
+            ];
+            $updateSets = ['nome = EXCLUDED.nome'];
+
+            if (in_array('descricao', $columns, true)) {
+                $insertColumns[] = 'descricao';
+                $placeholders[] = ':descricao';
+                $params[':descricao'] = 'Reunião online com cliente';
+                $updateSets[] = 'descricao = EXCLUDED.descricao';
+            }
+            if (in_array('cor', $columns, true)) {
+                $insertColumns[] = 'cor';
+                $placeholders[] = ':cor';
+                $params[':cor'] = '#64748b';
+                $updateSets[] = "cor = COALESCE(NULLIF(agenda_espacos.cor, ''), EXCLUDED.cor)";
+            }
+            if (in_array('ativo', $columns, true)) {
+                $insertColumns[] = 'ativo';
+                $placeholders[] = 'TRUE';
+                $updateSets[] = 'ativo = TRUE';
+            }
+
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO agenda_espacos (' . implode(', ', $insertColumns) . ') ' .
+                'VALUES (' . implode(', ', $placeholders) . ') ' .
+                'ON CONFLICT (slug) DO UPDATE SET ' . implode(', ', $updateSets)
+            );
+            $stmt->execute($params);
+        } catch (Throwable $e) {
+            error_log('[AGENDA_ONLINE_VISITA] Falha ao garantir formato online: ' . $e->getMessage());
+        }
+    }
+
     private function normalizeVisitPhoneForWhatsapp(string $phone): string {
         $digits = preg_replace('/\D+/', '', $phone) ?? '';
         $digits = ltrim($digits, '0');
@@ -224,6 +333,18 @@ class AgendaHelper {
         $unidade = trim((string)($evento['espaco_nome'] ?? 'Smile Eventos'));
         $endereco = $this->getVisitUnitAddress($evento);
 
+        if ($this->isOnlineVisitFormat($evento)) {
+            return trim(
+                "✅ *Reunião online agendada com sucesso!*\n\n" .
+                "💻 *Formato:* Online\n" .
+                "📅 *Data:* {$data}\n" .
+                "⏰ *Horário:* {$hora}\n\n" .
+                "No dia da reunião, enviaremos o link e entraremos em contato para confirmar sua presença.\n\n" .
+                "⚠️ É importante responder a confirmação enviada no dia, para que a reunião permaneça ativa em nossa agenda.\n\n" .
+                "Obrigada! 💙"
+            );
+        }
+
         return trim(
             "✅ *Visita agendada com sucesso!*\n\n" .
             "📍 *Buffet:* {$unidade}\n" .
@@ -231,9 +352,16 @@ class AgendaHelper {
             "📅 *Data:* {$data}\n" .
             "⏰ *Horário:* {$hora}\n\n" .
             "No próprio dia, entraremos em contato para confirmar sua presença.\n\n" .
-            "⚠️ É importante responder a confirmação enviada no dia,  para que a visita permaneça ativa em nossa agenda.\n\n" .
+            "⚠️ É importante responder a confirmação enviada no dia, para que a visita permaneça ativa em nossa agenda.\n\n" .
             "Obrigada! 💙"
         );
+    }
+
+    private function isOnlineVisitFormat(array $evento): bool {
+        $slug = strtolower(trim((string)($evento['espaco_slug'] ?? $evento['slug'] ?? '')));
+        $nome = strtolower(trim((string)($evento['espaco_nome'] ?? $evento['nome'] ?? '')));
+
+        return $slug === 'online' || $nome === 'online';
     }
 
     private function getVisitUnitAddress(array $evento): string {
@@ -255,7 +383,20 @@ class AgendaHelper {
         return '';
     }
 
-    private function buildVisitConfirmationWhatsappMessage(): string {
+    private function buildVisitConfirmationWhatsappMessage(array $evento = []): string {
+        if ($this->isOnlineVisitFormat($evento)) {
+            return trim(
+                "Olá! Tudo bem? 😊\n\n" .
+                "💻 Estamos entrando em contato para *confirmar sua reunião online* de hoje.\n\n" .
+                "O link da reunião será enviado pelo nosso atendimento.\n" .
+                "Você poderia, por gentileza, confirmar sua presença?\n\n" .
+                "⏰ Trabalhamos com tolerância de atraso de até *10 minutos*, garantindo a qualidade do atendimento e evitando conflitos de horário.\n\n" .
+                "⚠️ Sem a confirmação, a reunião poderá ser cancelada.\n" .
+                "Pedimos que nos retorne o quanto antes.\n\n" .
+                "Agradecemos sua atenção. 💙"
+            );
+        }
+
         return trim(
             "Olá! Tudo bem? 😊\n\n" .
             "📍 Estamos entrando em contato para *confirmar sua visita* ao nosso espaço.\n\n" .
@@ -389,9 +530,12 @@ class AgendaHelper {
                 ae.status AS evento_status,
                 ae.cliente_nome,
                 ae.cliente_telefone,
-                DATE(ae.inicio) AS data_visita
+                DATE(ae.inicio) AS data_visita,
+                esp.nome AS espaco_nome,
+                esp.slug AS espaco_slug
             FROM agenda_visita_whatsapp_notificacoes n
             JOIN agenda_eventos ae ON ae.id = n.evento_id
+            LEFT JOIN agenda_espacos esp ON esp.id = ae.espaco_id
             WHERE n.tipo = 'confirmacao_8h'
               AND n.status IN ('pendente', 'erro')
               AND n.agendada_para <= (NOW() AT TIME ZONE 'America/Sao_Paulo')
@@ -441,7 +585,7 @@ class AgendaHelper {
 
             $ok = $this->notificationDispatcher->sendWhatsappDirect(
                 $telefone,
-                $this->buildVisitConfirmationWhatsappMessage(),
+                $this->buildVisitConfirmationWhatsappMessage($item),
                 (string)($item['cliente_nome'] ?? $telefone)
             );
 
@@ -1003,6 +1147,9 @@ class AgendaHelper {
         if (!$espaco || empty($espaco['slug'])) {
             return null;
         }
+        if ($this->isOnlineVisitFormat($espaco)) {
+            return null;
+        }
 
         $slug = strtolower((string)$espaco['slug']);
         $groups = (array)$this->getAgendaGlobalSettings()['space_transit_groups'];
@@ -1117,7 +1264,7 @@ class AgendaHelper {
             if (($dados['tipo'] ?? '') === 'visita' && empty($dados['espaco_id'])) {
                 return [
                     'success' => false,
-                    'error' => 'Selecione um espaço para agendar uma visita.'
+                    'error' => 'Selecione um espaço ou formato para agendar uma visita.'
                 ];
             }
             if (($dados['tipo'] ?? '') === 'visita' && !$this->canBeVisitResponsible($dados['responsavel_usuario_id'] ?? 0)) {
@@ -1258,7 +1405,7 @@ class AgendaHelper {
             if (($dados['tipo'] ?? '') === 'visita' && empty($dados['espaco_id'])) {
                 return [
                     'success' => false,
-                    'error' => 'Selecione um espaço para agendar uma visita.'
+                    'error' => 'Selecione um espaço ou formato para agendar uma visita.'
                 ];
             }
             $erroDisponibilidade = $this->validarDisponibilidadeVisita($dados, $inicio_ts, $fim_ts);

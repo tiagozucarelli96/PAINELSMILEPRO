@@ -710,7 +710,7 @@ includeSidebar('Agenda');
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label>Espaço</label>
+                    <label>Espaço / formato</label>
                     <select id="filter_espaco">
                         <option value="">Todos</option>
                         <?php foreach ($espacos as $espaco): ?>
@@ -783,9 +783,9 @@ includeSidebar('Agenda');
                             </select>
                         </div>
                         <div class="form-group" id="espacoGroup">
-                            <label for="espaco">Espaço</label>
+                            <label for="espaco">Espaço / formato</label>
                             <select id="espaco" name="espaco_id">
-                                <option value="">Selecione um espaço</option>
+                                <option value="">Selecione um espaço ou formato</option>
                                 <?php foreach ($espacos as $espaco): ?>
                                     <option value="<?= $espaco['id'] ?>"><?= htmlspecialchars($espaco['nome']) ?></option>
                                 <?php endforeach; ?>
@@ -991,7 +991,7 @@ includeSidebar('Agenda');
                         </div>
 
                         <div class="form-group">
-                            <label for="suggestEspaco">Unidade *</label>
+                            <label for="suggestEspaco">Espaço / formato *</label>
                             <select id="suggestEspaco" required>
                                 <option value="">Selecione...</option>
                                 <?php foreach ($espacos as $espaco): ?>

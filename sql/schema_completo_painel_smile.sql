@@ -746,7 +746,8 @@ INSERT INTO agenda_espacos (nome, slug, descricao, cor) VALUES
 ('Garden', 'garden', 'Espaço Garden para eventos', '#10b981'),
 ('Diverkids', 'diverkids', 'Espaço Diverkids para eventos', '#3b82f6'),
 ('Cristal', 'cristal', 'Espaço Cristal para eventos', '#8b5cf6'),
-('Lisbon', 'lisbon', 'Espaço Lisbon para eventos', '#f59e0b')
+('Lisbon', 'lisbon', 'Espaço Lisbon para eventos', '#f59e0b'),
+('Online', 'online', 'Reunião online com cliente', '#64748b')
 ON CONFLICT (slug) DO NOTHING;
 
 -- Inserir configurações padrão

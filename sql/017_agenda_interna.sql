@@ -18,6 +18,10 @@ INSERT INTO agenda_espacos (id, nome, slug) VALUES
 (4, 'Lisbon Un. 1', 'lisbon')
 ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO agenda_espacos (nome, slug) VALUES
+('Online', 'online')
+ON CONFLICT (slug) DO NOTHING;
+
 -- Adicionar campos à tabela usuarios
 ALTER TABLE usuarios 
 ADD COLUMN IF NOT EXISTS cor_agenda VARCHAR(7) DEFAULT '#1E40AF',
