@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/pacotes_evento_helper.php';
 
 function eventos_financeiro_documento_valido(string $documento): bool
 {
@@ -360,7 +361,7 @@ function eventos_financeiro_salvar_pedido_detalhado(
     $pacote = [];
     if ($pacoteId > 0) {
         $stmt = $pdo->prepare("
-            SELECT nome, descricao, categoria, COALESCE(pessoas_base, 0) AS pessoas_base,
+            SELECT nome, descricao, categoria, modelo_preco, COALESCE(pessoas_base, 0) AS pessoas_base,
                    COALESCE(valor_pacote, valor_venda, 0) AS valor_padrao,
                    COALESCE(valor_convidado_adicional, 0) AS adicional_padrao
             FROM logistica_pacotes_evento
@@ -372,6 +373,13 @@ function eventos_financeiro_salvar_pedido_detalhado(
         $pacote = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
         if ($descricao === '') {
             $descricao = trim((string)($pacote['nome'] ?? ''));
+        }
+        $pacoteCategoria = trim((string)($pacote['categoria'] ?? ''));
+        if ($valorBase <= 0 && strcasecmp($pacoteCategoria, 'Serviço') === 0) {
+            $precoServico = pacotes_evento_resolver_preco_servico($pdo, $pacoteId, $quantidade);
+            if (!empty($precoServico['ok'])) {
+                $valorBase = (float)($precoServico['valor_unitario'] ?? 0);
+            }
         }
         if ($valorBase <= 0 && isset($pacote['valor_padrao'])) {
             $valorBase = (float)$pacote['valor_padrao'];

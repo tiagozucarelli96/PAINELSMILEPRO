@@ -65,7 +65,10 @@ if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
     exit;
 }
 
-$pacotes_evento = pacotes_evento_listar($pdo, false);
+$pacotes_evento = array_values(array_filter(
+    pacotes_evento_listar($pdo, false),
+    static fn(array $item): bool => strcasecmp((string)($item['categoria'] ?? 'Pacote'), 'Pacote') === 0
+));
 $pacotes_evento_validos = [];
 $pacotes_evento_precos_js = [];
 foreach ($pacotes_evento as $pacote_evento_item) {

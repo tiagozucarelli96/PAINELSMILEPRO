@@ -9,7 +9,7 @@ require_once __DIR__ . '/conexao.php';
 function pacotes_evento_schema_marker_is_fresh(): bool
 {
     $ttl = max(300, (int)(painel_env('PACOTES_EVENTO_SCHEMA_TTL_SECONDS', '3600') ?? '3600'));
-    $mtime = @filemtime('/tmp/pacotes_evento_schema_ready_v2');
+    $mtime = @filemtime('/tmp/pacotes_evento_schema_ready_v3');
     if ($mtime === false) {
         return false;
     }
@@ -19,7 +19,7 @@ function pacotes_evento_schema_marker_is_fresh(): bool
 
 function pacotes_evento_touch_schema_marker(): void
 {
-    @touch('/tmp/pacotes_evento_schema_ready_v2');
+    @touch('/tmp/pacotes_evento_schema_ready_v3');
 }
 
 function pacotes_evento_parse_money($value): float
@@ -118,6 +118,7 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS pessoas_base INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS tipo_evento_real VARCHAR(60) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS unidades_aplicaveis TEXT NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS modelo_preco VARCHAR(30) NOT NULL DEFAULT 'simples'");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS oculto BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
@@ -207,6 +208,7 @@ function pacotes_evento_listar(PDO $pdo, bool $incluir_ocultos = false): array {
         $row['descricao'] = trim((string)($row['descricao'] ?? ''));
         $row['categoria'] = trim((string)($row['categoria'] ?? 'Pacote'));
         $row['tipo_evento_real'] = trim((string)($row['tipo_evento_real'] ?? ''));
+        $row['unidades_aplicaveis'] = pacotes_evento_normalizar_unidades_string($row['unidades_aplicaveis'] ?? '');
         $row['modelo_preco'] = trim((string)($row['modelo_preco'] ?? 'simples'));
         $row['oculto'] = !empty($row['oculto']);
     }
@@ -248,6 +250,7 @@ function pacotes_evento_get(PDO $pdo, int $pacote_id): ?array {
     $row['descricao'] = trim((string)($row['descricao'] ?? ''));
     $row['categoria'] = trim((string)($row['categoria'] ?? 'Pacote'));
     $row['tipo_evento_real'] = trim((string)($row['tipo_evento_real'] ?? ''));
+    $row['unidades_aplicaveis'] = pacotes_evento_normalizar_unidades_string($row['unidades_aplicaveis'] ?? '');
     $row['modelo_preco'] = trim((string)($row['modelo_preco'] ?? 'simples'));
     $row['oculto'] = !empty($row['oculto']);
     return $row;
@@ -283,6 +286,7 @@ function pacotes_evento_salvar(
         $categoria = 'Pacote';
     }
     $tipo_evento_real = trim((string)($options['tipo_evento_real'] ?? ''));
+    $unidades_aplicaveis = pacotes_evento_normalizar_unidades_string($options['unidades_aplicaveis'] ?? '');
     $modelo_preco = (string)($options['modelo_preco'] ?? 'simples');
     if (!in_array($modelo_preco, ['simples', 'tabela'], true)) {
         $modelo_preco = 'simples';
@@ -299,6 +303,7 @@ function pacotes_evento_salvar(
                     descricao = :descricao,
                     categoria = :categoria,
                     tipo_evento_real = :tipo_evento_real,
+                    unidades_aplicaveis = :unidades_aplicaveis,
                     modelo_preco = :modelo_preco,
                     valor_pacote = :valor_pacote,
                     pessoas_base = :pessoas_base,
@@ -314,6 +319,7 @@ function pacotes_evento_salvar(
                 ':descricao' => $descricao_limpa !== '' ? $descricao_limpa : null,
                 ':categoria' => $categoria,
                 ':tipo_evento_real' => $tipo_evento_real !== '' ? $tipo_evento_real : null,
+                ':unidades_aplicaveis' => $unidades_aplicaveis !== '' ? $unidades_aplicaveis : null,
                 ':modelo_preco' => $modelo_preco,
                 ':valor_pacote' => $valor_pacote,
                 ':pessoas_base' => $pessoas_base > 0 ? $pessoas_base : null,
@@ -330,9 +336,9 @@ function pacotes_evento_salvar(
 
         $stmt = $pdo->prepare("
             INSERT INTO logistica_pacotes_evento
-                (nome, descricao, categoria, tipo_evento_real, modelo_preco, valor_pacote, pessoas_base, valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at)
+                (nome, descricao, categoria, tipo_evento_real, unidades_aplicaveis, modelo_preco, valor_pacote, pessoas_base, valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at)
             VALUES
-                (:nome, :descricao, :categoria, :tipo_evento_real, :modelo_preco, :valor_pacote, :pessoas_base, :valor_convidado_adicional, :oculto, :created_by_user_id, NOW(), NOW())
+                (:nome, :descricao, :categoria, :tipo_evento_real, :unidades_aplicaveis, :modelo_preco, :valor_pacote, :pessoas_base, :valor_convidado_adicional, :oculto, :created_by_user_id, NOW(), NOW())
             RETURNING *
         ");
         $stmt->execute([
@@ -340,6 +346,7 @@ function pacotes_evento_salvar(
             ':descricao' => $descricao_limpa !== '' ? $descricao_limpa : null,
             ':categoria' => $categoria,
             ':tipo_evento_real' => $tipo_evento_real !== '' ? $tipo_evento_real : null,
+            ':unidades_aplicaveis' => $unidades_aplicaveis !== '' ? $unidades_aplicaveis : null,
             ':modelo_preco' => $modelo_preco,
             ':valor_pacote' => $valor_pacote,
             ':pessoas_base' => $pessoas_base > 0 ? $pessoas_base : null,
@@ -353,6 +360,48 @@ function pacotes_evento_salvar(
         error_log('pacotes_evento_salvar: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Erro ao salvar pacote do evento.'];
     }
+}
+
+function pacotes_evento_normalizar_unidades_string($value): string
+{
+    $raw = is_array($value) ? $value : explode(',', (string)$value);
+    $unidades = [];
+    foreach ($raw as $item) {
+        $nome = trim((string)$item);
+        if ($nome === '') {
+            continue;
+        }
+        $unidades[$nome] = $nome;
+    }
+    ksort($unidades, SORT_NATURAL | SORT_FLAG_CASE);
+    return implode(',', array_values($unidades));
+}
+
+function pacotes_evento_parse_unidades_aplicaveis($value): array
+{
+    $normalizado = pacotes_evento_normalizar_unidades_string($value);
+    if ($normalizado === '') {
+        return [];
+    }
+    return array_values(array_filter(array_map('trim', explode(',', $normalizado))));
+}
+
+function pacotes_evento_item_aplicavel_unidade(array $item, string $unidade): bool
+{
+    $unidades = pacotes_evento_parse_unidades_aplicaveis($item['unidades_aplicaveis'] ?? '');
+    if (empty($unidades)) {
+        return true;
+    }
+    $unidadeSlug = pacotes_evento_slug($unidade);
+    if ($unidadeSlug === '') {
+        return true;
+    }
+    foreach ($unidades as $itemUnidade) {
+        if (pacotes_evento_slug($itemUnidade) === $unidadeSlug) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function pacotes_evento_tipos_evento_listar(PDO $pdo): array
@@ -599,6 +648,46 @@ function pacotes_evento_resolver_preco(
     }
 
     return ['ok' => false, 'error' => 'Nenhuma faixa de preço encontrada para data e convidados informados.'];
+}
+
+function pacotes_evento_resolver_preco_servico(PDO $pdo, int $servico_id, int $convidados): array
+{
+    $servico = pacotes_evento_get($pdo, $servico_id);
+    if (!$servico || strcasecmp((string)($servico['categoria'] ?? ''), 'Serviço') !== 0) {
+        return ['ok' => false, 'error' => 'Serviço não encontrado.'];
+    }
+
+    $convidados = max(0, $convidados);
+    $variacoes = pacotes_evento_preco_variacoes_listar($pdo, $servico_id);
+    $melhorFaixa = null;
+    foreach ($variacoes as $variacao) {
+        if (empty($variacao['ativo'])) {
+            continue;
+        }
+        foreach (($variacao['faixas'] ?? []) as $faixa) {
+            $pessoas = (int)($faixa['pessoas'] ?? 0);
+            $valor = (float)($faixa['valor'] ?? 0);
+            if ($pessoas <= 0 || $valor <= 0 || $pessoas > $convidados) {
+                continue;
+            }
+            if ($melhorFaixa === null || $pessoas > (int)($melhorFaixa['pessoas'] ?? 0)) {
+                $melhorFaixa = $faixa;
+            }
+        }
+    }
+
+    if ($melhorFaixa === null) {
+        return ['ok' => false, 'error' => 'Nenhuma faixa de preço encontrada para o serviço.'];
+    }
+
+    return [
+        'ok' => true,
+        'modelo' => 'servico_tabela',
+        'servico_id' => $servico_id,
+        'valor_unitario' => round((float)$melhorFaixa['valor'], 2),
+        'pessoas_referencia' => (int)$melhorFaixa['pessoas'],
+        'faixa' => $melhorFaixa,
+    ];
 }
 
 /**

@@ -125,6 +125,7 @@ function cadastros_pp_ensure_schema(PDO $pdo): void
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_pacote NUMERIC(12,2) NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS pessoas_base INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS unidades_aplicaveis TEXT NULL");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_categoria ON logistica_pacotes_evento(categoria, deleted_at)");
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS logistica_servico_receitas (
@@ -212,6 +213,29 @@ function cadastros_pp_servico_receitas_salvar(PDO $pdo, int $servicoId, array $r
     }
 }
 
+function cadastros_pp_unidades_listar(PDO $pdo): array
+{
+    try {
+        $stmt = $pdo->query("
+            SELECT DISTINCT TRIM(space_visivel) AS nome
+            FROM logistica_me_locais
+            WHERE TRIM(COALESCE(space_visivel, '')) <> ''
+            ORDER BY TRIM(space_visivel)
+        ");
+        $unidades = array_values(array_filter(array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [])));
+    } catch (Throwable $e) {
+        $unidades = [];
+    }
+
+    foreach (['Cristal', 'Diverkids', 'Garden', 'Lisbon'] as $fallback) {
+        if (!in_array($fallback, $unidades, true)) {
+            $unidades[] = $fallback;
+        }
+    }
+    sort($unidades, SORT_NATURAL | SORT_FLAG_CASE);
+    return $unidades;
+}
+
 cadastros_pp_ensure_schema($pdo);
 
 $userId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
@@ -224,6 +248,7 @@ $modalItem = [
     'id' => 0,
     'categoria' => 'Pacote',
     'tipo_evento_real' => '',
+    'unidades_aplicaveis' => [],
     'modelo_preco' => 'simples',
     'nome' => '',
     'valor_venda' => '',
@@ -255,6 +280,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pessoasBase = max(0, (int)($_POST['pessoas_base'] ?? 0));
         $valorConvidadoAdicional = cadastros_pp_money_to_float((string)($_POST['valor_convidado_adicional'] ?? '0'));
         $tipoEventoReal = trim((string)($_POST['tipo_evento_real'] ?? ''));
+        $unidadesAplicaveis = $categoria === 'Serviço'
+            ? pacotes_evento_normalizar_unidades_string($_POST['unidades_aplicaveis'] ?? [])
+            : '';
         $modeloPreco = in_array(($_POST['modelo_preco'] ?? 'simples'), ['simples', 'tabela'], true) ? (string)$_POST['modelo_preco'] : 'simples';
         $receitaIds = is_array($_POST['receita_ids'] ?? null) ? $_POST['receita_ids'] : [];
         $servicePriceVariations = $categoria === 'Serviço' && is_array($_POST['variacoes'] ?? null) ? $_POST['variacoes'] : [];
@@ -273,6 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             nome = :nome,
                             descricao = :descricao,
                             tipo_evento_real = :tipo_evento_real,
+                            unidades_aplicaveis = :unidades_aplicaveis,
                             modelo_preco = :modelo_preco,
                             valor_venda = :valor_venda,
                             valor_pacote = :valor_pacote,
@@ -287,7 +316,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':categoria' => $categoria,
                         ':nome' => $nome,
                         ':descricao' => $descricao !== '' ? $descricao : null,
-                        ':tipo_evento_real' => $categoria === 'Pacote' && $tipoEventoReal !== '' ? $tipoEventoReal : null,
+                        ':tipo_evento_real' => in_array($categoria, ['Pacote', 'Serviço'], true) && $tipoEventoReal !== '' ? $tipoEventoReal : null,
+                        ':unidades_aplicaveis' => $unidadesAplicaveis !== '' ? $unidadesAplicaveis : null,
                         ':modelo_preco' => $categoria === 'Pacote' ? $modeloPreco : ($categoria === 'Serviço' ? 'tabela' : 'simples'),
                         ':valor_venda' => $categoria === 'Produto' ? $valorVenda : null,
                         ':valor_pacote' => $categoria === 'Pacote' ? $valorPacote : null,
@@ -303,10 +333,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $stmt = $pdo->prepare("
                         INSERT INTO logistica_pacotes_evento (
-                            categoria, nome, descricao, tipo_evento_real, modelo_preco, valor_venda, valor_pacote, pessoas_base,
+                            categoria, nome, descricao, tipo_evento_real, unidades_aplicaveis, modelo_preco, valor_venda, valor_pacote, pessoas_base,
                             valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at
                         ) VALUES (
-                            :categoria, :nome, :descricao, :tipo_evento_real, :modelo_preco, :valor_venda, :valor_pacote, :pessoas_base,
+                            :categoria, :nome, :descricao, :tipo_evento_real, :unidades_aplicaveis, :modelo_preco, :valor_venda, :valor_pacote, :pessoas_base,
                             :valor_convidado_adicional, FALSE, :created_by_user_id, NOW(), NOW()
                         )
                         RETURNING id
@@ -315,7 +345,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':categoria' => $categoria,
                         ':nome' => $nome,
                         ':descricao' => $descricao !== '' ? $descricao : null,
-                        ':tipo_evento_real' => $categoria === 'Pacote' && $tipoEventoReal !== '' ? $tipoEventoReal : null,
+                        ':tipo_evento_real' => in_array($categoria, ['Pacote', 'Serviço'], true) && $tipoEventoReal !== '' ? $tipoEventoReal : null,
+                        ':unidades_aplicaveis' => $unidadesAplicaveis !== '' ? $unidadesAplicaveis : null,
                         ':modelo_preco' => $categoria === 'Pacote' ? $modeloPreco : ($categoria === 'Serviço' ? 'tabela' : 'simples'),
                         ':valor_venda' => $categoria === 'Produto' ? $valorVenda : null,
                         ':valor_pacote' => $categoria === 'Pacote' ? $valorPacote : null,
@@ -370,10 +401,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $stmt = $pdo->prepare("
                 INSERT INTO logistica_pacotes_evento (
-                    categoria, nome, descricao, tipo_evento_real, modelo_preco, valor_venda, valor_pacote, pessoas_base,
+                    categoria, nome, descricao, tipo_evento_real, unidades_aplicaveis, modelo_preco, valor_venda, valor_pacote, pessoas_base,
                     valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at
                 )
-                SELECT categoria, nome || ' (Cópia)', descricao, tipo_evento_real, modelo_preco, valor_venda, valor_pacote, pessoas_base,
+                SELECT categoria, nome || ' (Cópia)', descricao, tipo_evento_real, unidades_aplicaveis, modelo_preco, valor_venda, valor_pacote, pessoas_base,
                        valor_convidado_adicional, FALSE, :created_by_user_id, NOW(), NOW()
                 FROM logistica_pacotes_evento
                 WHERE id = :id
@@ -443,6 +474,7 @@ if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['acti
         'id' => (int)($_POST['id'] ?? 0),
         'categoria' => trim((string)($_POST['categoria'] ?? 'Pacote')),
         'tipo_evento_real' => trim((string)($_POST['tipo_evento_real'] ?? '')),
+        'unidades_aplicaveis' => pacotes_evento_parse_unidades_aplicaveis($_POST['unidades_aplicaveis'] ?? []),
         'modelo_preco' => trim((string)($_POST['modelo_preco'] ?? 'simples')),
         'nome' => trim((string)($_POST['nome'] ?? '')),
         'valor_venda' => trim((string)($_POST['valor_venda'] ?? '')),
@@ -469,6 +501,7 @@ if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['acti
                 'id' => (int)$itemEdicao['id'],
                 'categoria' => (string)($itemEdicao['categoria'] ?? 'Pacote'),
                 'tipo_evento_real' => (string)($itemEdicao['tipo_evento_real'] ?? ''),
+                'unidades_aplicaveis' => pacotes_evento_parse_unidades_aplicaveis($itemEdicao['unidades_aplicaveis'] ?? ''),
                 'modelo_preco' => (string)($itemEdicao['modelo_preco'] ?? 'simples'),
                 'nome' => (string)($itemEdicao['nome'] ?? ''),
                 'valor_venda' => (string)($itemEdicao['valor_venda'] ?? ''),
@@ -565,6 +598,8 @@ $modalCategoria = in_array((string)$modalItem['categoria'], ['Pacote', 'Serviço
 $modalIsPacote = $modalCategoria === 'Pacote';
 $modalIsServico = $modalCategoria === 'Serviço';
 $tiposEvento = pacotes_evento_tipos_evento_listar($pdo);
+$unidadesDisponiveis = cadastros_pp_unidades_listar($pdo);
+$modalUnidadesAplicaveis = pacotes_evento_parse_unidades_aplicaveis($modalItem['unidades_aplicaveis'] ?? []);
 $receitasCatalogo = cadastros_pp_receitas_listar($pdo);
 $modalReceitaIds = array_map('intval', is_array($modalItem['receita_ids'] ?? null) ? $modalItem['receita_ids'] : []);
 $editPriceVariations = [];
@@ -579,7 +614,7 @@ $defaultPriceVariations = [
 ];
 $priceVariationsForForm = !empty($editPriceVariations) ? $editPriceVariations : $defaultPriceVariations;
 $defaultPricePeople = [30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
-$defaultServicePricePeople = [50, 80, 100, 120, 150, 200];
+$defaultServicePricePeople = [50, 70, 80, 100, 120, 150, 200];
 $servicePriceVariation = !empty($editPriceVariations) ? $editPriceVariations[0] : ['nome' => 'Preço por quantidade de pessoas', 'dias_semana' => '1,2,3,4,5,6,7', 'ativo' => true, 'faixas' => []];
 $serviceFaixasMap = [];
 foreach (($servicePriceVariation['faixas'] ?? []) as $faixa) {
@@ -636,7 +671,7 @@ sort($servicePeople);
 .pp-field label { color: #334155; font-size: 0.82rem; font-weight: 800; }
 .pp-field input, .pp-field select, .pp-field textarea { width: 100%; border: 1px solid #d1d9e6; border-radius: 10px; padding: 0.68rem 0.78rem; color: #1e293b; background: #fff; }
 .pp-modal-actions { display: flex; justify-content: flex-end; gap: 0.65rem; border-top: 1px solid #e2e8f0; padding: 1rem; flex-shrink: 0; background: #fff; }
-.pp-service-fields.hidden, .pp-package-fields.hidden, .pp-product-fields.hidden { display: none; }
+.pp-service-fields.hidden, .pp-package-fields.hidden, .pp-product-fields.hidden, .pp-event-type-fields.hidden { display: none; }
 .pp-tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid #e2e8f0; margin-top: 0.25rem; }
 .pp-tab-button { border: none; border-radius: 9px 9px 0 0; background: transparent; color: #475569; cursor: pointer; font-weight: 900; padding: 0.65rem 0.9rem; }
 .pp-tab-button.active { background: #eff6ff; color: #1d4ed8; }
@@ -665,6 +700,9 @@ sort($servicePeople);
 .pp-section-box { border: 1px solid #dbe6f3; border-radius: 12px; padding: 0.9rem; background: #f8fafc; display: grid; gap: 0.75rem; }
 .pp-service-price-inline { grid-column: 1 / -1; }
 .pp-service-price-inline .pp-price-help { font-size: 0.78rem; }
+.pp-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; }
+.pp-checkbox-chip { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 38px; border: 1px solid #dbe3ef; border-radius: 8px; padding: 0.45rem 0.6rem; background: #fff; color: #334155; font-weight: 800; }
+.pp-checkbox-chip input { margin: 0; }
 .pp-service-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; margin-top: 0.85rem; }
 .pp-service-tools .pp-section-box { align-content: start; }
 .pp-service-price-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.65rem; }
@@ -758,6 +796,13 @@ sort($servicePeople);
                                     <?php endif; ?>
                                 <?php elseif ($categoria === 'Serviço'): ?>
                                     <span class="pp-pill">Por pessoa</span>
+                                    <?php if (trim((string)($item['tipo_evento_real'] ?? '')) !== ''): ?>
+                                        <div class="pp-muted"><?= cadastros_pp_e((string)($tiposEvento[(string)$item['tipo_evento_real']] ?? $item['tipo_evento_real'])) ?></div>
+                                    <?php endif; ?>
+                                    <?php $unidadesItem = pacotes_evento_parse_unidades_aplicaveis($item['unidades_aplicaveis'] ?? ''); ?>
+                                    <?php if (!empty($unidadesItem)): ?>
+                                        <div class="pp-muted"><?= cadastros_pp_e(implode(', ', $unidadesItem)) ?></div>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span class="pp-muted">-</span>
                                 <?php endif; ?>
@@ -845,8 +890,8 @@ sort($servicePeople);
                     <label for="pp-valor-venda">Valor de venda</label>
                     <input type="text" name="valor_venda" id="pp-valor-venda" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_venda']) ?>">
                 </div>
-                <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
-                    <label for="pp-tipo-evento-real">Tipo de evento</label>
+                <div class="pp-field pp-event-type-fields <?= ($modalIsPacote || $modalIsServico) ? '' : 'hidden' ?>">
+                    <label for="pp-tipo-evento-real">Tipo de festa</label>
                     <select name="tipo_evento_real" id="pp-tipo-evento-real">
                         <option value="">Sem tipo definido</option>
                         <?php foreach ($tiposEvento as $tipoKey => $tipoLabel): ?>
@@ -855,6 +900,23 @@ sort($servicePeople);
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+                <div class="pp-field full pp-service-fields <?= $modalIsServico ? '' : 'hidden' ?>">
+                    <label>Unidades aplicáveis</label>
+                    <div class="pp-checkbox-grid">
+                        <?php foreach ($unidadesDisponiveis as $unidadeDisponivel): ?>
+                            <label class="pp-checkbox-chip">
+                                <input
+                                    type="checkbox"
+                                    name="unidades_aplicaveis[]"
+                                    value="<?= cadastros_pp_e($unidadeDisponivel) ?>"
+                                    <?= in_array($unidadeDisponivel, $modalUnidadesAplicaveis, true) ? 'checked' : '' ?>
+                                >
+                                <span><?= cadastros_pp_e($unidadeDisponivel) ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="pp-muted">Se não marcar nenhuma, o serviço fica disponível para todas as unidades.</div>
                 </div>
                 <div class="pp-field pp-package-fields <?= $modalIsPacote ? '' : 'hidden' ?>">
                     <label for="pp-modelo-preco">Modelo de preço</label>
@@ -1171,6 +1233,7 @@ function updateCategoriaFields() {
     document.querySelectorAll('.pp-package-fields').forEach((el) => el.classList.toggle('hidden', !isPacote));
     document.querySelectorAll('.pp-service-fields').forEach((el) => el.classList.toggle('hidden', !isServico));
     document.querySelectorAll('.pp-product-fields').forEach((el) => el.classList.toggle('hidden', !isProduto));
+    document.querySelectorAll('.pp-event-type-fields').forEach((el) => el.classList.toggle('hidden', !(isPacote || isServico)));
     updatePrecoTabState();
 }
 
@@ -1214,6 +1277,10 @@ function openPpModal(data = null) {
     document.getElementById('pp-valor-pacote').value = data?.valorPacote || '';
     document.getElementById('pp-pessoas-base').value = data?.pessoasBase || '';
     document.getElementById('pp-valor-convidado-adicional').value = data?.valorConvidadoAdicional || '';
+    const unidadesAplicaveis = Array.isArray(data?.unidadesAplicaveis) ? data.unidadesAplicaveis : [];
+    document.querySelectorAll('input[name="unidades_aplicaveis[]"]').forEach((input) => {
+        input.checked = unidadesAplicaveis.includes(input.value);
+    });
     ppFormatPackageMoneyFields();
     updateCategoriaFields();
     updatePrecoTabState();
@@ -1232,10 +1299,15 @@ function closePpModal() {
 
 function getPpItemModalData(id) {
     const item = ppItems[id || ''] || {};
+    const unidadesAplicaveis = String(item.unidades_aplicaveis || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
     return {
         id: item.id || id || '0',
         categoria: item.categoria || 'Pacote',
         tipoEventoReal: item.tipo_evento_real || '',
+        unidadesAplicaveis,
         modeloPreco: item.modelo_preco || 'simples',
         nome: item.nome || '',
         valorVenda: item.valor_venda || '',

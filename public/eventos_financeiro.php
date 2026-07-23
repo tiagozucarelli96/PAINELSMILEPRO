@@ -149,12 +149,32 @@ $messages = array_values(array_filter($messages));
 $resumo = eventos_financeiro_resumo($pdo, $eventoId);
 $pedidos = eventos_financeiro_listar_pedidos($pdo, $eventoId);
 $receitas = eventos_financeiro_listar_receitas($pdo, $eventoId);
-$pacotes = pacotes_evento_listar($pdo, false);
-$pacotesJson = array_map(static function (array $pacote): array {
+$eventoUnidade = trim((string)($evento['space_visivel'] ?? ''));
+$pacotes = array_values(array_filter(
+    pacotes_evento_listar($pdo, false),
+    static fn(array $item): bool => pacotes_evento_item_aplicavel_unidade($item, $eventoUnidade)
+));
+$pacotesJson = array_map(static function (array $pacote) use ($pdo): array {
     $categoria = trim((string)($pacote['categoria'] ?? 'Pacote'));
     $valorBase = $categoria === 'Pacote'
         ? (float)($pacote['valor_pacote'] ?? 0)
         : (float)($pacote['valor_venda'] ?? 0);
+    $faixasServico = [];
+    if (strcasecmp($categoria, 'Serviço') === 0) {
+        foreach (pacotes_evento_preco_variacoes_listar($pdo, (int)($pacote['id'] ?? 0)) as $variacao) {
+            if (empty($variacao['ativo'])) {
+                continue;
+            }
+            foreach (($variacao['faixas'] ?? []) as $faixa) {
+                $pessoas = (int)($faixa['pessoas'] ?? 0);
+                $valor = (float)($faixa['valor'] ?? 0);
+                if ($pessoas > 0 && $valor > 0) {
+                    $faixasServico[$pessoas] = $valor;
+                }
+            }
+        }
+        ksort($faixasServico, SORT_NUMERIC);
+    }
     return [
         'id' => (int)($pacote['id'] ?? 0),
         'nome' => (string)($pacote['nome'] ?? ''),
@@ -163,6 +183,11 @@ $pacotesJson = array_map(static function (array $pacote): array {
         'valorBase' => $valorBase,
         'valorAdicional' => (float)($pacote['valor_convidado_adicional'] ?? 0),
         'pessoasBase' => (int)($pacote['pessoas_base'] ?? 0),
+        'faixasServico' => array_map(
+            static fn(int $pessoas, float $valor): array => ['pessoas' => $pessoas, 'valor' => $valor],
+            array_keys($faixasServico),
+            array_values($faixasServico)
+        ),
     ];
 }, $pacotes);
 
@@ -173,7 +198,6 @@ try {
 } catch (Throwable $e) {
     $unidades = [];
 }
-$eventoUnidade = trim((string)($evento['space_visivel'] ?? ''));
 if ($eventoUnidade !== '' && !in_array($eventoUnidade, $unidades, true)) {
     array_unshift($unidades, $eventoUnidade);
 }
@@ -714,6 +738,19 @@ function syncPedidoResumo() {
     document.getElementById('pedido-resumo-desconto').textContent = formatCurrencyLabel(desconto);
     document.getElementById('pedido-resumo-total').textContent = formatCurrencyLabel(total);
 }
+function resolveServiceUnitPrice(item, convidados) {
+    const faixas = Array.isArray(item?.faixasServico) ? item.faixasServico : [];
+    const qtd = Math.max(0, Number(convidados || 0));
+    let selected = null;
+    faixas.forEach((faixa) => {
+        const pessoas = Number(faixa.pessoas || 0);
+        const valor = Number(faixa.valor || 0);
+        if (pessoas > 0 && valor > 0 && pessoas <= qtd && (!selected || pessoas > Number(selected.pessoas || 0))) {
+            selected = { pessoas, valor };
+        }
+    });
+    return selected;
+}
 function fillPedidoFromPacote(overrideExisting = false) {
     const item = pacoteMap.get(String(pacoteSelect?.value || '0'));
     if (!item) {
@@ -721,10 +758,17 @@ function fillPedidoFromPacote(overrideExisting = false) {
         return;
     }
     if (overrideExisting || !pedidoDescricao.value.trim()) pedidoDescricao.value = item.nome || '';
-    if (String(item.categoria || '').toLowerCase() === 'pacote' && Number(item.pessoasBase || 0) > 0) {
+    const categoria = String(item.categoria || '').toLowerCase();
+    if (categoria === 'pacote' && Number(item.pessoasBase || 0) > 0) {
         pedidoQuantidade.value = String(Math.max(eventoConvidados || 0, Number(item.pessoasBase || 0), 1));
+    } else if (categoria === 'serviço') {
+        pedidoQuantidade.value = String(Math.max(eventoConvidados || 0, 1));
+        const servicePrice = resolveServiceUnitPrice(item, pedidoQuantidade.value);
+        if (servicePrice && (overrideExisting || moneyToNumber(pedidoValorBase.value) <= 0)) {
+            pedidoValorBase.value = numberToMoney(servicePrice.valor);
+        }
     }
-    if (overrideExisting || moneyToNumber(pedidoValorBase.value) <= 0) pedidoValorBase.value = numberToMoney(item.valorBase || 0);
+    if (categoria !== 'serviço' && (overrideExisting || moneyToNumber(pedidoValorBase.value) <= 0)) pedidoValorBase.value = numberToMoney(item.valorBase || 0);
     if (overrideExisting || moneyToNumber(pedidoValorAdicional.value) <= 0) pedidoValorAdicional.value = numberToMoney(item.valorAdicional || 0);
     if (overrideExisting || !getPedidoDetalhes().trim()) setPedidoDetalhes(item.descricao || '');
     syncPedidoResumo();
