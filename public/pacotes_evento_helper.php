@@ -552,7 +552,8 @@ function pacotes_evento_resolver_preco(
     }
     $diaSemana = (int)$dt->format('N');
     $variacoes = pacotes_evento_preco_variacoes_listar($pdo, $pacote_id);
-    foreach ($variacoes as $variacao) {
+    $candidatas = [];
+    foreach ($variacoes as $index => $variacao) {
         if (empty($variacao['ativo'])) {
             continue;
         }
@@ -560,9 +561,25 @@ function pacotes_evento_resolver_preco(
         $matchDia = in_array($diaSemana, $dias, true);
         $matchFeriado = $eh_feriado && !empty($variacao['inclui_feriado']);
         $matchVespera = $eh_vespera_feriado && !empty($variacao['inclui_vespera_feriado']);
-        if (!$matchDia && !$matchFeriado && !$matchVespera) {
+        $prioridade = $matchVespera ? 3 : ($matchFeriado ? 2 : ($matchDia ? 1 : 0));
+        if ($prioridade <= 0) {
             continue;
         }
+
+        $candidatas[] = [
+            'prioridade' => $prioridade,
+            'ordem' => (int)$index,
+            'variacao' => $variacao,
+        ];
+    }
+
+    usort($candidatas, static function (array $a, array $b): int {
+        $byPriority = (int)$b['prioridade'] <=> (int)$a['prioridade'];
+        return $byPriority !== 0 ? $byPriority : ((int)$a['ordem'] <=> (int)$b['ordem']);
+    });
+
+    foreach ($candidatas as $candidata) {
+        $variacao = $candidata['variacao'];
         $faixas = $variacao['faixas'] ?? [];
         usort($faixas, static fn(array $a, array $b): int => (int)$a['pessoas'] <=> (int)$b['pessoas']);
         foreach ($faixas as $faixa) {
@@ -573,6 +590,7 @@ function pacotes_evento_resolver_preco(
                     'pacote_id' => $pacote_id,
                     'valor' => round((float)$faixa['valor'], 2),
                     'pessoas_referencia' => (int)$faixa['pessoas'],
+                    'variacao_id' => (int)($variacao['id'] ?? 0),
                     'variacao' => $variacao,
                     'faixa' => $faixa,
                 ];
