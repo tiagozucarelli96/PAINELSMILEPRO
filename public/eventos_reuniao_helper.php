@@ -4874,6 +4874,19 @@ function eventos_cliente_portal_template_ativo(PDO $pdo, string $nome, string $c
     }
 }
 
+/**
+ * Indica se o vínculo já contém dados do cliente que não podem ser substituídos
+ * durante a reaplicação automática de um modelo padrão.
+ */
+function eventos_cliente_portal_link_tem_dados_cliente(array $link, bool $tem_anexo = false): bool
+{
+    return $tem_anexo
+        || !empty($link['submitted_at'])
+        || !empty($link['draft_saved_at'])
+        || trim((string)($link['content_html_snapshot'] ?? '')) !== ''
+        || trim((string)($link['draft_content_html_snapshot'] ?? '')) !== '';
+}
+
 function eventos_cliente_portal_upsert_link_template_padrao(
     PDO $pdo,
     int $meeting_id,
@@ -4913,12 +4926,30 @@ function eventos_cliente_portal_upsert_link_template_padrao(
         $existing = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
         if ($existing) {
+            $has_client_data = eventos_cliente_portal_link_tem_dados_cliente($existing);
+
+            if (!$has_client_data && eventos_reuniao_has_table($pdo, 'eventos_reunioes_anexos')) {
+                $stmtAnexo = $pdo->prepare("
+                    SELECT 1
+                    FROM eventos_reunioes_anexos
+                    WHERE public_link_id = :public_link_id
+                      AND deleted_at IS NULL
+                    LIMIT 1
+                ");
+                $stmtAnexo->execute([':public_link_id' => (int)$existing['id']]);
+                $has_client_data = eventos_cliente_portal_link_tem_dados_cliente(
+                    $existing,
+                    (bool)$stmtAnexo->fetchColumn()
+                );
+            }
+
+            $schema_assignment = $has_client_data
+                ? 'form_schema_json'
+                : 'CAST(:form_schema_json AS jsonb)';
             $stmt = $pdo->prepare("
                 UPDATE eventos_links_publicos
                 SET allowed_sections = CAST(:allowed_sections AS jsonb),
-                    form_schema_json = CAST(:form_schema_json AS jsonb),
-                    content_html_snapshot = NULL,
-                    draft_content_html_snapshot = NULL,
+                    form_schema_json = {$schema_assignment},
                     form_title = :form_title,
                     portal_visible = TRUE,
                     portal_editable = TRUE,
@@ -4930,11 +4961,15 @@ function eventos_cliente_portal_upsert_link_template_padrao(
             $stmt->execute([
                 ':id' => (int)$existing['id'],
                 ':allowed_sections' => $allowed_sections_json,
-                ':form_schema_json' => $schema_json,
                 ':form_title' => $template_nome,
-            ]);
+            ] + ($has_client_data ? [] : [':form_schema_json' => $schema_json]));
             $link = $stmt->fetch(PDO::FETCH_ASSOC) ?: $existing;
-            return ['ok' => true, 'link' => $link, 'created' => false];
+            return [
+                'ok' => true,
+                'link' => $link,
+                'created' => false,
+                'preserved_client_data' => $has_client_data,
+            ];
         }
 
         $token = bin2hex(random_bytes(32));
