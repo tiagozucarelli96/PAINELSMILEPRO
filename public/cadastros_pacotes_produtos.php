@@ -12,6 +12,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 if (empty($_SESSION['perm_cadastros']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -126,6 +127,11 @@ function cadastros_pp_ensure_schema(PDO $pdo): void
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS pessoas_base INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS unidades_aplicaveis TEXT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_storage_key TEXT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_public_url TEXT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_nome_original VARCHAR(255) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_mime_type VARCHAR(120) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_updated_at TIMESTAMP NULL");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_logistica_pacotes_evento_categoria ON logistica_pacotes_evento(categoria, deleted_at)");
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS logistica_servico_receitas (
@@ -142,6 +148,27 @@ function cadastros_pp_ensure_schema(PDO $pdo): void
     } catch (Throwable $e) {
         error_log('cadastros_pp_ensure_schema: ' . $e->getMessage());
     }
+}
+
+function cadastros_pp_produto_imagem_upload(array $file): array
+{
+    if (empty($file['tmp_name']) || (int)($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return [];
+    }
+
+    $uploader = new MagaluUpload(25);
+    $upload = $uploader->upload($file, 'cadastros/produtos');
+    $url = trim((string)($upload['url'] ?? ''));
+    if ($url === '') {
+        throw new RuntimeException('Falha no upload da imagem do produto.');
+    }
+
+    return [
+        'storage_key' => (string)($upload['chave_storage'] ?? ''),
+        'public_url' => $url,
+        'nome_original' => (string)($upload['nome_original'] ?? ($file['name'] ?? '')),
+        'mime_type' => (string)($upload['mime_type'] ?? ($file['type'] ?? '')),
+    ];
 }
 
 function cadastros_pp_receitas_listar(PDO $pdo): array
@@ -256,6 +283,10 @@ $modalItem = [
     'pessoas_base' => '',
     'valor_convidado_adicional' => '',
     'descricao' => '',
+    'produto_imagem_storage_key' => '',
+    'produto_imagem_public_url' => '',
+    'produto_imagem_nome_original' => '',
+    'produto_imagem_mime_type' => '',
     'receita_ids' => [],
 ];
 
@@ -286,9 +317,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $modeloPreco = in_array(($_POST['modelo_preco'] ?? 'simples'), ['simples', 'tabela'], true) ? (string)$_POST['modelo_preco'] : 'simples';
         $receitaIds = is_array($_POST['receita_ids'] ?? null) ? $_POST['receita_ids'] : [];
         $servicePriceVariations = $categoria === 'Serviço' && is_array($_POST['variacoes'] ?? null) ? $_POST['variacoes'] : [];
+        $removerImagemProduto = $categoria === 'Produto' && !empty($_POST['produto_imagem_remover']);
+        $produtoImagemUpload = [];
 
         if ($nome === '') {
             $errors[] = 'Informe o nome.';
+        }
+
+        if ($categoria === 'Produto' && !$removerImagemProduto && !empty($_FILES['produto_imagem']) && (int)($_FILES['produto_imagem']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $produtoImagemUpload = cadastros_pp_produto_imagem_upload($_FILES['produto_imagem']);
+            } catch (Throwable $e) {
+                error_log('cadastros_pp produto imagem upload: ' . $e->getMessage());
+                $errors[] = 'Não foi possível enviar a imagem do produto.';
+            }
         }
 
         if (empty($errors)) {
@@ -324,6 +366,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':pessoas_base' => $categoria === 'Pacote' && $pessoasBase > 0 ? $pessoasBase : null,
                         ':valor_convidado_adicional' => $categoria === 'Pacote' ? $valorConvidadoAdicional : null,
                     ]);
+                    if ($categoria !== 'Produto' || $removerImagemProduto) {
+                        $pdo->prepare("
+                            UPDATE logistica_pacotes_evento
+                            SET produto_imagem_storage_key = NULL,
+                                produto_imagem_public_url = NULL,
+                                produto_imagem_nome_original = NULL,
+                                produto_imagem_mime_type = NULL,
+                                produto_imagem_updated_at = NOW(),
+                                updated_at = NOW()
+                            WHERE id = :id
+                        ")->execute([':id' => $id]);
+                    } elseif (!empty($produtoImagemUpload['public_url'])) {
+                        $pdo->prepare("
+                            UPDATE logistica_pacotes_evento
+                            SET produto_imagem_storage_key = :storage_key,
+                                produto_imagem_public_url = :public_url,
+                                produto_imagem_nome_original = :nome_original,
+                                produto_imagem_mime_type = :mime_type,
+                                produto_imagem_updated_at = NOW(),
+                                updated_at = NOW()
+                            WHERE id = :id
+                        ")->execute([
+                            ':id' => $id,
+                            ':storage_key' => (string)($produtoImagemUpload['storage_key'] ?? ''),
+                            ':public_url' => (string)($produtoImagemUpload['public_url'] ?? ''),
+                            ':nome_original' => (string)($produtoImagemUpload['nome_original'] ?? ''),
+                            ':mime_type' => (string)($produtoImagemUpload['mime_type'] ?? ''),
+                        ]);
+                    }
                     if ($categoria === 'Serviço') {
                         cadastros_pp_servico_receitas_salvar($pdo, $id, $receitaIds);
                     } else {
@@ -334,10 +405,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $pdo->prepare("
                         INSERT INTO logistica_pacotes_evento (
                             categoria, nome, descricao, tipo_evento_real, unidades_aplicaveis, modelo_preco, valor_venda, valor_pacote, pessoas_base,
-                            valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at
+                            valor_convidado_adicional, produto_imagem_storage_key, produto_imagem_public_url, produto_imagem_nome_original,
+                            produto_imagem_mime_type, produto_imagem_updated_at, oculto, created_by_user_id, created_at, updated_at
                         ) VALUES (
                             :categoria, :nome, :descricao, :tipo_evento_real, :unidades_aplicaveis, :modelo_preco, :valor_venda, :valor_pacote, :pessoas_base,
-                            :valor_convidado_adicional, FALSE, :created_by_user_id, NOW(), NOW()
+                            :valor_convidado_adicional, :produto_imagem_storage_key, :produto_imagem_public_url, :produto_imagem_nome_original,
+                            :produto_imagem_mime_type, CAST(NULLIF(:produto_imagem_updated_at, '') AS TIMESTAMP), FALSE, :created_by_user_id, NOW(), NOW()
                         )
                         RETURNING id
                     ");
@@ -352,6 +425,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':valor_pacote' => $categoria === 'Pacote' ? $valorPacote : null,
                         ':pessoas_base' => $categoria === 'Pacote' && $pessoasBase > 0 ? $pessoasBase : null,
                         ':valor_convidado_adicional' => $categoria === 'Pacote' ? $valorConvidadoAdicional : null,
+                        ':produto_imagem_storage_key' => $categoria === 'Produto' ? (string)($produtoImagemUpload['storage_key'] ?? '') : '',
+                        ':produto_imagem_public_url' => $categoria === 'Produto' ? (string)($produtoImagemUpload['public_url'] ?? '') : '',
+                        ':produto_imagem_nome_original' => $categoria === 'Produto' ? (string)($produtoImagemUpload['nome_original'] ?? '') : '',
+                        ':produto_imagem_mime_type' => $categoria === 'Produto' ? (string)($produtoImagemUpload['mime_type'] ?? '') : '',
+                        ':produto_imagem_updated_at' => $categoria === 'Produto' && !empty($produtoImagemUpload['public_url']) ? date('Y-m-d H:i:s') : '',
                         ':created_by_user_id' => $userId > 0 ? $userId : null,
                     ]);
                     $id = (int)$stmt->fetchColumn();
@@ -402,10 +480,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("
                 INSERT INTO logistica_pacotes_evento (
                     categoria, nome, descricao, tipo_evento_real, unidades_aplicaveis, modelo_preco, valor_venda, valor_pacote, pessoas_base,
-                    valor_convidado_adicional, oculto, created_by_user_id, created_at, updated_at
+                    valor_convidado_adicional, produto_imagem_storage_key, produto_imagem_public_url, produto_imagem_nome_original,
+                    produto_imagem_mime_type, produto_imagem_updated_at, oculto, created_by_user_id, created_at, updated_at
                 )
                 SELECT categoria, nome || ' (Cópia)', descricao, tipo_evento_real, unidades_aplicaveis, modelo_preco, valor_venda, valor_pacote, pessoas_base,
-                       valor_convidado_adicional, FALSE, :created_by_user_id, NOW(), NOW()
+                       valor_convidado_adicional, produto_imagem_storage_key, produto_imagem_public_url, produto_imagem_nome_original,
+                       produto_imagem_mime_type, produto_imagem_updated_at, FALSE, :created_by_user_id, NOW(), NOW()
                 FROM logistica_pacotes_evento
                 WHERE id = :id
                   AND deleted_at IS NULL
@@ -482,6 +562,10 @@ if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['acti
         'pessoas_base' => trim((string)($_POST['pessoas_base'] ?? '')),
         'valor_convidado_adicional' => trim((string)($_POST['valor_convidado_adicional'] ?? '')),
         'descricao' => trim((string)($_POST['descricao'] ?? '')),
+        'produto_imagem_storage_key' => trim((string)($_POST['produto_imagem_storage_key_atual'] ?? '')),
+        'produto_imagem_public_url' => trim((string)($_POST['produto_imagem_public_url_atual'] ?? '')),
+        'produto_imagem_nome_original' => trim((string)($_POST['produto_imagem_nome_original_atual'] ?? '')),
+        'produto_imagem_mime_type' => trim((string)($_POST['produto_imagem_mime_type_atual'] ?? '')),
         'receita_ids' => is_array($_POST['receita_ids'] ?? null) ? array_map('intval', $_POST['receita_ids']) : [],
     ];
 } elseif ($editId > 0) {
@@ -509,6 +593,10 @@ if (!empty($errors) && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['acti
                 'pessoas_base' => (string)($itemEdicao['pessoas_base'] ?? ''),
                 'valor_convidado_adicional' => (string)($itemEdicao['valor_convidado_adicional'] ?? ''),
                 'descricao' => (string)($itemEdicao['descricao'] ?? ''),
+                'produto_imagem_storage_key' => (string)($itemEdicao['produto_imagem_storage_key'] ?? ''),
+                'produto_imagem_public_url' => (string)($itemEdicao['produto_imagem_public_url'] ?? ''),
+                'produto_imagem_nome_original' => (string)($itemEdicao['produto_imagem_nome_original'] ?? ''),
+                'produto_imagem_mime_type' => (string)($itemEdicao['produto_imagem_mime_type'] ?? ''),
                 'receita_ids' => cadastros_pp_servico_receitas_ids($pdo, (int)$itemEdicao['id']),
             ];
         } else {
@@ -655,6 +743,17 @@ sort($servicePeople);
 .pp-icon-btn.copy { background: #263747; }
 .pp-icon-btn.edit { background: #f2c94c; }
 .pp-icon-btn.delete { background: #d9534f; }
+.pp-product-thumb { width: 58px; height: 58px; border-radius: 8px; overflow: hidden; background: #f1f5f9; border: 1px solid #e2e8f0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 0.72rem; font-weight: 800; }
+.pp-product-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pp-product-image-box { border: 1px solid #dbe6f3; border-radius: 12px; padding: 0.9rem; background: #f8fafc; display: grid; gap: 0.75rem; }
+.pp-product-image-current { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 0.85rem; align-items: center; }
+.pp-product-image-current[hidden] { display: none; }
+.pp-product-preview { width: 120px; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: #e2e8f0; border: 1px solid #dbe3ef; }
+.pp-product-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pp-product-image-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.pp-link-btn { border: 1px solid #dbe3ef; border-radius: 8px; background: #fff; color: #1e3a8a; font-weight: 900; padding: 0.55rem 0.75rem; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.pp-link-btn.danger { color: #b91c1c; }
+.pp-product-image-upload input[type="file"] { padding: 0.55rem; background: #fff; }
 .pp-modal-backdrop { position: fixed; inset: 0; z-index: 1300; display: none; align-items: center; justify-content: center; padding: 1rem; background: rgba(15, 23, 42, 0.55); }
 .pp-modal-backdrop.open,
 #pp-modal:target { display: flex; }
@@ -777,7 +876,19 @@ sort($servicePeople);
                         $modeloPrecoItem = (string)($item['modelo_preco'] ?? 'simples');
                         ?>
                         <tr>
-                            <td><span class="pp-name"><?= cadastros_pp_e((string)$item['nome']) ?></span></td>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:0.65rem;">
+                                    <?php if ($activeCategoria === 'Produto'): ?>
+                                        <?php $produtoImagemListagem = trim((string)($item['produto_imagem_public_url'] ?? '')); ?>
+                                        <?php if ($produtoImagemListagem !== ''): ?>
+                                            <a class="pp-product-thumb" href="<?= cadastros_pp_e($produtoImagemListagem) ?>" target="_blank" rel="noopener noreferrer"><img src="<?= cadastros_pp_e($produtoImagemListagem) ?>" alt="<?= cadastros_pp_e((string)$item['nome']) ?>"></a>
+                                        <?php else: ?>
+                                            <span class="pp-product-thumb">Sem foto</span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                    <span class="pp-name"><?= cadastros_pp_e((string)$item['nome']) ?></span>
+                                </div>
+                            </td>
                             <td><span class="pp-pill"><?= cadastros_pp_e($categoria) ?></span></td>
                             <td>
                                 <?php if ($categoria === 'Pacote'): ?>
@@ -848,10 +959,15 @@ sort($servicePeople);
             <button class="pp-modal-close" type="button" data-close-pp-modal aria-label="Fechar">×</button>
         </div>
         <div class="pp-modal-scroll">
-        <form method="post" class="pp-form" id="pp-form">
+        <form method="post" class="pp-form" id="pp-form" enctype="multipart/form-data">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="active_tab" value="<?= cadastros_pp_e($activeTab) ?>">
             <input type="hidden" name="id" id="pp-id" value="<?= (int)$modalItem['id'] ?>">
+            <input type="hidden" name="produto_imagem_storage_key_atual" id="pp-produto-imagem-storage-key-atual" value="<?= cadastros_pp_e((string)($modalItem['produto_imagem_storage_key'] ?? '')) ?>">
+            <input type="hidden" name="produto_imagem_public_url_atual" id="pp-produto-imagem-public-url-atual" value="<?= cadastros_pp_e((string)($modalItem['produto_imagem_public_url'] ?? '')) ?>">
+            <input type="hidden" name="produto_imagem_nome_original_atual" id="pp-produto-imagem-nome-original-atual" value="<?= cadastros_pp_e((string)($modalItem['produto_imagem_nome_original'] ?? '')) ?>">
+            <input type="hidden" name="produto_imagem_mime_type_atual" id="pp-produto-imagem-mime-type-atual" value="<?= cadastros_pp_e((string)($modalItem['produto_imagem_mime_type'] ?? '')) ?>">
+            <input type="hidden" name="produto_imagem_remover" id="pp-produto-imagem-remover" value="0">
             <div class="pp-grid">
                 <div class="pp-field">
                     <label for="pp-categoria">Categoria</label>
@@ -889,6 +1005,31 @@ sort($servicePeople);
                 <div class="pp-field pp-product-fields <?= $modalCategoria === 'Produto' ? '' : 'hidden' ?>">
                     <label for="pp-valor-venda">Valor de venda</label>
                     <input type="text" name="valor_venda" id="pp-valor-venda" inputmode="decimal" placeholder="0,00" value="<?= cadastros_pp_e((string)$modalItem['valor_venda']) ?>">
+                </div>
+                <div class="pp-field full pp-product-fields <?= $modalCategoria === 'Produto' ? '' : 'hidden' ?>">
+                    <label for="pp-produto-imagem">Imagem do produto</label>
+                    <div class="pp-product-image-box">
+                        <?php $produtoImagemAtual = trim((string)($modalItem['produto_imagem_public_url'] ?? '')); ?>
+                        <div class="pp-product-image-current" data-product-image-current <?= $produtoImagemAtual === '' ? 'hidden' : '' ?>>
+                            <a class="pp-product-preview" data-product-image-link href="<?= cadastros_pp_e($produtoImagemAtual) ?>" target="_blank" rel="noopener noreferrer">
+                                <img data-product-image-preview src="<?= cadastros_pp_e($produtoImagemAtual) ?>" alt="<?= cadastros_pp_e((string)$modalItem['nome']) ?>">
+                            </a>
+                            <div>
+                                <div class="pp-muted" data-product-image-name>
+                                    <?= cadastros_pp_e((string)($modalItem['produto_imagem_nome_original'] ?: 'Imagem atual')) ?>
+                                </div>
+                                <div class="pp-product-image-actions">
+                                    <a class="pp-link-btn" data-product-image-view href="<?= cadastros_pp_e($produtoImagemAtual) ?>" target="_blank" rel="noopener noreferrer">Visualizar</a>
+                                    <button class="pp-link-btn" type="button" data-product-image-change>Alterar</button>
+                                    <button class="pp-link-btn danger" type="button" data-product-image-remove>Excluir</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="pp-product-image-upload" data-product-image-upload <?= $produtoImagemAtual !== '' ? 'hidden' : '' ?>>
+                            <input type="file" name="produto_imagem" id="pp-produto-imagem" accept="image/*">
+                            <div class="pp-muted">A imagem será enviada para a Magalu e ficará vinculada ao produto.</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="pp-field pp-event-type-fields <?= ($modalIsPacote || $modalIsServico) ? '' : 'hidden' ?>">
                     <label for="pp-tipo-evento-real">Tipo de festa</label>
@@ -1138,6 +1279,8 @@ const ppForm = document.getElementById('pp-form');
 const ppCategoria = document.getElementById('pp-categoria');
 const ppModeloPreco = document.getElementById('pp-modelo-preco');
 const ppDescricao = document.getElementById('pp-descricao');
+const ppProdutoImagemInput = document.getElementById('pp-produto-imagem');
+const ppProdutoImagemRemover = document.getElementById('pp-produto-imagem-remover');
 const ppPackageMoneyFieldIds = ['pp-valor-pacote', 'pp-valor-convidado-adicional'];
 const ppMoneyFieldIds = ['pp-valor-venda', 'pp-valor-pacote', 'pp-valor-convidado-adicional'];
 let ppItems = {};
@@ -1266,6 +1409,34 @@ function updatePrecoTabState() {
     }
 }
 
+function setProductImageState(imageUrl = '', imageName = '') {
+    const currentBox = document.querySelector('[data-product-image-current]');
+    const uploadBox = document.querySelector('[data-product-image-upload]');
+    const preview = document.querySelector('[data-product-image-preview]');
+    const previewLink = document.querySelector('[data-product-image-link]');
+    const viewLink = document.querySelector('[data-product-image-view]');
+    const nameEl = document.querySelector('[data-product-image-name]');
+    const hasImage = String(imageUrl || '').trim() !== '';
+
+    if (currentBox) currentBox.hidden = !hasImage;
+    if (uploadBox) uploadBox.hidden = hasImage;
+    if (preview) preview.src = hasImage ? imageUrl : '';
+    if (previewLink) previewLink.href = hasImage ? imageUrl : '#';
+    if (viewLink) viewLink.href = hasImage ? imageUrl : '#';
+    if (nameEl) nameEl.textContent = imageName || 'Imagem atual';
+    if (ppProdutoImagemRemover) ppProdutoImagemRemover.value = '0';
+    if (ppProdutoImagemInput) ppProdutoImagemInput.value = '';
+}
+
+function showProductImageUpload(markRemove = false) {
+    const currentBox = document.querySelector('[data-product-image-current]');
+    const uploadBox = document.querySelector('[data-product-image-upload]');
+    if (currentBox) currentBox.hidden = true;
+    if (uploadBox) uploadBox.hidden = false;
+    if (ppProdutoImagemRemover) ppProdutoImagemRemover.value = markRemove ? '1' : '0';
+    if (ppProdutoImagemInput) ppProdutoImagemInput.focus();
+}
+
 function openPpModal(data = null) {
     document.getElementById('pp-modal-title').textContent = data ? 'Editar cadastro' : 'Adicionar cadastro';
     document.getElementById('pp-id').value = data?.id || '0';
@@ -1277,6 +1448,11 @@ function openPpModal(data = null) {
     document.getElementById('pp-valor-pacote').value = data?.valorPacote || '';
     document.getElementById('pp-pessoas-base').value = data?.pessoasBase || '';
     document.getElementById('pp-valor-convidado-adicional').value = data?.valorConvidadoAdicional || '';
+    document.getElementById('pp-produto-imagem-storage-key-atual').value = data?.produtoImagemStorageKey || '';
+    document.getElementById('pp-produto-imagem-public-url-atual').value = data?.produtoImagemPublicUrl || '';
+    document.getElementById('pp-produto-imagem-nome-original-atual').value = data?.produtoImagemNomeOriginal || '';
+    document.getElementById('pp-produto-imagem-mime-type-atual').value = data?.produtoImagemMimeType || '';
+    setProductImageState(data?.produtoImagemPublicUrl || '', data?.produtoImagemNomeOriginal || '');
     const unidadesAplicaveis = Array.isArray(data?.unidadesAplicaveis) ? data.unidadesAplicaveis : [];
     document.querySelectorAll('input[name="unidades_aplicaveis[]"]').forEach((input) => {
         input.checked = unidadesAplicaveis.includes(input.value);
@@ -1315,6 +1491,10 @@ function getPpItemModalData(id) {
         pessoasBase: item.pessoas_base || '',
         valorConvidadoAdicional: item.valor_convidado_adicional || '',
         descricao: item.descricao || '',
+        produtoImagemStorageKey: item.produto_imagem_storage_key || '',
+        produtoImagemPublicUrl: item.produto_imagem_public_url || '',
+        produtoImagemNomeOriginal: item.produto_imagem_nome_original || '',
+        produtoImagemMimeType: item.produto_imagem_mime_type || '',
     };
 }
 
@@ -1385,6 +1565,11 @@ document.querySelectorAll('[data-open-recipes]').forEach((button) => button.addE
 document.querySelectorAll('[data-close-recipes]').forEach((button) => button.addEventListener('click', closePpRecipesModal));
 ppCategoria?.addEventListener('change', updateCategoriaFields);
 ppModeloPreco?.addEventListener('change', updatePrecoTabState);
+document.querySelector('[data-product-image-change]')?.addEventListener('click', () => showProductImageUpload(false));
+document.querySelector('[data-product-image-remove]')?.addEventListener('click', () => showProductImageUpload(true));
+ppProdutoImagemInput?.addEventListener('change', () => {
+    if (ppProdutoImagemRemover) ppProdutoImagemRemover.value = '0';
+});
 
 document.querySelectorAll('[data-pp-tab]').forEach((button) => {
     button.addEventListener('click', () => switchPpTab(button.dataset.ppTab || 'descricao'));

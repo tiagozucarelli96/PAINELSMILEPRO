@@ -9,7 +9,7 @@ require_once __DIR__ . '/conexao.php';
 function pacotes_evento_schema_marker_is_fresh(): bool
 {
     $ttl = max(300, (int)(painel_env('PACOTES_EVENTO_SCHEMA_TTL_SECONDS', '3600') ?? '3600'));
-    $mtime = @filemtime('/tmp/pacotes_evento_schema_ready_v3');
+    $mtime = @filemtime('/tmp/pacotes_evento_schema_ready_v4');
     if ($mtime === false) {
         return false;
     }
@@ -19,7 +19,7 @@ function pacotes_evento_schema_marker_is_fresh(): bool
 
 function pacotes_evento_touch_schema_marker(): void
 {
-    @touch('/tmp/pacotes_evento_schema_ready_v3');
+    @touch('/tmp/pacotes_evento_schema_ready_v4');
 }
 
 function pacotes_evento_parse_money($value): float
@@ -102,6 +102,11 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
                 valor_pacote NUMERIC(12,2) NULL,
                 pessoas_base INTEGER NULL,
                 valor_convidado_adicional NUMERIC(12,2) NULL,
+                produto_imagem_storage_key TEXT NULL,
+                produto_imagem_public_url TEXT NULL,
+                produto_imagem_nome_original VARCHAR(255) NULL,
+                produto_imagem_mime_type VARCHAR(120) NULL,
+                produto_imagem_updated_at TIMESTAMP NULL,
                 oculto BOOLEAN NOT NULL DEFAULT FALSE,
                 created_by_user_id INTEGER NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -117,6 +122,11 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_pacote NUMERIC(12,2) NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS pessoas_base INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS valor_convidado_adicional NUMERIC(12,2) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_storage_key TEXT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_public_url TEXT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_nome_original VARCHAR(255) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_mime_type VARCHAR(120) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS produto_imagem_updated_at TIMESTAMP NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS tipo_evento_real VARCHAR(60) NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS unidades_aplicaveis TEXT NULL");
         $pdo->exec("ALTER TABLE IF EXISTS logistica_pacotes_evento ADD COLUMN IF NOT EXISTS modelo_preco VARCHAR(30) NOT NULL DEFAULT 'simples'");
