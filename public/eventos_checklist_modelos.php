@@ -303,6 +303,9 @@ foreach ($tarefas as $tarefa) {
 $config = eventos_checklist_planejamento_config($pdo);
 
 includeSidebar('Modelos de Checklist');
+require __DIR__ . '/eventos_checklist_modelos_view.php';
+endSidebar();
+return;
 ?>
 
 <style>
