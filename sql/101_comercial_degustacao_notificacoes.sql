@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS comercial_degustacao_notificacao_envios (
     degustacao_id BIGINT NOT NULL,
     inscricao_id BIGINT NOT NULL,
     telefone VARCHAR(40),
+    -- processando | enviado | incerto
     status VARCHAR(20) NOT NULL DEFAULT 'processando',
     tentativas INT NOT NULL DEFAULT 1,
     erro TEXT,

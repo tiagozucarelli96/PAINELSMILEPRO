@@ -42,6 +42,7 @@ function degustacao_notificacao_processar(PDO $pdo, array $options = []): array
         'ignorados_duplicados' => 0,
         'sem_telefone' => 0,
         'falhas' => 0,
+        'envios_incertos' => 0,
         'previews' => [],
     ];
 
@@ -92,10 +93,11 @@ function degustacao_notificacao_processar(PDO $pdo, array $options = []): array
                 $pdo,
                 $degustacaoId,
                 $inscricaoId,
-                'falha',
-                'O provedor de WhatsApp recusou o envio.'
+                'incerto',
+                'Não foi possível confirmar a resposta do provedor. O envio não será repetido automaticamente.'
             );
             $resultado['falhas']++;
+            $resultado['envios_incertos']++;
         }
     }
 
@@ -214,26 +216,10 @@ function degustacao_notificacao_reservar_envio(
         return true;
     }
 
-    // Falhas podem ser tentadas novamente; envios aceitos nunca são repetidos.
-    $stmt = $pdo->prepare("
-        UPDATE comercial_degustacao_notificacao_envios
-        SET status = 'processando',
-            telefone = :telefone,
-            tentativas = tentativas + 1,
-            erro = NULL,
-            reservado_em = NOW(),
-            atualizado_em = NOW()
-        WHERE degustacao_id = :degustacao_id
-          AND inscricao_id = :inscricao_id
-          AND status = 'falha'
-        RETURNING id
-    ");
-    $stmt->execute([
-        ':degustacao_id' => $degustacaoId,
-        ':inscricao_id' => $inscricaoId,
-        ':telefone' => $telefone,
-    ]);
-    return (bool)$stmt->fetchColumn();
+    // Qualquer registro existente bloqueia uma nova tentativa. Uma falha de
+    // comunicação pode acontecer depois que o provedor aceitou a mensagem;
+    // reenviar nesse cenário causaria duplicidade.
+    return false;
 }
 
 function degustacao_notificacao_finalizar_envio(

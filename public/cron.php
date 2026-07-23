@@ -412,11 +412,48 @@ if ($tipo === 'demandas_fixas') {
     try {
         require_once __DIR__ . '/comercial_degustacao_notificacao_helper.php';
 
-        $resultado = degustacao_notificacao_processar($pdo, [
+        $opcoesDegustacao = [
             'dry_run' => !empty($_GET['dry_run']),
             'force' => !empty($_GET['force']),
             'ref_datetime' => $_GET['ref_datetime'] ?? null,
-        ]);
+        ];
+        $resultado = null;
+
+        // A prévia precisa retornar os dados na própria resposta. O envio real
+        // é iniciado em segundo plano para não estourar o timeout do cron-job.org.
+        if (!$opcoesDegustacao['dry_run'] && function_exists('exec')) {
+            $runner = __DIR__ . '/comercial_degustacao_notificacao_runner.php';
+            $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($runner);
+            if ($opcoesDegustacao['force']) {
+                $command .= ' --force';
+            }
+            if (!empty($opcoesDegustacao['ref_datetime'])) {
+                $command .= ' --ref-datetime=' . escapeshellarg((string)$opcoesDegustacao['ref_datetime']);
+            }
+            $command .= ' > /dev/null 2>&1 < /dev/null & echo $!';
+
+            $output = [];
+            $exitCode = 1;
+            exec($command, $output, $exitCode);
+            $pid = (int)($output[0] ?? 0);
+
+            if ($exitCode === 0 && $pid > 0) {
+                $resultado = [
+                    'success' => true,
+                    'queued' => true,
+                    'message' => 'Processamento das notificações iniciado em segundo plano.',
+                    'pid' => $pid,
+                ];
+            }
+        }
+
+        if ($resultado === null) {
+            // Fallback para ambientes onde processos em segundo plano estejam
+            // desabilitados. Ainda preserva o processamento após desconexão.
+            ignore_user_abort(true);
+            @set_time_limit(900);
+            $resultado = degustacao_notificacao_processar($pdo, $opcoesDegustacao);
+        }
 
         cron_logger_finish($pdo, $execucao_id, !empty($resultado['success']), $resultado, $inicio_ms);
         echo json_encode($resultado, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

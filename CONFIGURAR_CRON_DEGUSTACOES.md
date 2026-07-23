@@ -11,8 +11,17 @@ O endpoint envia, por WhatsApp, a mensagem do dia para as inscrições com statu
 - Execução: todos os dias às `09:00`
 - Fuso horário: `America/Sao_Paulo`
 
-É seguro configurar novas tentativas em caso de erro: cada envio aceito pelo
-provedor fica registrado por degustação e inscrição e não é enviado novamente.
+O endpoint responde imediatamente que o processamento foi iniciado e continua
+os envios em segundo plano no Railway. Dessa forma, o cron-job.org não precisa
+ficar esperando mensagem por mensagem.
+
+Cada tentativa fica registrada por degustação e inscrição antes de o WhatsApp
+ser acionado. Mesmo que o cron-job.org faça uma nova chamada, as inscrições já
+iniciadas serão ignoradas para evitar mensagens duplicadas.
+
+Uma resposta inconclusiva do provedor fica com status `incerto` e também não é
+reenviada automaticamente, pois a mensagem pode ter sido aceita antes do
+timeout.
 
 ## Conferência sem envio
 
