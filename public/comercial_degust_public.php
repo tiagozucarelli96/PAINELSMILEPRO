@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/asaas_helper.php';
+require_once __DIR__ . '/comercial_degustacao_inscricao_helper.php';
 
 $token = $_GET['t'] ?? '';
 if (!$token) {
@@ -174,7 +175,9 @@ if ($_POST && !$inscricoes_encerradas) {
         $fechou_contrato = $_POST['fechou_contrato'] ?? 'nao';
         $fechou_contrato = $fechou_contrato === 'sim' ? 'sim' : 'nao';
         $nome_titular_contrato = trim($_POST['nome_titular_contrato'] ?? '');
-        $cpf_3_digitos = trim($_POST['cpf_3_digitos'] ?? '');
+        $me_cliente_cpf = preg_replace('/\D/', '', $_POST['me_cliente_cpf'] ?? '') ?? '';
+        $cpf_3_digitos = substr($me_cliente_cpf, 0, 3);
+        $me_event_id = (int)($_POST['me_event_id'] ?? 0);
 
         // Respostas do formulário
         $dados_json = [];
@@ -232,6 +235,23 @@ if ($_POST && !$inscricoes_encerradas) {
         $reuse_pending_inscricao = false;
         $inscricao_id = 0;
 
+        $inscricao_anterior_bloqueante = degustacao_inscricao_buscar_bloqueio_anterior(
+            $pdo,
+            (int)$degustacao['id'],
+            $fechou_contrato,
+            $email,
+            $me_event_id,
+            $me_cliente_cpf,
+            $existing_columns
+        );
+
+        if ($inscricao_anterior_bloqueante) {
+            throw new Exception(
+                "Clientes com contrato fechado podem participar de apenas uma degustação. "
+                . "Identificamos uma inscrição anterior em outra degustação."
+            );
+        }
+
         // Verificar se já existe inscrição com este e-mail
         $duplicate_select = ['id', 'status', 'pagamento_status'];
         foreach (['asaas_qr_code_id', 'qr_code_image', 'pix_copia_cola'] as $optional_col) {
@@ -283,10 +303,6 @@ if ($_POST && !$inscricoes_encerradas) {
             $has_me_event_id = false;
             $has_me_cpf = false;
         }
-
-        $cpf_3_digitos = substr(preg_replace('/\D/', '', $_POST['me_cliente_cpf'] ?? ''), 0, 3);
-        $me_cliente_cpf = preg_replace('/\D/', '', $_POST['me_cliente_cpf'] ?? '');
-        $me_event_id = (int)($_POST['me_event_id'] ?? 0);
 
         if (empty($existing_columns)) {
             throw new Exception("Não foi possível validar a estrutura da tabela de inscrições");
