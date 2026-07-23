@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
+require_once __DIR__ . '/eventos_checklist_planejamento_helper.php';
 
 // Verificar permissão
 if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
@@ -23,6 +24,7 @@ $stats = [
     'reunioes_rascunho' => 0,
     'reunioes_concluidas' => 0,
     'fornecedores_ativos' => 0,
+    'checklist_atrasadas' => 0,
 ];
 
 try {
@@ -37,6 +39,14 @@ try {
     // Fornecedores ativos
     $stmt = $pdo->query("SELECT COUNT(*) FROM eventos_fornecedores WHERE ativo = TRUE");
     $stats['fornecedores_ativos'] = (int)$stmt->fetchColumn();
+
+    eventos_checklist_planejamento_ensure_schema($pdo);
+    $stats['checklist_atrasadas'] = (int)$pdo->query("
+        SELECT COUNT(*)
+        FROM eventos_checklist_tarefas
+        WHERE status IN ('pendente', 'em_andamento', 'aguardando_validacao')
+          AND vencimento < CURRENT_DATE
+    ")->fetchColumn();
     
 } catch (Exception $e) {
     error_log("Erro ao buscar stats eventos: " . $e->getMessage());
@@ -226,11 +236,26 @@ includeSidebar('Eventos');
             <div class="stat-value"><?= $stats['fornecedores_ativos'] ?></div>
             <div class="stat-label">Fornecedores Ativos</div>
         </div>
+        <a href="index.php?page=eventos_checklist_dashboard" style="text-decoration: none; color: inherit;">
+            <div class="stat-card">
+                <div class="stat-value"><?= $stats['checklist_atrasadas'] ?></div>
+                <div class="stat-label">Tarefas de Checklist Atrasadas</div>
+            </div>
+        </a>
     </div>
     
     <!-- Módulos Internos -->
     <h2 class="section-title">Módulos Internos</h2>
     <div class="modules-grid">
+        <a href="index.php?page=eventos_checklist_dashboard" class="module-card">
+            <div class="module-icon green">✅</div>
+            <div class="module-title">Dashboard de Checklists</div>
+            <div class="module-desc">
+                Acompanhe o andamento por evento e clique para abrir a linha do tempo completa do checklist.
+            </div>
+            <span class="module-badge internal">Interno</span>
+        </a>
+
         <a href="index.php?page=eventos_organizacao" class="module-card">
             <div class="module-icon blue">📝</div>
             <div class="module-title">Organização eventos</div>

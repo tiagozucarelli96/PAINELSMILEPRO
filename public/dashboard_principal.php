@@ -6,6 +6,7 @@ require_once __DIR__ . '/agenda_helper.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/sidebar_unified.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/eventos_checklist_planejamento_helper.php';
 if (is_file(__DIR__ . '/permissoes_boot.php')) { require_once __DIR__ . '/permissoes_boot.php'; }
 
 $nomeUser = isset($_SESSION['nome']) ? $_SESSION['nome'] : 'Usuário';
@@ -66,13 +67,8 @@ try {
     $agenda = new AgendaHelper();
     $proximos_eventos = $agenda->obterAgendaDia($usuario_id, 168); // Próximos 7 dias
     
-    // Tarefas próximas (simulado)
-    $tarefas_proximas = $pdo->query("
-        SELECT * FROM demandas 
-        WHERE data_vencimento BETWEEN NOW() AND NOW() + INTERVAL '7 days'
-        ORDER BY data_vencimento ASC
-        LIMIT 10
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    // Checklist de hoje e atrasados do usuário ou do setor dele.
+    $tarefas_proximas = eventos_checklist_planejamento_listar_minhas($pdo, (int)$usuario_id, 20);
     
     // Notificações (simulado)
     $notificacoes = $pdo->query("
@@ -713,10 +709,10 @@ for ($i = 11; $i >= 0; $i--) {
             </div>
         </div>
 
-        <!-- Tarefas Próximas -->
+        <!-- Minhas tarefas de checklist -->
         <div class="dashboard-widget">
             <div class="widget-header">
-                <h3 class="widget-title">Tarefas Próximas</h3>
+                <h3 class="widget-title">Minhas tarefas — hoje e atrasadas</h3>
                 <div class="widget-icon">📋</div>
             </div>
             <div class="task-list">
@@ -727,18 +723,19 @@ for ($i = 11; $i >= 0; $i--) {
                     </div>
                 <?php else: ?>
                     <?php foreach ($tarefas_proximas as $tarefa): ?>
-                        <div class="task-item">
+                        <a class="task-item" style="text-decoration:none;color:inherit" href="index.php?page=eventos_checklist_planejamento&evento_id=<?= (int)$tarefa['evento_id'] ?>">
                             <div class="task-info">
                                 <div class="task-name"><?= h($tarefa['titulo'] ?? 'Tarefa sem título') ?></div>
                                 <div class="task-details">
-                                    <?= h($tarefa['evento_nome'] ?? 'Sem evento') ?> • 
-                                    Vence em <?= date('d/m/Y', strtotime($tarefa['data_vencimento'] ?? 'now')) ?>
+                                    <?= h($tarefa['nome_evento'] ?? 'Sem evento') ?> •
+                                    <?= strtotime((string)$tarefa['vencimento']) < strtotime(date('Y-m-d')) ? 'Atrasada desde ' : 'Vence hoje: ' ?>
+                                    <?= date('d/m/Y', strtotime($tarefa['vencimento'] ?? 'now')) ?>
                                 </div>
                             </div>
                             <div class="task-status <?= $tarefa['status'] ?? 'pendente' ?>">
                                 <?= ucfirst($tarefa['status'] ?? 'pendente') ?>
                             </div>
-                        </div>
+                        </a>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>

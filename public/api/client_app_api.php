@@ -1065,8 +1065,6 @@ function client_app_api_portal_base_url(): string
     $candidates = [
         (string)(getenv('EVENTOS_CLIENTE_PORTAL_BASE_URL') ?: ''),
         (string)(getenv('APP_CLIENT_PORTAL_URL') ?: ''),
-        (string)(getenv('APP_URL') ?: ''),
-        (string)(getenv('BASE_URL') ?: ''),
     ];
 
     foreach ($candidates as $candidate) {
@@ -1081,7 +1079,10 @@ function client_app_api_portal_base_url(): string
 
 function client_app_api_portal_module_urls(?array $portal): array
 {
-    $token = trim((string)($portal['token'] ?? ''));
+    $token = trim((string)($portal['short_code'] ?? ''));
+    if ($token === '') {
+        $token = trim((string)($portal['token'] ?? ''));
+    }
     if ($token === '') {
         return [];
     }

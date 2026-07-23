@@ -2039,6 +2039,8 @@ function logistica_cardapio_pick_text(array $source, array $paths): string
 function logistica_cardapio_cliente_contato(PDO $pdo, int $meeting_id): array
 {
     logistica_cardapio_require_eventos_reuniao_helper();
+    eventos_reuniao_ensure_schema($pdo);
+    $portalKeySql = eventos_cliente_portal_public_key_sql($pdo, 'p');
 
     $contato = [
         'nome' => 'Cliente',
@@ -2048,7 +2050,10 @@ function logistica_cardapio_cliente_contato(PDO $pdo, int $meeting_id): array
 
     try {
         $stmt = $pdo->prepare("
-            SELECT r.me_event_id, r.me_event_snapshot, p.token AS portal_token
+            SELECT
+                r.me_event_id,
+                r.me_event_snapshot,
+                {$portalKeySql} AS portal_token
             FROM eventos_reunioes r
             LEFT JOIN eventos_cliente_portais p ON p.meeting_id = r.id
             WHERE r.id = :meeting_id

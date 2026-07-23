@@ -45,6 +45,8 @@ function eventos_cliente_pendencias_whatsapp_data(?string $refDate = null): stri
 
 function eventos_cliente_pendencias_whatsapp_eventos(PDO $pdo, string $eventDate, int $limit): array
 {
+    eventos_reuniao_ensure_schema($pdo);
+    $portalKeySql = eventos_cliente_portal_public_key_sql($pdo, 'p');
     $limit = max(1, min(500, $limit));
 
     $stmt = $pdo->prepare("
@@ -53,7 +55,7 @@ function eventos_cliente_pendencias_whatsapp_eventos(PDO $pdo, string $eventDate
             r.me_event_id,
             r.me_event_snapshot,
             p.id AS portal_id,
-            p.token AS portal_token,
+            {$portalKeySql} AS portal_token,
             COALESCE(p.is_active, TRUE) AS portal_active,
             COALESCE(p.visivel_convidados, FALSE) AS visivel_convidados,
             COALESCE(p.editavel_convidados, FALSE) AS editavel_convidados,

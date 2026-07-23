@@ -394,6 +394,7 @@ $routes = [
   'config_eventos_tipos' => 'config_eventos_tipos.php',
   'formularios_eventos' => 'formularios_eventos.php',
   'checklists_operacionais' => 'checklists_operacionais.php',
+  'eventos_checklist_modelos' => 'eventos_checklist_modelos.php',
   'cron_diagnostico' => 'cron_diagnostico.php',
 
   // Financeiro
@@ -419,6 +420,8 @@ $routes = [
   'eventos_notificacoes_central_api' => 'eventos_notificacoes_central_api.php',
   'eventos_realizar' => 'eventos_realizar.php',
   'eventos_checklist' => 'eventos_checklist.php',
+  'eventos_checklist_planejamento' => 'eventos_checklist_planejamento.php',
+  'eventos_checklist_dashboard' => 'eventos_checklist_dashboard.php',
   'eventos_organizacao' => 'eventos_organizacao.php',
   'eventos_arquivos' => 'eventos_arquivos.php',
   'eventos_lista_convidados' => 'eventos_lista_convidados.php',
@@ -446,6 +449,7 @@ $routes = [
   'eventos_cliente_dj' => 'eventos_cliente_dj.php',
   'eventos_dj_fornecedor' => 'eventos_dj_fornecedor.php',
   'eventos_cliente_portal' => 'eventos_cliente_portal.php',
+  'eventos_cliente_checklist' => 'eventos_cliente_checklist.php',
   'eventos_cliente_convidados' => 'eventos_cliente_convidados.php',
   'eventos_cliente_reuniao' => 'eventos_cliente_reuniao.php',
   'eventos_cliente_dj_portal' => 'eventos_cliente_dj_portal.php',
@@ -512,6 +516,7 @@ $public_pages = [
   'eventos_cliente_dj',
   'eventos_dj_fornecedor',
   'eventos_cliente_portal',
+  'eventos_cliente_checklist',
   'eventos_cliente_convidados',
   'eventos_cliente_reuniao',
   'eventos_cliente_dj_portal',

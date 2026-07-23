@@ -64,6 +64,11 @@ $crons_info = [
         'descricao' => 'Envia WhatsApp para clientes com cardápio, formulário ou lista de convidados pendentes no prazo configurado',
         'frequencia' => 'Diário às 08:00'
     ],
+    'eventos_checklist_cliente_whatsapp' => [
+        'nome' => 'Checklist do Cliente',
+        'descricao' => 'Envia uma única lembrança das tarefas do cliente que vencem no dia',
+        'frequencia' => 'Diário às 09:00'
+    ],
     'portao_auto_close' => [
         'nome' => 'Portão - Auto Close',
         'descricao' => 'Processa fechamento automatico do portao quando vencer o timer',

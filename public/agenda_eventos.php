@@ -12,6 +12,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/comercial_cliente_sync_helper.php';
+require_once __DIR__ . '/eventos_checklist_planejamento_helper.php';
 
 if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -371,21 +372,44 @@ function agenda_eventos_atualizar_data_horario(PDO $pdo, int $eventoId, string $
         return ['ok' => false, 'error' => 'Informe horários válidos.'];
     }
 
-    $stmt = $pdo->prepare("
-        UPDATE logistica_eventos_espelho
-        SET data_evento = :data_evento,
-            hora_inicio = :hora_inicio,
-            hora_fim = :hora_fim
-        WHERE id = :id
-    ");
-    $stmt->execute([
-        ':data_evento' => $dataEvento,
-        ':hora_inicio' => $inicioNormalizado,
-        ':hora_fim' => $fimNormalizado,
-        ':id' => $eventoId,
-    ]);
+    try {
+        eventos_checklist_planejamento_ensure_schema($pdo);
+        $ownsTransaction = !$pdo->inTransaction();
+        if ($ownsTransaction) {
+            $pdo->beginTransaction();
+        }
 
-    return ['ok' => true];
+        $stmt = $pdo->prepare("
+            UPDATE logistica_eventos_espelho
+            SET data_evento = :data_evento,
+                hora_inicio = :hora_inicio,
+                hora_fim = :hora_fim
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':data_evento' => $dataEvento,
+            ':hora_inicio' => $inicioNormalizado,
+            ':hora_fim' => $fimNormalizado,
+            ':id' => $eventoId,
+        ]);
+
+        eventos_checklist_planejamento_recalcular_evento(
+            $pdo,
+            $eventoId,
+            eventos_checklist_planejamento_user_id()
+        );
+
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        if (!empty($ownsTransaction) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[AGENDA_EVENTOS] Falha ao atualizar data e checklist: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Não foi possível atualizar a data e recalcular o checklist.'];
+    }
 }
 
 $usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
@@ -1891,11 +1915,21 @@ a.event-function-card:hover {
             ? "var f=document.createElement('form');f.method='post';f.action='index.php?page=comercial_cadastro_cliente';var a=document.createElement('input');a.type='hidden';a.name='action';a.value='open_cliente_edit';f.appendChild(a);var i=document.createElement('input');i.type='hidden';i.name='id';i.value='" . $clienteCadastroId . "';f.appendChild(i);document.body.appendChild(f);f.submit();return false;"
             : '';
 
+        $checklistResumo = ['percentual' => 0, 'atrasadas' => 0];
+        try {
+            $checklistResumo = eventos_checklist_planejamento_resumo_evento($pdo, (int)$eventoSelecionado['id']);
+        } catch (Throwable $e) {
+            error_log('[AGENDA_EVENTOS_CHECKLIST] ' . $e->getMessage());
+        }
+        $checklistPill = (int)$checklistResumo['percentual'] . '% concluído';
+        if ((int)$checklistResumo['atrasadas'] > 0) {
+            $checklistPill .= ' • ' . (int)$checklistResumo['atrasadas'] . ' atrasada(s)';
+        }
+
         $cards = [
-            ['icon' => '☑️', 'title' => 'Checklist', 'pill' => '10% / 90%'],
+            ['icon' => '☑️', 'title' => 'Checklist', 'pill' => $checklistPill, 'href' => 'index.php?page=eventos_checklist_planejamento&evento_id=' . (int)$eventoSelecionado['id']],
             ['icon' => '🧮', 'title' => 'Financeiro do Evento', 'pill' => 'Pagamentos em Dia', 'href' => 'index.php?page=eventos_financeiro&evento_id=' . (int)$eventoSelecionado['id']],
             ['icon' => '🖥️', 'title' => 'Organização do evento', 'pill' => 'Portal do cliente', 'href' => $organizacaoHref],
-            ['icon' => '🏷️', 'title' => 'Fornecedores', 'pill' => '0'],
             ['icon' => '📄', 'title' => 'Contratos e Documentos', 'pill' => '', 'href' => 'index.php?page=eventos_documentos&evento_id=' . (int)$eventoSelecionado['id']],
             ['icon' => '❕', 'title' => 'Histórico', 'pill' => '', 'href' => $historicoHref],
         ];
@@ -1973,8 +2007,6 @@ a.event-function-card:hover {
             <section class="event-functions-panel">
                 <div class="event-actions">
                     <a class="event-action-btn" href="index.php?page=agenda_eventos<?= $eventMesLink !== '' ? '&mes=' . h($eventMesLink) : '' ?>">← Agenda</a>
-                    <button type="button" class="event-action-btn" onclick="window.print()">🖨️ Imprimir</button>
-                    <a class="event-action-btn event-action-btn--green" href="index.php?page=agenda_eventos&evento_id=<?= (int)$eventoSelecionado['id'] ?>">🔗</a>
                 </div>
 
                 <div class="event-functions-grid">

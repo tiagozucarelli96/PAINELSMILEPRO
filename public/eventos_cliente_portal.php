@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/eventos_cliente_portal_ui.php';
+require_once __DIR__ . '/eventos_checklist_planejamento_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 logistica_cardapio_ensure_schema($pdo);
@@ -219,6 +220,8 @@ if ($token === '') {
 $ocultar_cards_embutidos_reuniao = $visivel_reuniao;
 $mostrar_card_dj = $visivel_dj && !$ocultar_cards_embutidos_reuniao;
 $mostrar_card_formularios = $visivel_formulario && !empty($links_formulario_portal) && !$ocultar_cards_embutidos_reuniao;
+$checklist_planejamento_config = eventos_checklist_planejamento_config($pdo);
+$visivel_checklist_planejamento = !empty($checklist_planejamento_config['portal_cliente_ativo']);
 
 $cards_visiveis_total =
     ($visivel_reuniao ? 1 : 0) +
@@ -226,7 +229,8 @@ $cards_visiveis_total =
     ($mostrar_card_formularios ? 1 : 0) +
     ($visivel_convidados ? 1 : 0) +
     ($visivel_arquivos ? 1 : 0) +
-    ($visivel_cardapio ? 1 : 0);
+    ($visivel_cardapio ? 1 : 0) +
+    ($visivel_checklist_planejamento ? 1 : 0);
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
@@ -894,6 +898,22 @@ foreach ($links_formulario_portal as $formulario_link_item) {
                     <a class="btn btn-primary" href="index.php?page=eventos_cliente_cardapio&token=<?= urlencode($token) ?>">
                         <?= ($editavel_cardapio && empty($cardapio_summary['submitted_at'])) ? 'Escolher cardápio' : 'Visualizar cardápio' ?>
                     </a>
+                </div>
+            </section>
+            <?php endif; ?>
+
+            <?php if ($visivel_checklist_planejamento): ?>
+            <section class="portal-card portal-card-theme-formulario">
+                <div class="portal-card-inner">
+                    <div class="card-icon">✅</div>
+                    <div class="card-title">
+                        <h3>Minhas tarefas</h3>
+                        <div class="card-subtitle">Acompanhe as tarefas que dependem de você na organização do evento.</div>
+                        <div class="card-meta">Área de planejamento do cliente</div>
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_checklist&token=<?= urlencode($token) ?>">Abrir minhas tarefas</a>
                 </div>
             </section>
             <?php endif; ?>

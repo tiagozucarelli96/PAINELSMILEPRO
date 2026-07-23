@@ -725,6 +725,7 @@ function cliente_notificacoes_me_buscar_eventos_periodo(PDO $pdo, string $start 
 function cliente_notificacoes_locais_por_me_evento(PDO $pdo, array $eventIds): array
 {
     cliente_notificacoes_require_eventos_helpers();
+    $portalKeySql = eventos_cliente_portal_public_key_sql($pdo, 'p');
 
     $eventIds = array_values(array_unique(array_filter(array_map('intval', $eventIds), static fn($id) => $id > 0)));
     if (empty($eventIds)) {
@@ -747,7 +748,7 @@ function cliente_notificacoes_locais_por_me_evento(PDO $pdo, array $eventIds): a
                 er.id AS meeting_id,
                 er.tipo_evento_real AS reuniao_tipo_evento_real,
                 p.id AS portal_id,
-                p.token AS portal_token,
+                {$portalKeySql} AS portal_token,
                 p.is_active AS portal_ativo
             FROM vendas_pre_contratos v
             LEFT JOIN eventos_reunioes er ON er.me_event_id = v.me_event_id
@@ -785,7 +786,7 @@ function cliente_notificacoes_locais_por_me_evento(PDO $pdo, array $eventIds): a
                     er.tipo_evento_real,
                     er.me_event_snapshot,
                     p.id AS portal_id,
-                    p.token AS portal_token,
+                    {$portalKeySql} AS portal_token,
                     p.is_active AS portal_ativo
                 FROM eventos_reunioes er
                 LEFT JOIN eventos_cliente_portais p ON p.meeting_id = er.id

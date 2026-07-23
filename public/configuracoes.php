@@ -194,6 +194,17 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <?php if (!empty($_SESSION['perm_superadmin'])): ?>
+        <a href="index.php?page=eventos_checklist_modelos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #7c3aed, #5b21b6);">
+                <span class="funcionalidade-card-icon">🗓️</span>
+                <div class="funcionalidade-card-title">Checklist de Planejamento</div>
+                <div class="funcionalidade-card-subtitle">Modelos de tarefas por tipo de evento e pacote</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        <?php endif; ?>
         
         <!-- Sistema -->
         <a href="index.php?page=configuracoes" class="funcionalidade-card">

@@ -82,6 +82,13 @@ if (preg_match('#^/pix/([A-Za-z0-9_-]{6,96})/?$#', $path, $paymentMatch)) {
     exit;
 }
 
+// Link curto e permanente do Portal do Cliente.
+// O token legado em /index.php?page=eventos_cliente_portal&token=... continua válido.
+if (preg_match('#^/p/([A-Za-z0-9_-]{8,24})/?$#', $path, $portalMatch)) {
+    $_GET['page'] = 'eventos_cliente_portal';
+    $_GET['token'] = $portalMatch[1];
+}
+
 // Primeira carga anônima do painel vai direto para o login para evitar o bootstrap completo do index.
 $sessionCookieName = painel_env('SESSION_COOKIE_NAME', 'PAINELSMILESESSID') ?? 'PAINELSMILESESSID';
 $hasSessionCookie = isset($_COOKIE[$sessionCookieName]) && trim((string)$_COOKIE[$sessionCookieName]) !== '';

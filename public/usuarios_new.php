@@ -8,6 +8,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/eventos_checklist_planejamento_helper.php';
 
 // Garantir que $pdo está disponível
 if (!isset($pdo)) {
@@ -542,16 +543,73 @@ if ($action === 'delete' && $user_id > 0) {
     while (ob_get_level() > 0) { ob_end_clean(); }
     
     try {
-        if ($user_id == ($_SESSION['usuario_id'] ?? 0)) {
+        $currentUserId = (int)($_SESSION['usuario_id'] ?? $_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+        if ($user_id === $currentUserId) {
             header('Location: index.php?page=usuarios&error=' . urlencode('Você não pode excluir seu próprio usuário!'));
             exit;
         }
+
+        eventos_checklist_planejamento_ensure_schema($pdo);
+        $migrarParaUsuarioId = (int)($_POST['migrar_para_usuario_id'] ?? 0);
+        $stmtDestino = $pdo->prepare("
+            SELECT id
+            FROM usuarios
+            WHERE id = :id
+              AND id <> :origem
+              AND COALESCE(ativo, TRUE) = TRUE
+            LIMIT 1
+        ");
+        $stmtDestino->execute([':id' => $migrarParaUsuarioId, ':origem' => $user_id]);
+        if ((int)$stmtDestino->fetchColumn() <= 0) {
+            throw new Exception('Escolha um usuário válido para receber as tarefas do usuário excluído.');
+        }
+
+        $pdo->beginTransaction();
+        $stmtTarefasMigradas = $pdo->prepare("
+            SELECT id, evento_id
+            FROM eventos_checklist_tarefas
+            WHERE responsabilidade = 'usuario'
+              AND responsavel_usuario_id = :origem
+              AND status NOT IN ('concluida', 'desativada')
+            FOR UPDATE
+        ");
+        $stmtTarefasMigradas->execute([':origem' => $user_id]);
+        $tarefasMigradas = $stmtTarefasMigradas->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $pdo->prepare("
+            UPDATE eventos_checklist_tarefas
+            SET responsavel_usuario_id = :destino, updated_at = NOW()
+            WHERE responsabilidade = 'usuario'
+              AND responsavel_usuario_id = :origem
+              AND status NOT IN ('concluida', 'desativada')
+        ")->execute([':destino' => $migrarParaUsuarioId, ':origem' => $user_id]);
+        foreach ($tarefasMigradas as $tarefaMigrada) {
+            eventos_checklist_planejamento_historico(
+                $pdo,
+                (int)$tarefaMigrada['id'],
+                (int)$tarefaMigrada['evento_id'],
+                'responsavel_migrado_usuario_excluido',
+                'Responsável migrado antes da exclusão do usuário.',
+                ['responsavel_usuario_id' => $user_id],
+                ['responsavel_usuario_id' => $migrarParaUsuarioId],
+                $currentUserId
+            );
+        }
+        $pdo->prepare("
+            UPDATE eventos_checklist_modelo_tarefas
+            SET responsavel_usuario_id = :destino, updated_at = NOW()
+            WHERE responsabilidade = 'usuario'
+              AND responsavel_usuario_id = :origem
+        ")->execute([':destino' => $migrarParaUsuarioId, ':origem' => $user_id]);
         
         $stmt = $pdo->prepare("DELETE FROM usuarios WHERE id = :id");
         $stmt->execute([':id' => $user_id]);
+        $pdo->commit();
         
         header('Location: index.php?page=usuarios&success=' . urlencode('Usuário excluído com sucesso!'));
     } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         header('Location: index.php?page=usuarios&error=' . urlencode('Erro: ' . $e->getMessage()));
     }
     exit;
@@ -2833,8 +2891,26 @@ function loadUserData(userId) {
     });
 }
 
+const checklistMigrationUsers = <?= json_encode(array_map(static function (array $user): array {
+    return ['id' => (int)$user['id'], 'nome' => (string)($user['nome'] ?? 'Usuário')];
+}, $usuarios), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+
 function deleteUser(userId) {
     if (!confirm('Tem certeza que deseja excluir este usuário?\n\nEsta ação não pode ser desfeita.')) {
+        return;
+    }
+
+    const options = checklistMigrationUsers
+        .filter((user) => Number(user.id) !== Number(userId))
+        .map((user) => `${user.id} — ${user.nome}`)
+        .join('\n');
+    const migrationId = prompt(
+        'Antes de excluir, escolha quem receberá as tarefas atuais e futuras desse usuário.\n\nDigite o ID:\n' + options
+    );
+    if (migrationId === null) return;
+    const parsedMigrationId = Number.parseInt(migrationId, 10);
+    if (!Number.isInteger(parsedMigrationId) || parsedMigrationId <= 0 || parsedMigrationId === Number(userId)) {
+        alert('Escolha um usuário válido para receber as tarefas.');
         return;
     }
     
@@ -2853,6 +2929,12 @@ function deleteUser(userId) {
     userIdInput.name = 'user_id';
     userIdInput.value = userId;
     form.appendChild(userIdInput);
+
+    const migrationInput = document.createElement('input');
+    migrationInput.type = 'hidden';
+    migrationInput.name = 'migrar_para_usuario_id';
+    migrationInput.value = parsedMigrationId;
+    form.appendChild(migrationInput);
     
     document.body.appendChild(form);
     form.submit();

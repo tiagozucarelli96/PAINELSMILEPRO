@@ -424,6 +424,7 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 id BIGSERIAL PRIMARY KEY,
                 meeting_id BIGINT NOT NULL UNIQUE,
                 token VARCHAR(96) NOT NULL UNIQUE,
+                short_code VARCHAR(24) NULL UNIQUE,
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 visivel_reuniao BOOLEAN NOT NULL DEFAULT TRUE,
                 editavel_reuniao BOOLEAN NOT NULL DEFAULT FALSE,
@@ -448,6 +449,7 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
         ");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS short_code VARCHAR(24)");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_reuniao BOOLEAN NOT NULL DEFAULT TRUE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_reuniao BOOLEAN NOT NULL DEFAULT FALSE");
@@ -490,6 +492,12 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_cardapio SET DEFAULT TRUE");
         $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_cliente_portais_meeting ON eventos_cliente_portais(meeting_id)");
         $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_cliente_portais_token ON eventos_cliente_portais(token)");
+        $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_cliente_portais_short_code ON eventos_cliente_portais(short_code) WHERE short_code IS NOT NULL");
+        $pdo->exec("
+            UPDATE eventos_cliente_portais
+            SET short_code = SUBSTRING(MD5(token || ':portal-curto:v1') FROM 1 FOR 20)
+            WHERE short_code IS NULL OR short_code = ''
+        ");
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_cliente_portais: ' . $e->getMessage());
     }
@@ -4544,8 +4552,6 @@ function eventos_cliente_portal_base_url(): string {
     $candidates = [
         (string)(getenv('EVENTOS_CLIENTE_PORTAL_BASE_URL') ?: ''),
         (string)(getenv('APP_CLIENT_PORTAL_URL') ?: ''),
-        (string)(getenv('APP_URL') ?: ''),
-        (string)(getenv('BASE_URL') ?: ''),
     ];
     foreach ($candidates as $candidate) {
         $value = trim($candidate);
@@ -4561,7 +4567,73 @@ function eventos_cliente_portal_base_url(): string {
  */
 function eventos_cliente_portal_build_url(string $token): string {
     $base = eventos_cliente_portal_base_url();
-    return $base . '/index.php?page=eventos_cliente_portal&token=' . urlencode($token);
+    return $base . '/p/' . rawurlencode($token);
+}
+
+/**
+ * Expressão SQL compatível com bancos que ainda aguardam a migration do short_code.
+ */
+function eventos_cliente_portal_public_key_sql(PDO $pdo, string $table_alias = 'p'): string {
+    if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $table_alias)) {
+        $table_alias = 'p';
+    }
+    if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'short_code')) {
+        return "COALESCE(NULLIF({$table_alias}.short_code, ''), {$table_alias}.token)";
+    }
+    return "{$table_alias}.token";
+}
+
+/**
+ * Gera um identificador curto com 96 bits de entropia para a URL pública.
+ */
+function eventos_cliente_portal_gerar_codigo_curto(): string {
+    return rtrim(strtr(base64_encode(random_bytes(12)), '+/', '-_'), '=');
+}
+
+/**
+ * Preenche o código curto de portais antigos sem alterar o token legado.
+ */
+function eventos_cliente_portal_garantir_codigo_curto(PDO $pdo, ?array $row): ?array {
+    if (!$row || trim((string)($row['short_code'] ?? '')) !== '') {
+        return $row;
+    }
+
+    $portal_id = (int)($row['id'] ?? 0);
+    if ($portal_id <= 0 || !eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'short_code')) {
+        return $row;
+    }
+
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        try {
+            $codigo = eventos_cliente_portal_gerar_codigo_curto();
+            $stmt = $pdo->prepare("
+                UPDATE eventos_cliente_portais
+                SET short_code = :short_code, updated_at = NOW()
+                WHERE id = :id
+                  AND (short_code IS NULL OR short_code = '')
+                RETURNING *
+            ");
+            $stmt->execute([
+                ':short_code' => $codigo,
+                ':id' => $portal_id,
+            ]);
+            $updated = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($updated) {
+                return $updated;
+            }
+
+            $stmt = $pdo->prepare("SELECT * FROM eventos_cliente_portais WHERE id = :id LIMIT 1");
+            $stmt->execute([':id' => $portal_id]);
+            return $stmt->fetch(PDO::FETCH_ASSOC) ?: $row;
+        } catch (Throwable $e) {
+            // Uma colisão no índice único é extremamente improvável; tente outro código.
+            if ($attempt === 4) {
+                error_log('eventos_cliente_portal_garantir_codigo_curto: ' . $e->getMessage());
+            }
+        }
+    }
+
+    return $row;
 }
 
 /**
@@ -4652,6 +4724,7 @@ function eventos_cliente_portal_normalizar_row(?array $row): ?array {
     $row['id'] = (int)($row['id'] ?? 0);
     $row['meeting_id'] = (int)($row['meeting_id'] ?? 0);
     $row['token'] = $token;
+    $row['short_code'] = trim((string)($row['short_code'] ?? ''));
     $row['is_active'] = !empty($row['is_active']);
     $row['visivel_reuniao'] = !empty($row['visivel_reuniao']);
     $row['editavel_reuniao'] = !empty($row['editavel_reuniao']);
@@ -4672,7 +4745,8 @@ function eventos_cliente_portal_normalizar_row(?array $row): ?array {
     $row['visivel_cardapio'] = !empty($row['visivel_cardapio']);
     $row['editavel_cardapio'] = !empty($row['editavel_cardapio']);
     $row['secoes'] = eventos_cliente_portal_obter_config_secoes($row);
-    $row['url'] = $token !== '' ? eventos_cliente_portal_build_url($token) : '';
+    $public_key = $row['short_code'] !== '' ? $row['short_code'] : $token;
+    $row['url'] = $public_key !== '' ? eventos_cliente_portal_build_url($public_key) : '';
     return $row;
 }
 
@@ -4692,7 +4766,9 @@ function eventos_cliente_portal_get(PDO $pdo, int $meeting_id): ?array {
             LIMIT 1
         ");
         $stmt->execute([':meeting_id' => $meeting_id]);
-        return eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $row = eventos_cliente_portal_garantir_codigo_curto($pdo, $row);
+        return eventos_cliente_portal_normalizar_row($row);
     } catch (Throwable $e) {
         error_log('eventos_cliente_portal_get: ' . $e->getMessage());
         return null;
@@ -4709,14 +4785,24 @@ function eventos_cliente_portal_get_by_token(PDO $pdo, string $token): ?array {
         return null;
     }
     try {
+        $has_short_code = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'short_code');
+        $where = $has_short_code
+            ? '(token = :legacy_token OR short_code = :short_code)'
+            : 'token = :legacy_token';
+        $params = [':legacy_token' => $token];
+        if ($has_short_code) {
+            $params[':short_code'] = $token;
+        }
         $stmt = $pdo->prepare("
             SELECT *
             FROM eventos_cliente_portais
-            WHERE token = :token
+            WHERE {$where}
             LIMIT 1
         ");
-        $stmt->execute([':token' => $token]);
-        return eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $row = eventos_cliente_portal_garantir_codigo_curto($pdo, $row);
+        return eventos_cliente_portal_normalizar_row($row);
     } catch (Throwable $e) {
         error_log('eventos_cliente_portal_get_by_token: ' . $e->getMessage());
         return null;
@@ -5317,7 +5403,9 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
             RETURNING *
         ");
         $stmt->execute($params);
-        $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        $portal_row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $portal_row = eventos_cliente_portal_garantir_codigo_curto($pdo, $portal_row);
+        $portal = eventos_cliente_portal_normalizar_row($portal_row);
         if (!$portal) {
             return ['ok' => false, 'error' => 'Não foi possível criar o portal do cliente'];
         }

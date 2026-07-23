@@ -18,6 +18,7 @@ if (!isset($pdo)) {
 if (!isset($pdo) && isset($GLOBALS['pdo'])) {
     $pdo = $GLOBALS['pdo'];
 }
+require_once __DIR__ . '/eventos_checklist_planejamento_helper.php';
 
 if (!function_exists('dashboardEnsureConfigTable')) {
     function dashboardEnsureConfigTable(PDO $pdo): void
@@ -543,105 +544,17 @@ if ($current_page === 'dashboard') {
         }
     }
     
-    // Buscar cards do dia atual (Trello - demandas_cards)
-    // IMPORTANTE: Trello usa demandas_cards, separado do novo módulo Demandas internas.
-    // Removido fallback para tabela antiga - só mostra cards do sistema atual
-    $demandas_hoje = [];
-    $is_admin_dashboard = (
-        !empty($_SESSION['perm_superadmin']) ||
-        !empty($_SESSION['perm_administrativo']) ||
-        (isset($_SESSION['permissao']) && strpos((string)$_SESSION['permissao'], 'admin') !== false)
-    );
-    $demandas_cache_key = 'demandas:' . date('Y-m-d-H') . ':' . ((int)($usuario_id_dashboard ?? 0)) . ':' . ($is_admin_dashboard ? '1' : '0');
-    $cached_demandas = $dashboard_bypass_cache ? null : dashboardCacheRead($demandas_cache_key, 60);
-    if (is_array($cached_demandas)) {
-        $demandas_hoje = $cached_demandas;
-    } else {
-        try {
-            $filtro_visibilidade_dashboard = "
-                db.ativo = TRUE
-                AND (
-                    :is_admin = TRUE
-                    OR (
-                        NOT EXISTS (
-                            SELECT 1
-                            FROM demandas_boards_usuarios dbu_all
-                            WHERE dbu_all.board_id = db.id
-                        )
-                        OR EXISTS (
-                            SELECT 1
-                            FROM demandas_boards_usuarios dbu_user
-                            WHERE dbu_user.board_id = db.id
-                              AND dbu_user.usuario_id = :user_id
-                        )
-                    )
-                )
-            ";
-
-            $params_dashboard = [
-                ':is_admin' => $is_admin_dashboard ? 't' : 'f',
-                ':user_id' => (int)($usuario_id_dashboard ?? 0),
-            ];
-
-            $stmt = $pdo->prepare("
-                SELECT DISTINCT ON (dc.id)
-                       dc.id,
-                       dc.titulo,
-                       dc.titulo as descricao,
-                       dc.prazo,
-                       dc.status,
-                       db.nome as quadro_nome,
-                       u.nome as responsavel_nome
-                FROM demandas_cards dc
-                JOIN demandas_listas dl ON dl.id = dc.lista_id
-                JOIN demandas_boards db ON db.id = dl.board_id
-                LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
-                LEFT JOIN usuarios u ON u.id = dcu.usuario_id
-                WHERE DATE(dc.prazo) = CURRENT_DATE
-                  AND dc.status NOT IN ('concluido', 'cancelado')
-                  AND {$filtro_visibilidade_dashboard}
-                ORDER BY dc.id, dc.prazo ASC
-                LIMIT 10
-            ");
-            $stmt->execute($params_dashboard);
-            $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            if (empty($demandas_hoje)) {
-                try {
-                    $stmt = $pdo->prepare("
-                        SELECT DISTINCT ON (dc.id)
-                               dc.id,
-                               dc.titulo,
-                               dc.titulo as descricao,
-                               dc.prazo,
-                               dc.status,
-                               db.nome as quadro_nome,
-                               u.nome as responsavel_nome
-                        FROM demandas_cards dc
-                        JOIN demandas_listas dl ON dl.id = dc.lista_id
-                        JOIN demandas_boards db ON db.id = dl.board_id
-                        LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
-                        LEFT JOIN usuarios u ON u.id = dcu.usuario_id
-                        WHERE dc.status NOT IN ('concluido', 'cancelado')
-                          AND DATE(dc.criado_em) >= CURRENT_DATE - INTERVAL '7 days'
-                          AND {$filtro_visibilidade_dashboard}
-                        ORDER BY dc.id, dc.criado_em DESC
-                        LIMIT 5
-                    ");
-                    $stmt->execute($params_dashboard);
-                    $demandas_recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                    if (!empty($demandas_recentes)) {
-                        $demandas_hoje = $demandas_recentes;
-                    }
-                } catch (Exception $e2) {
-                    error_log("Erro ao buscar demandas recentes: " . $e2->getMessage());
-                }
-            }
-            dashboardCacheWrite($demandas_cache_key, $demandas_hoje);
-        } catch (Exception $e) {
-            error_log("Erro ao buscar demandas do dia (Trello): " . $e->getMessage());
-            $demandas_hoje = [];
-        }
+    // Checklist de planejamento: somente tarefas do usuário ou de seu setor,
+    // vencendo hoje ou atrasadas. Não se mistura ao checklist operacional.
+    $checklist_tarefas_hoje = [];
+    try {
+        $checklist_tarefas_hoje = eventos_checklist_planejamento_listar_minhas(
+            $pdo,
+            (int)($usuario_id_dashboard ?? $push_user_id),
+            30
+        );
+    } catch (Throwable $e) {
+        error_log('[SIDEBAR] Erro ao buscar checklist de planejamento: ' . $e->getMessage());
     }
 
     $dashboard_sales_rows_html = '';
@@ -1320,32 +1233,38 @@ if ($current_page === 'dashboard') {
                 </div>
             </div>
 
-	        <!-- Trello do Dia -->
+	        <!-- Minhas tarefas do checklist de planejamento -->
 	        <div class="dashboard-section">
             <div class="section-header">
-                <h2>📌 Trello do Dia</h2>
-                <span class="section-badge">' . count($demandas_hoje) . ' cards</span>
+                <h2>✅ Minhas tarefas — hoje e atrasadas</h2>
+                <span class="section-badge">' . count($checklist_tarefas_hoje) . ' tarefas</span>
             </div>
             <div class="demandas-list">
-                ' . (empty($demandas_hoje) ? 
+                ' . (empty($checklist_tarefas_hoje) ?
                     '<div class="empty-state">
-                        <div class="empty-icon">📌</div>
-                        <p>Nenhum card para hoje</p>
+                        <div class="empty-icon">✅</div>
+                        <p>Nenhuma tarefa vencendo hoje ou atrasada</p>
                     </div>' : 
-                    implode('', array_map(function($demanda) {
-                        $status_color = $demanda['status'] === 'concluido' ? '#10b981' : 
-                                     ($demanda['status'] === 'em_andamento' ? '#f59e0b' : '#6b7280');
-                        $status_icon = $demanda['status'] === 'concluido' ? '✅' : 
-                                     ($demanda['status'] === 'em_andamento' ? '🔄' : '⏳');
+                    implode('', array_map(function($tarefa) {
+                        $atrasada = !empty($tarefa['data_vencimento'])
+                            && (string)$tarefa['data_vencimento'] < date('Y-m-d');
+                        $status_color = $atrasada ? '#ef4444' : '#f59e0b';
+                        $status_icon = $atrasada ? '⚠️' : '⏳';
+                        $rotulo_data = $atrasada
+                            ? 'Atrasada desde ' . date('d/m/Y', strtotime((string)$tarefa['data_vencimento']))
+                            : 'Vence hoje';
+                        $responsavel = ($tarefa['responsabilidade'] ?? '') === 'setor'
+                            ? 'Setor: ' . (string)($tarefa['responsavel_setor'] ?? 'Não definido')
+                            : 'Responsável: ' . (string)($tarefa['responsavel_nome'] ?? 'Não definido');
                         return '
-                        <div class="demanda-item">
+                        <a class="demanda-item" style="text-decoration:none;color:inherit" href="index.php?page=eventos_checklist_planejamento&amp;evento_id=' . (int)$tarefa['evento_id'] . '">
                             <div class="demanda-status" style="background-color: ' . $status_color . '">' . $status_icon . '</div>
                             <div class="demanda-content">
-                                <div class="demanda-title">' . htmlspecialchars($demanda['titulo']) . '</div>
-                                <div class="demanda-meta">' . htmlspecialchars($demanda['quadro_nome'] ?? 'Sem quadro') . ' • ' . htmlspecialchars($demanda['responsavel_nome'] ?? 'Sem responsável') . '</div>
+                                <div class="demanda-title">' . htmlspecialchars((string)$tarefa['titulo']) . '</div>
+                                <div class="demanda-meta">' . htmlspecialchars((string)($tarefa['evento_nome'] ?? 'Evento')) . ' • ' . htmlspecialchars($rotulo_data) . ' • ' . htmlspecialchars($responsavel) . '</div>
                             </div>
-                        </div>';
-                    }, $demandas_hoje))
+                        </a>';
+                    }, $checklist_tarefas_hoje))
                 ) . '
             </div>
         </div>

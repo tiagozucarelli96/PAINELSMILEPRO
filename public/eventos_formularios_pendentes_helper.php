@@ -148,6 +148,7 @@ function eventos_formularios_pendentes_label(array $link): string
 function eventos_formularios_pendentes_buscar_eventos(PDO $pdo, string $eventDate, int $limit = 200): array
 {
     eventos_reuniao_ensure_schema($pdo);
+    $portalKeySql = eventos_cliente_portal_public_key_sql($pdo, 'p');
     $limit = max(1, min(500, $limit));
 
     $stmt = $pdo->prepare("
@@ -156,7 +157,7 @@ function eventos_formularios_pendentes_buscar_eventos(PDO $pdo, string $eventDat
             r.me_event_id,
             r.me_event_snapshot,
             p.id AS portal_id,
-            p.token AS portal_token
+            {$portalKeySql} AS portal_token
         FROM eventos_reunioes r
         JOIN eventos_cliente_portais p ON p.meeting_id = r.id
         WHERE COALESCE(p.is_active, TRUE) = TRUE

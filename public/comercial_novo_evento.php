@@ -12,6 +12,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/eventos_checklist_planejamento_helper.php';
 
 if (empty($_SESSION['perm_comercial']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -69,6 +70,7 @@ function comercial_novo_evento_ensure_schema(PDO $pdo): void
             )
         ");
         $pdo->exec("ALTER TABLE IF EXISTS comercial_eventos_painel ADD COLUMN IF NOT EXISTS tipo_evento_real VARCHAR(24) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_eventos_painel ADD COLUMN IF NOT EXISTS pacote_evento_id BIGINT NULL REFERENCES logistica_pacotes_evento(id) ON DELETE SET NULL");
         $pdo->exec("ALTER TABLE IF EXISTS comercial_eventos_painel ADD COLUMN IF NOT EXISTS data_venda DATE NOT NULL DEFAULT CURRENT_DATE");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_eventos_painel_espelho ON comercial_eventos_painel (espelho_evento_id)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_eventos_painel_cliente ON comercial_eventos_painel (cliente_cadastro_id)");
@@ -173,6 +175,31 @@ function comercial_novo_evento_tipos_evento(PDO $pdo): array
             }
         }
         return $fallback;
+    }
+}
+
+function comercial_novo_evento_pacotes(PDO $pdo): array
+{
+    try {
+        $stmt = $pdo->query("
+            SELECT id, nome, COALESCE(NULLIF(TRIM(tipo_evento_real), ''), '') AS tipo_evento_real
+            FROM logistica_pacotes_evento
+            WHERE deleted_at IS NULL
+              AND COALESCE(oculto, FALSE) = FALSE
+            ORDER BY LOWER(nome), id
+        ");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        foreach ($rows as &$row) {
+            $rawType = trim((string)($row['tipo_evento_real'] ?? ''));
+            $row['tipo_evento_real'] = $rawType === ''
+                ? ''
+                : eventos_reuniao_normalizar_tipo_evento_real($rawType, $pdo);
+        }
+        unset($row);
+        return $rows;
+    } catch (Throwable $e) {
+        error_log('Falha ao carregar pacotes no novo evento: ' . $e->getMessage());
+        return [];
     }
 }
 
@@ -326,6 +353,7 @@ function comercial_novo_evento_insert_client(PDO $pdo, array $data): array
 }
 
 comercial_novo_evento_ensure_schema($pdo);
+eventos_checklist_planejamento_ensure_schema($pdo);
 
 $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -362,6 +390,7 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_client_inl
 $locais = comercial_novo_evento_locais($pdo);
 $clientes = comercial_novo_evento_clientes($pdo);
 $tiposEvento = comercial_novo_evento_tipos_evento($pdo);
+$pacotesEvento = comercial_novo_evento_pacotes($pdo);
 $comoConheceuOptions = [
     'Instagram',
     'Google',
@@ -400,6 +429,7 @@ $old = [
     'local_key' => $_POST['local_key'] ?? '',
     'nome_evento' => trim((string)($_POST['nome_evento'] ?? '')),
     'tipo_evento_real' => eventos_reuniao_normalizar_tipo_evento_real((string)($_POST['tipo_evento_real'] ?? ''), $pdo),
+    'pacote_evento_id' => (int)($_POST['pacote_evento_id'] ?? 0),
     'data_venda' => $_POST['data_venda'] ?? date('Y-m-d'),
     'data_evento' => $_POST['data_evento'] ?? '',
     'hora_inicio' => $_POST['hora_inicio'] ?? '',
@@ -443,6 +473,21 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
     }
     if ($old['tipo_evento_real'] === '' || !isset($tiposEvento[$old['tipo_evento_real']])) {
         $errors[] = 'Selecione o tipo de evento.';
+    }
+    $pacoteSelecionado = null;
+    foreach ($pacotesEvento as $pacoteOption) {
+        if ((int)$pacoteOption['id'] === (int)$old['pacote_evento_id']) {
+            $pacoteSelecionado = $pacoteOption;
+            break;
+        }
+    }
+    if (!$pacoteSelecionado) {
+        $errors[] = 'Selecione o pacote do evento.';
+    } elseif (
+        trim((string)($pacoteSelecionado['tipo_evento_real'] ?? '')) !== ''
+        && eventos_reuniao_normalizar_tipo_evento_real((string)$pacoteSelecionado['tipo_evento_real'], $pdo) !== $old['tipo_evento_real']
+    ) {
+        $errors[] = 'O pacote selecionado não pertence ao tipo de evento informado.';
     }
     if ($old['data_venda'] === '') {
         $errors[] = 'Informe a data da venda.';
@@ -498,11 +543,11 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
             $stmt = $pdo->prepare("
                 INSERT INTO comercial_eventos_painel (
                     espelho_evento_id, cliente_cadastro_id, local_evento, nome_evento,
-                    tipo_evento_real, data_venda, data_evento, hora_inicio, hora_fim, como_conheceu, convidados,
+                    tipo_evento_real, pacote_evento_id, data_venda, data_evento, hora_inicio, hora_fim, como_conheceu, convidados,
                     created_by, updated_at
                 ) VALUES (
                     :espelho_evento_id, :cliente_id, :local_evento, :nome_evento,
-                    :tipo_evento_real, :data_venda, :data_evento, :hora_inicio, :hora_fim, :como_conheceu, :convidados,
+                    :tipo_evento_real, :pacote_evento_id, :data_venda, :data_evento, :hora_inicio, :hora_fim, :como_conheceu, :convidados,
                     :created_by, NOW()
                 )
             ");
@@ -512,6 +557,7 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
                 ':local_evento' => $local['localevento'],
                 ':nome_evento' => $old['nome_evento'],
                 ':tipo_evento_real' => $old['tipo_evento_real'],
+                ':pacote_evento_id' => (int)$old['pacote_evento_id'],
                 ':data_venda' => $old['data_venda'],
                 ':data_evento' => $old['data_evento'],
                 ':hora_inicio' => $old['hora_inicio'],
@@ -520,6 +566,15 @@ if ($requestMethod === 'POST' && ($_POST['action'] ?? '') === 'create_event') {
                 ':convidados' => $convidados,
                 ':created_by' => $_SESSION['usuario_id'] ?? $_SESSION['id'] ?? null,
             ]);
+
+            $checklistResult = eventos_checklist_planejamento_gerar_para_evento(
+                $pdo,
+                $espelhoId,
+                (int)($_SESSION['usuario_id'] ?? $_SESSION['id'] ?? $_SESSION['user_id'] ?? 0)
+            );
+            if (empty($checklistResult['ok'])) {
+                throw new RuntimeException((string)($checklistResult['error'] ?? 'Não foi possível criar o checklist do evento.'));
+            }
 
             $pdo->commit();
             $mes = date('Y-m', strtotime($old['data_evento']));
@@ -850,6 +905,21 @@ includeSidebar('Novo Evento');
                     </select>
                 </div>
                 <div class="field">
+                    <label for="pacote_evento_id">Pacote do evento</label>
+                    <select id="pacote_evento_id" name="pacote_evento_id" required>
+                        <option value="">Selecione...</option>
+                        <?php foreach ($pacotesEvento as $pacote): ?>
+                            <option
+                                value="<?= (int)$pacote['id'] ?>"
+                                data-tipo="<?= comercial_novo_evento_e($pacote['tipo_evento_real']) ?>"
+                                <?= (int)$old['pacote_evento_id'] === (int)$pacote['id'] ? 'selected' : '' ?>
+                            >
+                                <?= comercial_novo_evento_e($pacote['nome']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
                     <label for="data_venda">Data da venda</label>
                     <input id="data_venda" name="data_venda" type="date" value="<?= comercial_novo_evento_e($old['data_venda']) ?>" required>
                 </div>
@@ -984,6 +1054,26 @@ includeSidebar('Novo Evento');
 
 <script>
 (() => {
+    const eventType = document.getElementById('tipo_evento_real');
+    const eventPackage = document.getElementById('pacote_evento_id');
+
+    function filterPackagesByType() {
+        if (!eventType || !eventPackage) return;
+        const selectedType = String(eventType.value || '');
+        Array.from(eventPackage.options).forEach((option) => {
+            if (!option.value) return;
+            const packageType = String(option.dataset.tipo || '');
+            option.hidden = packageType !== '' && packageType !== selectedType;
+            option.disabled = option.hidden;
+        });
+        if (eventPackage.selectedOptions[0]?.disabled) {
+            eventPackage.value = '';
+        }
+    }
+
+    eventType?.addEventListener('change', filterPackagesByType);
+    filterPackagesByType();
+
     const clientSearch = document.getElementById('cliente_search');
     const clientId = document.getElementById('cliente_id');
     const clientOptions = Array.from(document.querySelectorAll('#clientes-list option'));
