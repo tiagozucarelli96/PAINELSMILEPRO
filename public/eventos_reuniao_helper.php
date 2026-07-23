@@ -4253,6 +4253,22 @@ function eventos_reuniao_atualizar_slot_portal_config(
         return ['ok' => true, 'slot_index' => $slot_index, 'link' => null];
     }
 
+    $has_client_data = eventos_cliente_portal_link_tem_dados_cliente($link);
+    if (!$has_client_data && eventos_reuniao_has_table($pdo, 'eventos_reunioes_anexos')) {
+        $stmtAnexo = $pdo->prepare("
+            SELECT 1
+            FROM eventos_reunioes_anexos
+            WHERE public_link_id = :public_link_id
+              AND deleted_at IS NULL
+            LIMIT 1
+        ");
+        $stmtAnexo->execute([':public_link_id' => (int)$link['id']]);
+        $has_client_data = eventos_cliente_portal_link_tem_dados_cliente(
+            $link,
+            (bool)$stmtAnexo->fetchColumn()
+        );
+    }
+
     $set_parts = [];
     $params = [':id' => (int)$link['id']];
 
@@ -4283,12 +4299,12 @@ function eventos_reuniao_atualizar_slot_portal_config(
         $set_parts[] = "allowed_sections = CAST(:allowed_sections AS jsonb)";
         $params[':allowed_sections'] = json_encode([$section], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
-    if ($has_schema_col && is_array($schema_snapshot)) {
+    if ($has_schema_col && is_array($schema_snapshot) && !$has_client_data) {
         $normalized_schema = eventos_form_template_normalizar_schema($schema_snapshot);
         $set_parts[] = "form_schema_json = CAST(:form_schema_json AS jsonb)";
         $params[':form_schema_json'] = json_encode($normalized_schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
-    if ($has_content_snapshot_col && $content_html_snapshot !== null) {
+    if ($has_content_snapshot_col && $content_html_snapshot !== null && !$has_client_data) {
         $set_parts[] = "content_html_snapshot = :content_html_snapshot";
         $params[':content_html_snapshot'] = trim((string)$content_html_snapshot) !== '' ? (string)$content_html_snapshot : null;
     }

@@ -29,8 +29,10 @@ foreach ($cases as [$name, $link, $temAnexo, $expected]) {
 $source = file_get_contents(__DIR__ . '/../public/eventos_reuniao_helper.php');
 if ($source === false
     || str_contains($source, 'content_html_snapshot = NULL,' . "\n" . '                    draft_content_html_snapshot = NULL')
+    || !str_contains($source, 'is_array($schema_snapshot) && !$has_client_data')
+    || !str_contains($source, '$content_html_snapshot !== null && !$has_client_data')
 ) {
-    fwrite(STDERR, "A reaplicação do modelo ainda contém limpeza destrutiva dos snapshots.\n");
+    fwrite(STDERR, "Ainda existe um fluxo capaz de substituir dados do cliente durante a configuração do formulário.\n");
     exit(1);
 }
 
