@@ -11,8 +11,6 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/eventos_me_helper.php';
-require_once __DIR__ . '/agenda_eventos_sync_helper.php';
 require_once __DIR__ . '/comercial_cliente_sync_helper.php';
 
 if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'])) {
@@ -139,6 +137,17 @@ function agenda_eventos_clamp_month(
 function agenda_eventos_date_bounds(PDO $pdo, bool $isSuperadmin, array $spacesUsuario): array
 {
     try {
+        $cacheKey = 'agenda_eventos_bounds_' . ($isSuperadmin ? 'all' : md5(implode('|', $spacesUsuario)));
+        $cached = $_SESSION[$cacheKey] ?? null;
+        if (
+            is_array($cached)
+            && isset($cached['expires_at'], $cached['bounds'])
+            && (int)$cached['expires_at'] > time()
+            && is_array($cached['bounds'])
+        ) {
+            return $cached['bounds'];
+        }
+
         $params = [];
         $sql = "
             SELECT MIN(e.data_evento)::text AS min_data,
@@ -165,13 +174,59 @@ function agenda_eventos_date_bounds(PDO $pdo, bool $isSuperadmin, array $spacesU
         $stmt->execute($params);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-        return [
+        $bounds = [
             'min' => !empty($row['min_data']) ? (string)$row['min_data'] : null,
             'max' => !empty($row['max_data']) ? (string)$row['max_data'] : null,
         ];
+        $_SESSION[$cacheKey] = [
+            'expires_at' => time() + 600,
+            'bounds' => $bounds,
+        ];
+
+        return $bounds;
     } catch (Throwable $e) {
         error_log('[AGENDA_EVENTOS_BOUNDS] ' . $e->getMessage());
         return ['min' => null, 'max' => null];
+    }
+}
+
+function agenda_eventos_ensure_fast_indexes(PDO $pdo, bool $hasEventos, bool $hasReunioes): void
+{
+    if (!$hasEventos) {
+        return;
+    }
+
+    $lastAttempt = (int)($_SESSION['agenda_eventos_fast_indexes_attempted_at'] ?? 0);
+    if ($lastAttempt > 0 && (time() - $lastAttempt) < 86400) {
+        return;
+    }
+    $_SESSION['agenda_eventos_fast_indexes_attempted_at'] = time();
+
+    try {
+        $pdo->exec("SET statement_timeout = '1500ms'");
+        $pdo->exec("
+            CREATE INDEX IF NOT EXISTS idx_logistica_eventos_espelho_ativos_data
+            ON logistica_eventos_espelho (data_evento, hora_inicio, id)
+            WHERE COALESCE(arquivado, FALSE) = FALSE
+        ");
+        $pdo->exec("
+            CREATE INDEX IF NOT EXISTS idx_logistica_eventos_espelho_ativos_space_data
+            ON logistica_eventos_espelho ((TRIM(COALESCE(space_visivel, ''))), data_evento)
+            WHERE COALESCE(arquivado, FALSE) = FALSE
+        ");
+        if ($hasReunioes) {
+            $pdo->exec("
+                CREATE INDEX IF NOT EXISTS idx_eventos_reunioes_me_event_updated
+                ON eventos_reunioes (me_event_id, updated_at DESC NULLS LAST, id DESC)
+            ");
+        }
+    } catch (Throwable $e) {
+        error_log('[AGENDA_EVENTOS_FAST_INDEXES] ' . $e->getMessage());
+    } finally {
+        try {
+            $pdo->exec('RESET statement_timeout');
+        } catch (Throwable $ignored) {
+        }
     }
 }
 
@@ -333,69 +388,6 @@ function agenda_eventos_atualizar_data_horario(PDO $pdo, int $eventoId, string $
     return ['ok' => true];
 }
 
-function agenda_eventos_sync_me_range(PDO $pdo, DateTimeImmutable $inicio, DateTimeImmutable $fim, bool $force = false): array
-{
-    if (!function_exists('eventos_me_request') || !function_exists('agenda_eventos_sync_me_payload')) {
-        return ['ok' => false, 'synced' => 0, 'error' => 'Helpers da ME indisponíveis.'];
-    }
-
-    $inicio = $inicio->setTime(0, 0);
-    $fim = $fim->setTime(0, 0);
-    if ($fim < $inicio) {
-        return ['ok' => false, 'synced' => 0, 'error' => 'Intervalo inválido.'];
-    }
-
-    $cacheKey = 'agenda_eventos_me_sync_' . $inicio->format('Ymd') . '_' . $fim->format('Ymd');
-    $lastSync = (int)($_SESSION[$cacheKey] ?? 0);
-    if (!$force && $lastSync > 0 && (time() - $lastSync) < 1800) {
-        return ['ok' => true, 'synced' => 0, 'cached' => true];
-    }
-
-    $synced = 0;
-    $current = $inicio;
-    while ($current <= $fim) {
-        $chunkEnd = $current->modify('+89 days');
-        if ($chunkEnd > $fim) {
-            $chunkEnd = $fim;
-        }
-
-        $resp = eventos_me_request('GET', '/api/v1/events', [
-            'start' => $current->format('Y-m-d'),
-            'end' => $chunkEnd->format('Y-m-d'),
-            'limit' => 500,
-        ]);
-
-        if (empty($resp['ok'])) {
-            error_log('[AGENDA_EVENTOS_ME_SYNC] ' . (string)($resp['error'] ?? 'Falha ao buscar eventos na ME.'));
-            return ['ok' => false, 'synced' => $synced, 'error' => (string)($resp['error'] ?? 'Falha ao buscar eventos na ME.')];
-        }
-
-        $items = [];
-        $raw = $resp['data'] ?? [];
-        if (is_array($raw)) {
-            $items = $raw['data'] ?? $raw['eventos'] ?? $raw;
-        }
-        if (!is_array($items)) {
-            $items = [];
-        }
-
-        foreach ($items as $item) {
-            if (!is_array($item)) {
-                continue;
-            }
-            $result = agenda_eventos_sync_me_payload($pdo, $item);
-            if (!empty($result['ok'])) {
-                $synced++;
-            }
-        }
-
-        $current = $chunkEnd->modify('+1 day');
-    }
-
-    $_SESSION[$cacheKey] = time();
-    return ['ok' => true, 'synced' => $synced];
-}
-
 $usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $isSuperadmin = !empty($_SESSION['perm_superadmin']);
 $canViewEventDetails = $isSuperadmin || !empty($_SESSION['perm_agenda_eventos_detalhes']);
@@ -412,27 +404,12 @@ $temColunaClienteCadastro = $temTabelaEventos && agenda_eventos_has_column($pdo,
 $temTabelaClientesCadastro = agenda_eventos_has_table($pdo, 'comercial_cadastro_clientes');
 $temColunaFotoEvento = $temTabelaEventos
     && agenda_eventos_has_column($pdo, 'logistica_eventos_espelho', 'foto_evento_url');
+agenda_eventos_ensure_fast_indexes($pdo, $temTabelaEventos, $temTabelaReunioes);
 
 $mesAtual = new DateTimeImmutable('first day of this month');
 $mesSelecionadoParam = trim((string)($_GET['mes'] ?? 'atual'));
 $mesSolicitado = agenda_eventos_parse_month($mesSelecionadoParam, $mesAtual)
     ->modify('first day of this month');
-$forcarSyncAgenda = isset($_GET['sync']) || isset($_GET['refresh']);
-if ($temTabelaEventos) {
-    try {
-        // Sincronizar somente o mês que o usuário abriu. A implementação anterior
-        // buscava 21 meses em blocos de 90 dias durante a requisição da página,
-        // fazendo várias chamadas externas e centenas de upserts antes de renderizar.
-        agenda_eventos_sync_me_range(
-            $pdo,
-            $mesSolicitado,
-            $mesSolicitado->modify('last day of this month'),
-            $forcarSyncAgenda
-        );
-    } catch (Throwable $e) {
-        error_log('[AGENDA_EVENTOS_ME_RANGE_SYNC] ' . $e->getMessage());
-    }
-}
 $boundsEventos = $temTabelaEventos ? agenda_eventos_date_bounds($pdo, $isSuperadmin, $spacesUsuario) : ['min' => null, 'max' => null];
 $primeiraDataEvento = !empty($boundsEventos['min'])
     ? DateTimeImmutable::createFromFormat('!Y-m-d', (string)$boundsEventos['min'])
@@ -526,9 +503,9 @@ if ($eventoSelecionadoId > 0 && !$canViewEventDetails) {
     $errors[] = 'Você não possui permissão para visualizar os detalhes completos dos eventos.';
 }
 
-// A lista mensal não precisa atualizar até 500 cadastros de clientes. Essa
-// reconciliação fica restrita à abertura de um detalhe ou a um refresh explícito.
-if ($temTabelaEventos && ($eventoSelecionadoId > 0 || $forcarSyncAgenda)) {
+// A lista mensal não precisa atualizar até 500 cadastros de clientes.
+// Essa reconciliação fica restrita à abertura de um detalhe.
+if ($temTabelaEventos && $eventoSelecionadoId > 0) {
     $lastClienteSync = (int)($_SESSION['agenda_eventos_cliente_sync_at'] ?? 0);
     if ($lastClienteSync <= 0 || (time() - $lastClienteSync) > 600) {
         try {
