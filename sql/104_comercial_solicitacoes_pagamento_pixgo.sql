@@ -4,6 +4,7 @@
 CREATE TABLE IF NOT EXISTS comercial_pagamento_solicitacoes (
     id BIGSERIAL PRIMARY KEY,
     token VARCHAR(96) NOT NULL UNIQUE,
+    public_slug VARCHAR(16) NULL,
     evento_id BIGINT NULL REFERENCES logistica_eventos_espelho(id) ON DELETE SET NULL,
     evento_nome TEXT NULL,
     descricao TEXT NOT NULL,
@@ -53,6 +54,10 @@ CREATE INDEX IF NOT EXISTS idx_comercial_pagamento_solicitacoes_evento
 
 CREATE INDEX IF NOT EXISTS idx_comercial_pagamento_solicitacoes_status
     ON comercial_pagamento_solicitacoes(status, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_comercial_pagamento_solicitacoes_public_slug
+    ON comercial_pagamento_solicitacoes(public_slug)
+    WHERE public_slug IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_comercial_pagamento_solicitacoes_pixgo
     ON comercial_pagamento_solicitacoes(pixgo_payment_id)

@@ -40,6 +40,12 @@ if ($earlyPage === 'orcamento_guiado') {
     require_once __DIR__ . '/orcamento_guiado.php';
     exit;
 }
+if (preg_match('#^/pix/([A-Za-z0-9_-]{6,96})/?$#', parse_url($request_uri, PHP_URL_PATH) ?: '', $paymentMatch)) {
+    $_GET['page'] = 'comercial_solicitacao_pagamento_public';
+    $_GET['code'] = $paymentMatch[1];
+    require_once __DIR__ . '/comercial_solicitacao_pagamento_public.php';
+    exit;
+}
 if ($earlyPage === 'comercial_solicitacao_pagamento_public') {
     require_once __DIR__ . '/comercial_solicitacao_pagamento_public.php';
     exit;

@@ -195,7 +195,7 @@ includeSidebar('Comercial');
                     <?php foreach ($solicitacoes as $row): ?>
                         <?php
                             $status = (string)($row['status_calc'] ?? $row['status'] ?? 'solicitado');
-                            $publicUrl = comercial_pagamento_public_url((string)$row['token']);
+                            $publicUrl = comercial_pagamento_public_url(comercial_pagamento_garantir_public_slug($pdo, $row));
                         ?>
                         <tr>
                             <td>

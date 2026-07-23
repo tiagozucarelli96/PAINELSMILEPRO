@@ -11,16 +11,27 @@ header('Referrer-Policy: no-referrer');
 header('X-Content-Type-Options: nosniff');
 header("Content-Security-Policy: default-src 'self'; img-src 'self' https://pixgo.org data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
 
-$token = trim((string)($_GET['token'] ?? ''));
-if ($token === '' || !preg_match('/^[a-f0-9]{64}$/', $token) || !$pdo instanceof PDO) {
+$publicCode = trim((string)($_GET['code'] ?? $_GET['token'] ?? ''));
+if ($publicCode === '' || !preg_match('/^[A-Za-z0-9_-]{6,96}$/', $publicCode) || !$pdo instanceof PDO) {
     http_response_code(404);
     exit('Solicitação não encontrada.');
 }
 
-$solicitacao = comercial_pagamento_buscar_por_token($pdo, $token);
+$solicitacao = comercial_pagamento_buscar_por_codigo($pdo, $publicCode);
 if (!$solicitacao) {
     http_response_code(404);
     exit('Solicitação não encontrada.');
+}
+$token = (string)$solicitacao['token'];
+$publicSlug = comercial_pagamento_garantir_public_slug($pdo, $solicitacao);
+
+if (
+    strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET'
+    && isset($_GET['token'])
+    && !isset($_GET['code'])
+) {
+    header('Location: ' . comercial_pagamento_public_url($publicSlug), true, 301);
+    exit;
 }
 
 $error = '';

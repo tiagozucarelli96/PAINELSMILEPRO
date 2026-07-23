@@ -219,17 +219,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
     if (!$errors) {
         $token = bin2hex(random_bytes(32));
+        $publicSlug = comercial_pagamento_criar_public_slug($pdo);
         $stmt = $pdo->prepare("
             INSERT INTO comercial_pagamento_solicitacoes
-                (token, evento_id, evento_nome, descricao, valor_original, vencimento,
+                (token, public_slug, evento_id, evento_nome, descricao, valor_original, vencimento,
                  pagador_nome, pagador_documento, created_by)
             VALUES
-                (:token, :evento_id, :evento_nome, :descricao, :valor_original, :vencimento,
+                (:token, :public_slug, :evento_id, :evento_nome, :descricao, :valor_original, :vencimento,
                  :pagador_nome, :pagador_documento, :created_by)
             RETURNING *
         ");
         $stmt->execute([
             ':token' => $token,
+            ':public_slug' => $publicSlug,
             ':evento_id' => $eventoId > 0 ? $eventoId : null,
             ':evento_nome' => $eventoNome !== '' ? $eventoNome : null,
             ':descricao' => $old['descricao'] !== '' ? $old['descricao'] : 'Pagamento Smile Eventos',
@@ -248,7 +250,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 $recentes = [];
 try {
     $recentes = $pdo->query("
-        SELECT id, token, descricao, valor_original, vencimento::text AS vencimento, status, created_at::text AS created_at
+        SELECT id, token, public_slug, descricao, valor_original, vencimento::text AS vencimento, status, created_at::text AS created_at
         FROM comercial_pagamento_solicitacoes
         ORDER BY created_at DESC
         LIMIT 10
@@ -301,7 +303,7 @@ includeSidebar('Comercial');
     <?php endif; ?>
 
     <?php if ($created): ?>
-        <?php $publicUrl = comercial_pagamento_public_url((string)$created['token']); ?>
+        <?php $publicUrl = comercial_pagamento_public_url(comercial_pagamento_garantir_public_slug($pdo, $created)); ?>
         <div class="pay-link-box">
             <strong>Link de pagamento gerado</strong>
             <input id="created-link" value="<?= h($publicUrl) ?>" readonly>
@@ -367,13 +369,14 @@ includeSidebar('Comercial');
                 <thead><tr><th>Descrição</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                     <?php foreach ($recentes as $row): ?>
+                        <?php $rowPublicUrl = comercial_pagamento_public_url(comercial_pagamento_garantir_public_slug($pdo, $row)); ?>
                         <tr>
                             <td>
                                 <?= h((string)$row['descricao']) ?><br>
                                 <small><?= h(format_currency($row['valor_original'])) ?> · venc. <?= h(brDateOnly((string)$row['vencimento'])) ?></small>
                             </td>
                             <td><span class="pay-status"><?= h(comercial_pagamento_status_label((string)$row['status'])) ?></span></td>
-                            <td><a href="<?= h(comercial_pagamento_public_url((string)$row['token'])) ?>" target="_blank" rel="noopener">Abrir</a></td>
+                            <td><a href="<?= h($rowPublicUrl) ?>" target="_blank" rel="noopener">Abrir</a></td>
                         </tr>
                     <?php endforeach; ?>
                     <?php if (!$recentes): ?><tr><td colspan="3">Nenhum link gerado ainda.</td></tr><?php endif; ?>

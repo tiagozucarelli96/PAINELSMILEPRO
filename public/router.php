@@ -75,6 +75,13 @@ if ($path === '/api' || str_starts_with($path, '/api/')) {
     exit;
 }
 
+if (preg_match('#^/pix/([A-Za-z0-9_-]{6,96})/?$#', $path, $paymentMatch)) {
+    $_GET['page'] = 'comercial_solicitacao_pagamento_public';
+    $_GET['code'] = $paymentMatch[1];
+    require __DIR__ . '/comercial_solicitacao_pagamento_public.php';
+    exit;
+}
+
 // Primeira carga anônima do painel vai direto para o login para evitar o bootstrap completo do index.
 $sessionCookieName = painel_env('SESSION_COOKIE_NAME', 'PAINELSMILESESSID') ?? 'PAINELSMILESESSID';
 $hasSessionCookie = isset($_COOKIE[$sessionCookieName]) && trim((string)$_COOKIE[$sessionCookieName]) !== '';

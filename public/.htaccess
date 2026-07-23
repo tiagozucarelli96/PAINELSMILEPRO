@@ -9,6 +9,7 @@ php_value max_input_time 300
 # Rotas públicas do Google Calendar (Apache)
 <IfModule mod_rewrite.c>
 RewriteEngine On
+RewriteRule ^pix/([A-Za-z0-9_-]{6,96})/?$ index.php?page=comercial_solicitacao_pagamento_public&code=$1 [L,QSA]
 RewriteRule ^google/webhook/?$ google_calendar_webhook.php [L,QSA]
 RewriteRule ^google/callback/?$ google_callback.php [L,QSA]
 </IfModule>

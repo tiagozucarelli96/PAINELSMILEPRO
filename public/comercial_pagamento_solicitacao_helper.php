@@ -16,6 +16,7 @@ function comercial_pagamento_solicitacao_ensure_schema(PDO $pdo): void
         CREATE TABLE IF NOT EXISTS comercial_pagamento_solicitacoes (
             id BIGSERIAL PRIMARY KEY,
             token VARCHAR(96) NOT NULL UNIQUE,
+            public_slug VARCHAR(16) NULL,
             evento_id BIGINT NULL REFERENCES logistica_eventos_espelho(id) ON DELETE SET NULL,
             evento_nome TEXT NULL,
             descricao TEXT NOT NULL,
@@ -65,6 +66,8 @@ function comercial_pagamento_solicitacao_ensure_schema(PDO $pdo): void
 
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_pagamento_solicitacoes_evento ON comercial_pagamento_solicitacoes(evento_id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_pagamento_solicitacoes_status ON comercial_pagamento_solicitacoes(status, created_at DESC)");
+    $pdo->exec("ALTER TABLE comercial_pagamento_solicitacoes ADD COLUMN IF NOT EXISTS public_slug VARCHAR(16)");
+    $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_comercial_pagamento_solicitacoes_public_slug ON comercial_pagamento_solicitacoes(public_slug) WHERE public_slug IS NOT NULL");
     $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_comercial_pagamento_solicitacoes_pixgo ON comercial_pagamento_solicitacoes(pixgo_payment_id) WHERE pixgo_payment_id IS NOT NULL");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_pagamento_pixgo_tentativas_solicitacao ON comercial_pagamento_pixgo_tentativas(solicitacao_id, created_at DESC)");
 
@@ -76,22 +79,85 @@ function comercial_pagamento_money($value): float
     return eventos_financeiro_money($value);
 }
 
-function comercial_pagamento_public_url(string $token): string
+function comercial_pagamento_public_base_url(): string
 {
-    $baseUrl = trim((string)APP_URL);
-    if ($baseUrl === '' || str_contains($baseUrl, 'seudominio.railway.app')) {
-        $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
-        $scheme = (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']))
-            ? trim((string)$_SERVER['HTTP_X_FORWARDED_PROTO'])
-            : ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
-        if ($host !== '') {
-            $baseUrl = $scheme . '://' . $host;
-        }
+    $baseUrl = trim((string)(getenv('PAGAMENTO_PUBLIC_URL') ?: getenv('APP_PUBLIC_URL') ?: ''));
+    if ($baseUrl !== '' && str_contains(strtolower($baseUrl), 'railway.app')) {
+        $baseUrl = '';
     }
     if ($baseUrl === '') {
         $baseUrl = 'https://painelpro.smileeventos.com.br';
     }
-    return rtrim($baseUrl, '/') . '/index.php?page=comercial_solicitacao_pagamento_public&token=' . rawurlencode($token);
+
+    return rtrim($baseUrl, '/');
+}
+
+function comercial_pagamento_public_url(string $publicCode): string
+{
+    return comercial_pagamento_public_base_url() . '/pix/' . rawurlencode($publicCode);
+}
+
+function comercial_pagamento_generate_public_slug(): string
+{
+    return rtrim(strtr(base64_encode(random_bytes(6)), '+/', '-_'), '=');
+}
+
+function comercial_pagamento_criar_public_slug(PDO $pdo): string
+{
+    $stmt = $pdo->prepare("SELECT 1 FROM comercial_pagamento_solicitacoes WHERE public_slug = :slug LIMIT 1");
+    for ($i = 0; $i < 20; $i++) {
+        $slug = comercial_pagamento_generate_public_slug();
+        $stmt->execute([':slug' => $slug]);
+        if (!$stmt->fetchColumn()) {
+            return $slug;
+        }
+    }
+
+    throw new RuntimeException('Não foi possível gerar um código curto para o link.');
+}
+
+function comercial_pagamento_garantir_public_slug(PDO $pdo, array $row): string
+{
+    $current = trim((string)($row['public_slug'] ?? ''));
+    if ($current !== '' && preg_match('/^[A-Za-z0-9_-]{6,16}$/', $current)) {
+        return $current;
+    }
+
+    $id = (int)($row['id'] ?? 0);
+    if ($id <= 0) {
+        return (string)($row['token'] ?? '');
+    }
+
+    for ($i = 0; $i < 20; $i++) {
+        $slug = comercial_pagamento_criar_public_slug($pdo);
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE comercial_pagamento_solicitacoes
+                SET public_slug = :slug, updated_at = NOW()
+                WHERE id = :id
+                  AND (public_slug IS NULL OR public_slug = '')
+                RETURNING public_slug
+            ");
+            $stmt->execute([':slug' => $slug, ':id' => $id]);
+            $saved = trim((string)($stmt->fetchColumn() ?: ''));
+            if ($saved !== '') {
+                return $saved;
+            }
+
+            $stmt = $pdo->prepare("SELECT public_slug FROM comercial_pagamento_solicitacoes WHERE id = :id LIMIT 1");
+            $stmt->execute([':id' => $id]);
+            $existing = trim((string)($stmt->fetchColumn() ?: ''));
+            if ($existing !== '') {
+                return $existing;
+            }
+        } catch (Throwable $e) {
+            if ($i >= 19) {
+                throw $e;
+            }
+        }
+    }
+
+    return (string)($row['token'] ?? '');
 }
 
 function comercial_pagamento_calcular_total(float $valorOriginal, string $vencimento, ?DateTimeImmutable $hoje = null): array
@@ -128,6 +194,30 @@ function comercial_pagamento_buscar_por_token(PDO $pdo, string $token): ?array
         LIMIT 1
     ");
     $stmt->execute([':token' => $token]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    return is_array($row) ? $row : null;
+}
+
+function comercial_pagamento_buscar_por_codigo(PDO $pdo, string $codigo): ?array
+{
+    comercial_pagamento_solicitacao_ensure_schema($pdo);
+    $codigo = trim($codigo);
+    if ($codigo === '') {
+        return null;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT s.*,
+               e.data_evento::text AS evento_data,
+               COALESCE(e.nome_evento, s.evento_nome, '') AS evento_nome_atual,
+               COALESCE(e.localevento, '') AS evento_local
+        FROM comercial_pagamento_solicitacoes s
+        LEFT JOIN logistica_eventos_espelho e ON e.id = s.evento_id
+        WHERE s.token = :codigo
+           OR s.public_slug = :codigo
+        LIMIT 1
+    ");
+    $stmt->execute([':codigo' => $codigo]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     return is_array($row) ? $row : null;
 }
