@@ -322,7 +322,7 @@ $canGenerate = !in_array($status, ['pago', 'gerando_pix'], true);
 <body>
 <main>
     <div class="brand">
-        <img src="logo-smile.png" alt="Smile Eventos">
+        <img src="/logo-smile.png" alt="Smile Eventos">
         <div>
             <p class="brand-kicker">Grupo Smile Eventos</p>
             <h1>Solicitação de pagamento</h1>
