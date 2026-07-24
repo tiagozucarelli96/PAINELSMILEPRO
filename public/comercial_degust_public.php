@@ -247,8 +247,9 @@ if ($_POST && !$inscricoes_encerradas) {
 
         if ($inscricao_anterior_bloqueante) {
             throw new Exception(
-                "Clientes com contrato fechado podem participar de apenas uma degustação. "
-                . "Identificamos uma inscrição anterior em outra degustação."
+                "Você já participou de uma degustação. "
+                . "Clientes com contrato fechado podem participar apenas uma vez, "
+                . "por isso não é possível realizar uma nova inscrição."
             );
         }
 

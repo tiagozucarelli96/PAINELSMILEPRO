@@ -1838,16 +1838,6 @@ async function salvarConfigPortal() {
     const visivelCardapio = document.getElementById('cfgVisivelCardapio');
     const editavelCardapio = document.getElementById('cfgEditavelCardapio');
 
-    if (editavelConvidados && editavelConvidados.checked && visivelConvidados) {
-        visivelConvidados.checked = true;
-    }
-    if (editavelArquivos && editavelArquivos.checked && visivelArquivos) {
-        visivelArquivos.checked = true;
-    }
-    if (editavelCardapio && editavelCardapio.checked && visivelCardapio) {
-        visivelCardapio.checked = true;
-    }
-
     const formData = new FormData();
     formData.append('action', 'salvar_portal_config');
     formData.append('meeting_id', String(meetingId));
@@ -1866,11 +1856,20 @@ async function salvarConfigPortal() {
     portalConfigSaveInFlight = true;
     mostrarStatusConfig('Salvando configurações...');
     try {
-        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData,
+            keepalive: true,
+        });
         const data = await parseJsonResponse(resp);
         if (!data.ok) {
             mostrarStatusConfig(data.error || 'Erro ao salvar configurações.', true);
             return;
+        }
+        // Uma alteração mais recente pode ter acontecido enquanto esta requisição
+        // estava em andamento. Nesse caso, não sobrescrever a escolha nova na tela.
+        if (!portalConfigSaveQueued) {
+            aplicarPortalConfigNaTela(data.portal);
         }
         mostrarStatusConfig('Configurações salvas automaticamente.');
     } catch (err) {
@@ -1924,15 +1923,34 @@ async function desbloquearCardapioCliente() {
 }
 
 function bindPortalConfigAutoSave() {
-    const ids = [
-        'cfgVisivelReuniao',
-        'cfgVisivelConvidados',
-        'cfgEditavelConvidados',
-        'cfgVisivelArquivos',
-        'cfgEditavelArquivos',
-        'cfgVisivelCardapio',
-        'cfgEditavelCardapio',
+    const pairs = [
+        ['cfgVisivelConvidados', 'cfgEditavelConvidados'],
+        ['cfgVisivelArquivos', 'cfgEditavelArquivos'],
+        ['cfgVisivelCardapio', 'cfgEditavelCardapio'],
     ];
+
+    pairs.forEach(([visibleId, editableId]) => {
+        const visibleInput = document.getElementById(visibleId);
+        const editableInput = document.getElementById(editableId);
+        if (visibleInput) {
+            visibleInput.addEventListener('change', () => {
+                if (!visibleInput.checked && editableInput) {
+                    editableInput.checked = false;
+                }
+                salvarConfigPortal();
+            });
+        }
+        if (editableInput) {
+            editableInput.addEventListener('change', () => {
+                if (editableInput.checked && visibleInput) {
+                    visibleInput.checked = true;
+                }
+                salvarConfigPortal();
+            });
+        }
+    });
+
+    const ids = ['cfgVisivelReuniao'];
     ids.forEach((id) => {
         const input = document.getElementById(id);
         if (!input) return;

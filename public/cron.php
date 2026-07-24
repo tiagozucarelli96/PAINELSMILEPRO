@@ -407,16 +407,41 @@ if ($tipo === 'demandas_fixas') {
         echo json_encode($resultado);
     }
 
+} elseif ($tipo === 'degustacoes_cancelar_nao_pagas') {
+    // Cancela inscrições que permanecem sem pagamento por 48 horas.
+    try {
+        require_once __DIR__ . '/comercial_degustacao_cancelamento_helper.php';
+
+        $resultado = degustacao_cancelamento_processar($pdo, [
+            'dry_run' => !empty($_GET['dry_run']),
+            'ref_datetime' => $_GET['ref_datetime'] ?? null,
+        ]);
+
+        cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);
+        echo json_encode($resultado, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    } catch (Throwable $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
+        http_response_code(500);
+        echo json_encode($resultado, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
 } elseif ($tipo === 'degustacoes_notificacoes') {
     // Cron diário das 9h para lembrar os participantes das degustações do dia.
     try {
         require_once __DIR__ . '/comercial_degustacao_notificacao_helper.php';
+        require_once __DIR__ . '/comercial_degustacao_cancelamento_helper.php';
 
         $opcoesDegustacao = [
             'dry_run' => !empty($_GET['dry_run']),
             'force' => !empty($_GET['force']),
             'ref_datetime' => $_GET['ref_datetime'] ?? null,
         ];
+        $cancelamentoNaoPagas = degustacao_cancelamento_processar($pdo, [
+            'dry_run' => $opcoesDegustacao['dry_run'],
+            'ref_datetime' => $opcoesDegustacao['ref_datetime'],
+        ]);
         $resultado = null;
 
         // A prévia precisa retornar os dados na própria resposta. O envio real
@@ -443,6 +468,7 @@ if ($tipo === 'demandas_fixas') {
                     'queued' => true,
                     'message' => 'Processamento das notificações iniciado em segundo plano.',
                     'pid' => $pid,
+                    'cancelamento_nao_pagas' => $cancelamentoNaoPagas,
                 ];
             }
         }
@@ -453,6 +479,7 @@ if ($tipo === 'demandas_fixas') {
             ignore_user_abort(true);
             @set_time_limit(900);
             $resultado = degustacao_notificacao_processar($pdo, $opcoesDegustacao);
+            $resultado['cancelamento_nao_pagas'] = $cancelamentoNaoPagas;
         }
 
         cron_logger_finish($pdo, $execucao_id, !empty($resultado['success']), $resultado, $inicio_ms);
@@ -611,6 +638,7 @@ if ($tipo === 'demandas_fixas') {
             'notificacoes',
             'agenda_visitas_whatsapp',
             'demandas_resumo_semanal',
+            'degustacoes_cancelar_nao_pagas',
             'degustacoes_notificacoes',
             'portao_auto_close',
             'google_calendar_daily',

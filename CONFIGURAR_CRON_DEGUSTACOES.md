@@ -3,6 +3,10 @@
 O endpoint envia, por WhatsApp, a mensagem do dia para as inscrições com status
 `confirmado` das degustações agendadas para a data atual.
 
+Antes dos envios, o mesmo cron cancela automaticamente inscrições com cobrança
+que continuam sem pagamento após 48 horas. Inscrições pagas e inscrições
+gratuitas não são alteradas.
+
 ## Configuração no cron-job.org
 
 - URL:
@@ -32,3 +36,15 @@ participantes encontrados sem acionar o WhatsApp:
 
 O parâmetro `force=1` ignora somente a trava de horário. Ele não ignora o
 controle anti-duplicidade dos envios reais.
+
+## Cancelamento de inscrições não pagas
+
+O cancelamento já é executado pelo cron diário de notificações. Para aplicar a
+regra mais perto do momento em que cada inscrição completa 48 horas, também é
+possível configurar uma execução de hora em hora:
+
+`https://painelsmilepro-production.up.railway.app/cron.php?tipo=degustacoes_cancelar_nao_pagas&token=SEU_CRON_TOKEN`
+
+Prévia sem alterar inscrições:
+
+`https://painelsmilepro-production.up.railway.app/cron.php?tipo=degustacoes_cancelar_nao_pagas&token=SEU_CRON_TOKEN&dry_run=1`

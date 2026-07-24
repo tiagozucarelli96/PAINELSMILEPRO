@@ -5857,21 +5857,43 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     $editavel_arquivos = array_key_exists('editavel_arquivos', $config)
         ? !empty($config['editavel_arquivos'])
         : !empty($portal_atual['editavel_arquivos']);
+    $visivel_cardapio = array_key_exists('visivel_cardapio', $config)
+        ? !empty($config['visivel_cardapio'])
+        : !empty($portal_atual['visivel_cardapio']);
+    $editavel_cardapio = array_key_exists('editavel_cardapio', $config)
+        ? !empty($config['editavel_cardapio'])
+        : !empty($portal_atual['editavel_cardapio']);
     $cardapio_enviado = eventos_cliente_portal_cardapio_enviado($pdo, $meeting_id);
-    $visivel_cardapio = true;
-    $editavel_cardapio = !$cardapio_enviado;
+    if ($cardapio_enviado) {
+        $editavel_cardapio = false;
+    }
 
-    if ($editavel_reuniao) {
+    // Ao ocultar um módulo, a edição também precisa ser desligada. Quando apenas a
+    // edição é ativada, manter a compatibilidade e tornar o módulo visível.
+    if (array_key_exists('visivel_reuniao', $config) && !$visivel_reuniao) {
+        $editavel_reuniao = false;
+    } elseif ($editavel_reuniao) {
         $visivel_reuniao = true;
     }
-    if ($editavel_dj) {
+    if (array_key_exists('visivel_dj', $config) && !$visivel_dj) {
+        $editavel_dj = false;
+    } elseif ($editavel_dj) {
         $visivel_dj = true;
     }
-    if ($editavel_convidados) {
+    if (array_key_exists('visivel_convidados', $config) && !$visivel_convidados) {
+        $editavel_convidados = false;
+    } elseif ($editavel_convidados) {
         $visivel_convidados = true;
     }
-    if ($editavel_arquivos) {
+    if (array_key_exists('visivel_arquivos', $config) && !$visivel_arquivos) {
+        $editavel_arquivos = false;
+    } elseif ($editavel_arquivos) {
         $visivel_arquivos = true;
+    }
+    if (array_key_exists('visivel_cardapio', $config) && !$visivel_cardapio) {
+        $editavel_cardapio = false;
+    } elseif ($editavel_cardapio) {
+        $visivel_cardapio = true;
     }
     $has_visivel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_reuniao');
     $has_editavel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_reuniao');
