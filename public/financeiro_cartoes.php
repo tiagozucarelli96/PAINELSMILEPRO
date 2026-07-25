@@ -431,6 +431,7 @@ $cardStats = [];
 $totalAtivos = 0;
 $totalFaturas = 0;
 $totalFaturasValor = 0.0;
+$cartoesSemFatura = 0;
 foreach ($cartoes as $cartao) {
     $cardId = (int)$cartao['id'];
     if (!empty($cartao['ativo'])) {
@@ -450,6 +451,9 @@ foreach ($cartoes as $cartao) {
     }
     if ($proximaFatura === null && !empty($faturas)) {
         $proximaFatura = $faturas[count($faturas) - 1];
+    }
+    if (empty($faturas)) {
+        $cartoesSemFatura++;
     }
     $cardStats[$cardId] = [
         'qtd_faturas' => count($faturas),
@@ -508,26 +512,74 @@ includeSidebar('Cartoes de Credito');
 ?>
 
 <style>
-.cc-page{max-width:1440px;margin:0 auto;padding:1.5rem;color:#334155}.cc-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap}.cc-title{margin:0;color:#1e3a8a;font-size:1.85rem;font-weight:900}.cc-sub{margin:.3rem 0 0;color:#64748b}.cc-actions{display:flex;gap:.65rem;flex-wrap:wrap}.cc-btn{border:0;border-radius:8px;padding:.72rem 1rem;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;font:inherit}.cc-btn.primary{background:#1e3a8a;color:#fff}.cc-btn.green{background:#20c985;color:#fff}.cc-alert{padding:.85rem 1rem;border-radius:8px;margin:1rem 0;font-weight:800}.cc-alert.success{background:#ecfdf5;color:#166534;border:1px solid #a7f3d0}.cc-alert.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.cc-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin:1.1rem 0}.cc-summary{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.06);padding:1rem;border-left:4px solid #38bdf8}.cc-summary.green{border-color:#22c55e}.cc-summary.red{border-color:#ef4444}.cc-summary h3{margin:0 0 .6rem;color:#64748b;font-size:.78rem;text-transform:uppercase}.cc-summary strong{display:block;color:#1e293b;font-size:1.35rem}.cc-summary span{display:block;color:#64748b;font-size:.84rem;margin-top:.25rem}.cc-toolbar{display:flex;justify-content:space-between;gap:1rem;align-items:end;margin:1rem 0}.cc-search{width:min(420px,100%);display:grid;gap:.35rem}.cc-search label{font-size:.82rem;font-weight:900;color:#475569}.cc-search input{border:1px solid #cbd5e1;border-radius:8px;padding:.68rem .8rem;font:inherit;background:#fff}.cc-count{font-weight:900;color:#64748b}.cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1rem;margin-top:1rem}.cc-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.07);overflow:hidden}.cc-card[open]{grid-column:1/-1}.cc-card summary{cursor:pointer;padding:1rem;background:#f8fbff;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:center;list-style:none}.cc-card summary::-webkit-details-marker{display:none}.cc-card summary:before{content:'▸';font-weight:900;color:#64748b;margin-right:.5rem}.cc-card[open] summary:before{content:'▾'}.cc-card-title-row{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}.cc-card-title{font-weight:900;color:#1e293b}.cc-muted{color:#64748b;font-size:.88rem}.cc-card-meta{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.65rem}.cc-stat{display:inline-flex;align-items:center;gap:.25rem;border:1px solid #e2e8f0;background:#fff;border-radius:999px;padding:.24rem .55rem;color:#475569;font-size:.78rem;font-weight:800}.cc-table-wrap{overflow:auto}.cc-table{width:100%;border-collapse:collapse;min-width:900px}.cc-table th,.cc-table td{padding:.8rem;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:middle}.cc-table th{background:#f8fafc;color:#475569;font-size:.76rem;text-transform:uppercase}.cc-pill{display:inline-flex;border-radius:999px;padding:.22rem .55rem;font-size:.76rem;font-weight:900}.cc-pill.on{background:#dcfce7;color:#166534}.cc-pill.off{background:#fee2e2;color:#991b1b}.cc-money{font-weight:900;color:#b42318}.cc-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cc-card-body{padding:1rem;border-top:1px solid #e2e8f0;background:#fff}.cc-small-btn{border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:.42rem .62rem;cursor:pointer;font-weight:800;color:#334155;text-decoration:none}.cc-small-btn:hover{background:#f8fafc}.cc-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.cc-modal-backdrop.open{display:flex}.cc-modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.cc-modal-head{display:flex;justify-content:space-between;align-items:center;padding:1rem;border-bottom:1px solid #e2e8f0}.cc-modal-title{margin:0;font-size:1.15rem;color:#1e293b;font-weight:900}.cc-close{width:36px;height:36px;border:0;border-radius:999px;background:#f1f5f9;cursor:pointer;font-size:1.25rem}.cc-form{padding:1rem;display:grid;gap:.85rem}.cc-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.cc-field{display:grid;gap:.35rem}.cc-field.full{grid-column:1/-1}.cc-field label{font-weight:800;font-size:.84rem}.cc-field input,.cc-field select,.cc-field textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.68rem .78rem;font:inherit}.cc-field textarea{min-height:180px}.cc-preview{margin-top:1rem;border:1px solid #bae6fd;border-radius:10px;overflow:visible;background:#f0f9ff}.cc-preview-head{padding:1rem;border-bottom:1px solid #bae6fd;font-weight:900;color:#075985}.cc-duplicate{background:#fff7ed}.cc-footer{display:flex;justify-content:flex-end;padding:1rem;border-top:1px solid #e2e8f0}.cc-cat-field{min-width:260px}.cc-cat-combo{position:relative}.cc-cat-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.55rem .68rem;font:inherit;text-align:left;cursor:pointer}.cc-cat-trigger:after{content:'▾';color:#64748b;font-size:.78rem}.cc-cat-panel{position:absolute;z-index:90;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:280px;overflow:auto}.cc-cat-combo.open .cc-cat-panel{display:block}.cc-cat-search-wrap{position:relative;margin-bottom:.45rem}.cc-cat-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem;font:inherit}.cc-cat-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cc-cat-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cc-cat-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cc-cat-option:hover,.cc-cat-option.active{background:#334155;color:#fff}.cc-cat-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cc-cat-combo.disabled{opacity:.55;pointer-events:none}@media(max-width:1050px){.cc-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.cc-form-grid,.cc-summary-grid{grid-template-columns:1fr}.cc-page{padding:1rem}.cc-grid{grid-template-columns:1fr}.cc-toolbar{align-items:stretch;flex-direction:column}.cc-card summary{grid-template-columns:1fr}}
+:root{--cc-blue:#2446a8;--cc-blue-dark:#183681;--cc-mint:#16a772;--cc-ink:#172033;--cc-muted:#667085;--cc-line:#e4e9f2;--cc-surface:#fff;--cc-bg:#f5f7fb}
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.cc-page{max-width:1510px;margin:0 auto;padding:2rem 1.75rem 3rem;color:var(--cc-ink)}
+.cc-hero{display:flex;justify-content:space-between;gap:1.5rem;align-items:center;padding:1.4rem 1.5rem;background:linear-gradient(120deg,#fff 0%,#f7f9ff 100%);border:1px solid var(--cc-line);border-radius:18px;box-shadow:0 12px 36px rgba(33,55,105,.06)}
+.cc-heading{display:flex;gap:1rem;align-items:center;min-width:0}.cc-heading-icon{width:50px;height:50px;flex:0 0 50px;display:grid;place-items:center;border-radius:14px;background:linear-gradient(145deg,var(--cc-blue),#4367ca);color:#fff;box-shadow:0 9px 22px rgba(36,70,168,.24)}.cc-heading-icon svg{width:25px;height:25px}
+.cc-eyebrow{margin:0 0 .22rem;color:var(--cc-blue);font-size:.72rem;line-height:1;font-weight:900;letter-spacing:.13em;text-transform:uppercase}.cc-title{margin:0;color:var(--cc-ink);font-size:1.65rem;line-height:1.15;font-weight:850;letter-spacing:-.025em}.cc-sub{margin:.35rem 0 0;color:var(--cc-muted);font-size:.9rem}
+.cc-actions{display:flex;gap:.65rem;flex-wrap:wrap;justify-content:flex-end}.cc-btn{min-height:42px;border:1px solid var(--cc-line);border-radius:10px;padding:.66rem .9rem;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;gap:.48rem;align-items:center;justify-content:center;background:#fff;color:#344054;font:inherit;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background .16s ease}.cc-btn svg{width:17px;height:17px}.cc-btn:hover{transform:translateY(-1px);border-color:#cbd5e1;box-shadow:0 6px 14px rgba(15,23,42,.08)}.cc-btn.primary{border-color:var(--cc-blue);background:var(--cc-blue);color:#fff;box-shadow:0 8px 18px rgba(36,70,168,.18)}.cc-btn.primary:hover{background:var(--cc-blue-dark)}.cc-btn.green{border-color:#c8eee0;background:#ecfdf6;color:#087a54}.cc-btn.green:hover{background:#dff9ef}
+.cc-alert{padding:.85rem 1rem;border-radius:10px;margin:1rem 0;font-weight:800}.cc-alert.success{background:#ecfdf5;color:#166534;border:1px solid #a7f3d0}.cc-alert.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.cc-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.85rem;margin:1rem 0 1.25rem}.cc-summary{position:relative;min-width:0;background:var(--cc-surface);border:1px solid var(--cc-line);border-radius:14px;padding:1rem 1.05rem;display:grid;grid-template-columns:40px minmax(0,1fr);gap:.75rem;align-items:center;box-shadow:0 7px 22px rgba(33,55,105,.045)}.cc-summary-icon{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:#eef3ff;color:var(--cc-blue)}.cc-summary-icon svg{width:20px;height:20px}.cc-summary.green .cc-summary-icon{background:#eafaf4;color:#0f9365}.cc-summary.red .cc-summary-icon{background:#fff1f1;color:#d14343}.cc-summary.amber .cc-summary-icon{background:#fff7e6;color:#b76e00}.cc-summary-copy{min-width:0}.cc-summary h3{margin:0 0 .2rem;color:#7a8496;font-size:.68rem;line-height:1.2;font-weight:850;letter-spacing:.075em;text-transform:uppercase}.cc-summary strong{display:block;color:var(--cc-ink);font-size:1.12rem;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cc-summary span{display:block;color:#8a94a6;font-size:.74rem;margin-top:.16rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-toolbar{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin:0 0 .9rem;padding:.8rem;background:#fff;border:1px solid var(--cc-line);border-radius:14px;box-shadow:0 6px 18px rgba(33,55,105,.04)}.cc-search{position:relative;flex:1;max-width:460px}.cc-search svg{position:absolute;left:.85rem;top:50%;width:18px;height:18px;color:#98a2b3;transform:translateY(-50%);pointer-events:none}.cc-search input{width:100%;height:42px;border:1px solid #d8deea;border-radius:9px;padding:.65rem .85rem .65rem 2.6rem;font:inherit;background:#fbfcfe;color:var(--cc-ink);outline:none;transition:border-color .16s ease,box-shadow .16s ease}.cc-search input:focus{border-color:#8ca4e7;box-shadow:0 0 0 3px rgba(36,70,168,.11);background:#fff}.cc-toolbar-right{display:flex;align-items:center;justify-content:flex-end;gap:.8rem;flex-wrap:wrap}.cc-filters{display:flex;gap:.25rem;padding:.2rem;background:#f3f5f9;border-radius:9px}.cc-filter{border:0;border-radius:7px;background:transparent;padding:.48rem .72rem;color:#667085;font:inherit;font-size:.78rem;font-weight:800;cursor:pointer}.cc-filter:hover{color:#344054}.cc-filter.active{background:#fff;color:var(--cc-blue);box-shadow:0 1px 4px rgba(15,23,42,.1)}.cc-count{padding-right:.3rem;font-size:.8rem;font-weight:800;color:#7b8494;white-space:nowrap}
+.cc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.9rem}.cc-card{position:relative;min-width:0;background:#fff;border:1px solid var(--cc-line);border-radius:15px;box-shadow:0 8px 24px rgba(33,55,105,.055);overflow:hidden;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.cc-card:after{content:'';position:absolute;inset:0 auto 0 0;width:3px;background:var(--cc-blue);opacity:.9}.cc-card.inactive:after{background:#98a2b3}.cc-card:hover{transform:translateY(-2px);border-color:#d6deec;box-shadow:0 14px 32px rgba(33,55,105,.09)}.cc-card[open]{grid-column:1/-1;transform:none}.cc-card summary{position:relative;cursor:pointer;padding:1rem 1rem .9rem 1.15rem;background:#fff;display:block;list-style:none}.cc-card summary::-webkit-details-marker{display:none}.cc-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.7rem}.cc-card-name-wrap{display:flex;gap:.65rem;align-items:flex-start;min-width:0}.cc-card-mark{width:34px;height:34px;flex:0 0 34px;border-radius:10px;background:#eef3ff;color:var(--cc-blue);display:grid;place-items:center}.cc-card-mark svg{width:18px;height:18px}.cc-card.inactive .cc-card-mark{background:#f1f3f6;color:#7b8494}.cc-card-title-row{min-width:0}.cc-card-title{display:block;color:var(--cc-ink);font-size:.93rem;line-height:1.25;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cc-card-due{display:block;margin-top:.22rem;color:#7a8496;font-size:.76rem}.cc-card-status{display:inline-flex;align-items:center;gap:.33rem;border-radius:999px;padding:.3rem .52rem;background:#ecfdf5;color:#087a54;font-size:.69rem;line-height:1;font-weight:850;white-space:nowrap}.cc-card-status:before{content:'';width:6px;height:6px;border-radius:50%;background:#16b87c}.cc-card-status.off{background:#f2f4f7;color:#667085}.cc-card-status.off:before{background:#98a2b3}
+.cc-card-value{display:block;margin:1.05rem 0 .9rem}.cc-card-value-label{display:block;margin-bottom:.22rem;color:#8a94a6;font-size:.68rem;font-weight:800;letter-spacing:.055em;text-transform:uppercase}.cc-card-value strong{display:block;color:var(--cc-ink);font-size:1.36rem;line-height:1.2;letter-spacing:-.025em}.cc-card-metrics{display:grid;grid-template-columns:1fr 1.2fr;gap:.55rem;padding-top:.78rem;border-top:1px solid #eef1f5}.cc-metric{min-width:0}.cc-metric-label{display:block;margin-bottom:.15rem;color:#98a2b3;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.045em}.cc-metric-value{display:block;color:#475467;font-size:.77rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cc-metric-value.empty{color:#98a2b3;font-weight:700}.cc-card-chevron{position:absolute;right:.95rem;bottom:.86rem;width:22px;height:22px;display:grid;place-items:center;color:#98a2b3;transition:transform .18s ease}.cc-card-chevron svg{width:16px;height:16px}.cc-card[open] .cc-card-chevron{transform:rotate(180deg)}
+.cc-muted{color:#667085;font-size:.86rem}.cc-table-wrap{overflow:auto}.cc-table{width:100%;border-collapse:collapse;min-width:760px}.cc-table th,.cc-table td{padding:.78rem .9rem;border-bottom:1px solid #edf0f4;text-align:left;vertical-align:middle}.cc-table th{background:#f8f9fc;color:#667085;font-size:.7rem;font-weight:850;letter-spacing:.05em;text-transform:uppercase}.cc-table tbody tr:hover{background:#fafbfc}.cc-pill{display:inline-flex;border-radius:999px;padding:.22rem .55rem;font-size:.74rem;font-weight:850}.cc-pill.on{background:#dcfce7;color:#166534}.cc-pill.off{background:#fee2e2;color:#991b1b}.cc-money{font-weight:850;color:#b42318}.cc-row-actions{display:flex;gap:.45rem;flex-wrap:wrap}.cc-card-body{padding:.75rem 1rem;border-top:1px solid var(--cc-line);background:#fbfcfe}.cc-small-btn{border:1px solid #d8deea;background:#fff;border-radius:8px;padding:.45rem .65rem;cursor:pointer;font:inherit;font-size:.78rem;font-weight:800;color:#475467;text-decoration:none}.cc-small-btn:hover{border-color:#b9c3d3;background:#f8fafc;color:var(--cc-blue)}
+.cc-empty-state{grid-column:1/-1;padding:3rem 1.25rem;text-align:center;border:1px dashed #ccd4e0;border-radius:15px;background:#fff;color:#667085}.cc-empty-state strong{display:block;margin-bottom:.3rem;color:#344054}.cc-empty-filter{display:none}
+.cc-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.58);backdrop-filter:blur(3px);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}.cc-modal-backdrop.open{display:flex}.cc-modal{width:min(860px,100%);max-height:calc(100vh - 2rem);overflow:auto;background:#fff;border-radius:16px;box-shadow:0 28px 80px rgba(15,23,42,.3)}.cc-modal-head{display:flex;justify-content:space-between;align-items:center;padding:1.1rem 1.2rem;border-bottom:1px solid var(--cc-line)}.cc-modal-title{margin:0;font-size:1.12rem;color:var(--cc-ink);font-weight:850}.cc-close{width:36px;height:36px;border:0;border-radius:999px;background:#f1f4f8;color:#667085;cursor:pointer;font-size:1.25rem}.cc-form{padding:1.15rem;display:grid;gap:.9rem}.cc-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.9rem}.cc-field{display:grid;gap:.4rem}.cc-field.full{grid-column:1/-1}.cc-field label{font-weight:800;font-size:.8rem;color:#475467}.cc-field input,.cc-field select,.cc-field textarea{width:100%;border:1px solid #cfd7e3;border-radius:9px;padding:.7rem .8rem;font:inherit;outline:none}.cc-field input:focus,.cc-field select:focus,.cc-field textarea:focus{border-color:#8ca4e7;box-shadow:0 0 0 3px rgba(36,70,168,.11)}.cc-field textarea{min-height:180px}.cc-preview{margin-top:1rem;border:1px solid #bae6fd;border-radius:14px;overflow:visible;background:#f0f9ff}.cc-preview-head{padding:1rem;border-bottom:1px solid #bae6fd;font-weight:850;color:#075985}.cc-duplicate{background:#fff7ed}.cc-footer{display:flex;justify-content:flex-end;gap:.5rem;padding:1rem;border-top:1px solid var(--cc-line)}
+.cc-cat-field{min-width:260px}.cc-cat-combo{position:relative}.cc-cat-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;padding:.55rem .68rem;font:inherit;text-align:left;cursor:pointer}.cc-cat-trigger:after{content:'▾';color:#64748b;font-size:.78rem}.cc-cat-panel{position:absolute;z-index:90;top:calc(100% + 4px);left:0;right:0;display:none;background:#fff;border:1px solid #334155;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:.45rem;max-height:280px;overflow:auto}.cc-cat-combo.open .cc-cat-panel{display:block}.cc-cat-search-wrap{position:relative;margin-bottom:.45rem}.cc-cat-search{width:100%;border:1px solid #d1d5db;border-radius:0;padding:.48rem 1.9rem .48rem .55rem;font:inherit}.cc-cat-search-wrap:after{content:'⌕';position:absolute;right:.55rem;top:.34rem;color:#64748b;font-weight:900}.cc-cat-group{font-weight:900;color:#475569;font-size:.8rem;padding:.35rem .4rem}.cc-cat-option{padding:.42rem .7rem;cursor:pointer;color:#334155}.cc-cat-option:hover,.cc-cat-option.active{background:#334155;color:#fff}.cc-cat-empty{padding:.55rem;color:#64748b;font-size:.85rem}.cc-cat-combo.disabled{opacity:.55;pointer-events:none}
+@media(max-width:1180px){.cc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cc-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:820px){.cc-page{padding:1rem}.cc-hero{align-items:flex-start;flex-direction:column;padding:1.1rem}.cc-actions{width:100%;justify-content:flex-start}.cc-toolbar{align-items:stretch;flex-direction:column}.cc-search{max-width:none}.cc-toolbar-right{justify-content:space-between}.cc-grid{grid-template-columns:1fr}.cc-card[open]{grid-column:auto}}
+@media(max-width:560px){.cc-heading-icon{display:none}.cc-title{font-size:1.42rem}.cc-sub{line-height:1.45}.cc-actions{display:grid;grid-template-columns:1fr 1fr}.cc-actions .cc-btn:first-child{grid-column:1/-1}.cc-summary-grid{grid-template-columns:1fr}.cc-form-grid{grid-template-columns:1fr}.cc-field.full{grid-column:auto}.cc-toolbar-right{align-items:stretch;flex-direction:column}.cc-filters{overflow:auto}.cc-filter{flex:1;white-space:nowrap}.cc-count{padding-left:.2rem}.cc-card-metrics{padding-right:1.25rem}}
 </style>
 
 <main class="cc-page">
-    <div class="cc-top">
-        <div><h1 class="cc-title">Cartões de Crédito</h1><p class="cc-sub">Cadastre cartões, importe faturas e integre o total ao financeiro.</p></div>
-        <div class="cc-actions">
-            <a class="cc-btn" href="index.php?page=financeiro">Financeiro</a>
-            <button class="cc-btn green" type="button" data-open-modal="import-modal" onclick="ccOpenModal('import-modal')">Importar fatura</button>
-            <button class="cc-btn primary" type="button" data-open-modal="card-modal" onclick="ccOpenModal('card-modal')">Novo cartão</button>
+    <header class="cc-hero">
+        <div class="cc-heading">
+            <span class="cc-heading-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18M7 15h3"/></svg>
+            </span>
+            <div>
+                <p class="cc-eyebrow">Financeiro</p>
+                <h1 class="cc-title">Cartões de crédito</h1>
+                <p class="cc-sub">Acompanhe cartões e faturas em um só lugar.</p>
+            </div>
         </div>
-    </div>
+        <div class="cc-actions">
+            <a class="cc-btn" href="index.php?page=financeiro">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                Visão financeira
+            </a>
+            <button class="cc-btn green" type="button" data-open-modal="import-modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+                Importar fatura
+            </button>
+            <button class="cc-btn primary" type="button" data-open-modal="card-modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Novo cartão
+            </button>
+        </div>
+    </header>
     <?php foreach ($messages as $msg): ?><div class="cc-alert success"><?= h($msg) ?></div><?php endforeach; ?>
     <?php foreach ($errors as $err): ?><div class="cc-alert error"><?= h($err) ?></div><?php endforeach; ?>
 
     <section class="cc-summary-grid">
-        <div class="cc-summary green"><h3>Cartões ativos</h3><strong><?= (int)$totalAtivos ?></strong><span><?= count($cartoes) ?> cadastrados</span></div>
-        <div class="cc-summary"><h3>Faturas importadas</h3><strong><?= (int)$totalFaturas ?></strong><span>parcelas e fechamentos salvos</span></div>
-        <div class="cc-summary red"><h3>Total em faturas</h3><strong><?= h(format_currency($totalFaturasValor)) ?></strong><span>somatório das faturas no sistema</span></div>
-        <div class="cc-summary"><h3>Integração</h3><strong>Financeiro</strong><span>total da fatura entra como despesa</span></div>
+        <div class="cc-summary green">
+            <span class="cc-summary-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/></svg></span>
+            <div class="cc-summary-copy"><h3>Cartões ativos</h3><strong><?= (int)$totalAtivos ?></strong><span>de <?= count($cartoes) ?> cadastrados</span></div>
+        </div>
+        <div class="cc-summary">
+            <span class="cc-summary-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M7 3h10l3 3v15H4V3h3Z"/><path d="M8 11h8M8 15h8M8 7h4"/></svg></span>
+            <div class="cc-summary-copy"><h3>Faturas importadas</h3><strong><?= (int)$totalFaturas ?></strong><span>fechamentos salvos</span></div>
+        </div>
+        <div class="cc-summary red">
+            <span class="cc-summary-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 2v20M17 6.5c0-1.4-1.8-2.5-4-2.5S9 5.1 9 6.5 10.8 9 13 9s4 1.1 4 2.5S15.2 14 13 14s-4 1.1-4 2.5S10.8 19 13 19s4-1.1 4-2.5"/></svg></span>
+            <div class="cc-summary-copy"><h3>Total importado</h3><strong><?= h(format_currency($totalFaturasValor)) ?></strong><span>somatório das faturas</span></div>
+        </div>
+        <div class="cc-summary amber">
+            <span class="cc-summary-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 8v5m0 3.5v.5"/><circle cx="12" cy="12" r="9"/></svg></span>
+            <div class="cc-summary-copy"><h3>Sem fatura</h3><strong><?= (int)$cartoesSemFatura ?></strong><span>cartões sem importação</span></div>
+        </div>
     </section>
 
     <?php if ($previewItems): ?>
@@ -563,33 +615,59 @@ includeSidebar('Cartoes de Credito');
     <?php endif; ?>
 
     <div class="cc-toolbar">
-        <div class="cc-search">
-            <label>Buscar cartão</label>
-            <input type="search" placeholder="Nome do cartão" data-card-search>
+        <label class="cc-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <span class="sr-only">Buscar cartão</span>
+            <input type="search" placeholder="Buscar cartão por nome..." data-card-search autocomplete="off">
+        </label>
+        <div class="cc-toolbar-right">
+            <div class="cc-filters" aria-label="Filtrar cartões">
+                <button class="cc-filter active" type="button" data-card-filter="all">Todos</button>
+                <button class="cc-filter" type="button" data-card-filter="active">Ativos</button>
+                <button class="cc-filter" type="button" data-card-filter="invoice">Com fatura</button>
+            </div>
+            <div class="cc-count" data-card-count><?= count($cartoes) ?> cartões</div>
         </div>
-        <div class="cc-count" data-card-count><?= count($cartoes) ?> cartão(ões)</div>
     </div>
 
     <div class="cc-grid" data-card-grid>
         <?php foreach ($cartoes as $cartao): ?>
             <?php $stats = $cardStats[(int)$cartao['id']] ?? ['qtd_faturas' => 0, 'total' => 0, 'proxima' => null]; $proxima = $stats['proxima']; ?>
-            <details class="cc-card" data-card-item data-card-name="<?= h(strtolower((string)$cartao['nome'])) ?>">
+            <?php $ativo = !empty($cartao['ativo']); $temFatura = (int)$stats['qtd_faturas'] > 0; $faturaFutura = $proxima && (string)$proxima['vencimento'] >= $today; ?>
+            <details class="cc-card <?= $ativo ? '' : 'inactive' ?>" data-card-item data-card-name="<?= h(strtolower((string)$cartao['nome'])) ?>" data-card-active="<?= $ativo ? '1' : '0' ?>" data-card-invoice="<?= $temFatura ? '1' : '0' ?>">
                 <summary>
-                    <span>
-                        <span class="cc-card-title-row"><span class="cc-card-title"><?= h((string)$cartao['nome']) ?></span><span class="cc-muted">vencimento dia <?= (int)$cartao['dia_vencimento'] ?></span></span>
-                        <span class="cc-card-meta">
-                            <span class="cc-stat"><?= (int)$stats['qtd_faturas'] ?> fatura(s)</span>
-                            <span class="cc-stat"><?= h(format_currency($stats['total'])) ?></span>
-                            <?php if ($proxima): ?><span class="cc-stat">Próxima: <?= h(brDateOnly((string)$proxima['vencimento'])) ?></span><?php endif; ?>
+                    <span class="cc-card-top">
+                        <span class="cc-card-name-wrap">
+                            <span class="cc-card-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/></svg></span>
+                            <span class="cc-card-title-row">
+                                <span class="cc-card-title"><?= h((string)$cartao['nome']) ?></span>
+                                <span class="cc-card-due">Vencimento todo dia <?= (int)$cartao['dia_vencimento'] ?></span>
+                            </span>
+                        </span>
+                        <span class="cc-card-status <?= $ativo ? '' : 'off' ?>"><?= $ativo ? 'Ativo' : 'Inativo' ?></span>
+                    </span>
+                    <span class="cc-card-value">
+                        <span class="cc-card-value-label">Total em faturas</span>
+                        <strong><?= h(format_currency($stats['total'])) ?></strong>
+                    </span>
+                    <span class="cc-card-metrics">
+                        <span class="cc-metric">
+                            <span class="cc-metric-label">Faturas</span>
+                            <span class="cc-metric-value"><?= (int)$stats['qtd_faturas'] ?> <?= (int)$stats['qtd_faturas'] === 1 ? 'importada' : 'importadas' ?></span>
+                        </span>
+                        <span class="cc-metric">
+                            <span class="cc-metric-label"><?= $faturaFutura ? 'Próxima fatura' : 'Última fatura' ?></span>
+                            <span class="cc-metric-value <?= $proxima ? '' : 'empty' ?>"><?= $proxima ? h(brDateOnly((string)$proxima['vencimento'])) : 'Nenhuma importada' ?></span>
                         </span>
                     </span>
-                    <span class="cc-pill <?= !empty($cartao['ativo']) ? 'on' : 'off' ?>"><?= !empty($cartao['ativo']) ? 'Ativo' : 'Inativo' ?></span>
+                    <span class="cc-card-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span>
                 </summary>
-                <div class="cc-card-body"><div class="cc-row-actions"><button class="cc-small-btn" type="button" data-edit-card data-id="<?= (int)$cartao['id'] ?>" data-nome="<?= h((string)$cartao['nome']) ?>" data-dia="<?= (int)$cartao['dia_vencimento'] ?>">Editar</button><form method="post"><input type="hidden" name="action" value="toggle_card"><input type="hidden" name="id" value="<?= (int)$cartao['id'] ?>"><button class="cc-small-btn" type="submit"><?= !empty($cartao['ativo']) ? 'Desativar' : 'Ativar' ?></button></form></div></div>
+                <div class="cc-card-body"><div class="cc-row-actions"><button class="cc-small-btn" type="button" data-edit-card data-id="<?= (int)$cartao['id'] ?>" data-nome="<?= h((string)$cartao['nome']) ?>" data-dia="<?= (int)$cartao['dia_vencimento'] ?>">Editar cartão</button><form method="post"><input type="hidden" name="action" value="toggle_card"><input type="hidden" name="id" value="<?= (int)$cartao['id'] ?>"><button class="cc-small-btn" type="submit"><?= $ativo ? 'Desativar' : 'Ativar' ?></button></form></div></div>
                 <div class="cc-table-wrap"><table class="cc-table"><thead><tr><th>Fatura</th><th>Vencimento</th><th>Total</th><th>Ações</th></tr></thead><tbody><?php foreach (($faturasPorCartao[(int)$cartao['id']] ?? []) as $fatura): ?><tr><td><?= h(date('m/Y', strtotime((string)$fatura['competencia']))) ?></td><td><?= h(brDateOnly((string)$fatura['vencimento'])) ?></td><td><span class="cc-money"><?= h(format_currency($fatura['total'])) ?></span></td><td><a class="cc-small-btn" href="index.php?page=financeiro_cartoes&fatura_id=<?= (int)$fatura['id'] ?>">Visualizar</a></td></tr><?php endforeach; ?><?php if (empty($faturasPorCartao[(int)$cartao['id']])): ?><tr><td colspan="4" class="cc-muted">Nenhuma fatura importada.</td></tr><?php endif; ?></tbody></table></div>
             </details>
         <?php endforeach; ?>
-        <?php if (!$cartoes): ?><div class="cc-card" style="padding:1rem">Nenhum cartão cadastrado.</div><?php endif; ?>
+        <?php if (!$cartoes): ?><div class="cc-empty-state"><strong>Nenhum cartão cadastrado</strong>Cadastre o primeiro cartão para começar.</div><?php endif; ?>
+        <div class="cc-empty-state cc-empty-filter" data-card-empty><strong>Nenhum cartão encontrado</strong>Tente outro nome ou filtro.</div>
     </div>
 </main>
 
@@ -658,21 +736,44 @@ document.querySelector('[data-cc-select-all]')?.addEventListener('change', (even
 const cardSearch = document.querySelector('[data-card-search]');
 const cardCount = document.querySelector('[data-card-count]');
 const cardItems = Array.from(document.querySelectorAll('[data-card-item]'));
+const cardEmpty = document.querySelector('[data-card-empty]');
+const cardFilters = Array.from(document.querySelectorAll('[data-card-filter]'));
+let activeCardFilter = 'all';
+function ccNormalize(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+}
 function ccFilterCards() {
-    const term = (cardSearch?.value || '').trim().toLowerCase();
+    const term = ccNormalize(cardSearch?.value).trim();
     let visible = 0;
     cardItems.forEach((card) => {
-        const show = term === '' || (card.dataset.cardName || '').includes(term);
+        const matchesName = term === '' || ccNormalize(card.dataset.cardName).includes(term);
+        const matchesFilter = activeCardFilter === 'all'
+            || (activeCardFilter === 'active' && card.dataset.cardActive === '1')
+            || (activeCardFilter === 'invoice' && card.dataset.cardInvoice === '1');
+        const show = matchesName && matchesFilter;
         card.style.display = show ? '' : 'none';
         if (show) {
             visible++;
         }
     });
     if (cardCount) {
-        cardCount.textContent = `${visible} cartão(ões)`;
+        cardCount.textContent = `${visible} ${visible === 1 ? 'cartão' : 'cartões'}`;
+    }
+    if (cardEmpty) {
+        cardEmpty.style.display = cardItems.length > 0 && visible === 0 ? 'block' : 'none';
     }
 }
 cardSearch?.addEventListener('input', ccFilterCards);
+cardFilters.forEach((filter) => {
+    filter.addEventListener('click', () => {
+        activeCardFilter = filter.dataset.cardFilter || 'all';
+        cardFilters.forEach((item) => item.classList.toggle('active', item === filter));
+        ccFilterCards();
+    });
+});
 
 document.querySelectorAll('[data-cc-cat-combo]').forEach((combo) => {
     const trigger = combo.querySelector('[data-cc-cat-trigger]');
