@@ -85,7 +85,7 @@ function eventos_documentos_column_exists(PDO $pdo, string $table, string $colum
     $stmt = $pdo->prepare("
         SELECT 1
         FROM information_schema.columns
-        WHERE table_schema = 'public'
+        WHERE table_schema = current_schema()
           AND table_name = :table
           AND column_name = :column
         LIMIT 1
