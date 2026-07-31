@@ -10,16 +10,18 @@ function painel_password_reset_ensure_schema(PDO $pdo): void
             token_hash CHAR(64) NOT NULL UNIQUE,
             expires_at TIMESTAMPTZ NOT NULL,
             used_at TIMESTAMPTZ NULL,
+            request_ip VARCHAR(64) NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     SQL);
+    $pdo->exec('ALTER TABLE usuarios_password_resets ADD COLUMN IF NOT EXISTS request_ip VARCHAR(64) NULL');
     $pdo->exec(
         'CREATE INDEX IF NOT EXISTS idx_usuarios_password_resets_validade '
         . 'ON usuarios_password_resets (usuario_id, expires_at DESC)'
     );
 }
 
-function painel_password_reset_issue(PDO $pdo, int $usuarioId, int $validadeMinutos = 30): array
+function painel_password_reset_issue(PDO $pdo, int $usuarioId, int $validadeMinutos = 30, string $requestIp = ''): array
 {
     if ($usuarioId <= 0) {
         throw new InvalidArgumentException('Usuário inválido para redefinição de senha.');
@@ -40,14 +42,15 @@ function painel_password_reset_issue(PDO $pdo, int $usuarioId, int $validadeMinu
         $stmtInvalidate->execute([':usuario_id' => $usuarioId]);
 
         $stmtInsert = $pdo->prepare(
-            'INSERT INTO usuarios_password_resets (usuario_id, token_hash, expires_at) '
-            . "VALUES (:usuario_id, :token_hash, NOW() + (:validade || ' minutes')::interval) "
+            'INSERT INTO usuarios_password_resets (usuario_id, token_hash, expires_at, request_ip) '
+            . "VALUES (:usuario_id, :token_hash, NOW() + (:validade || ' minutes')::interval, :request_ip) "
             . 'RETURNING expires_at'
         );
         $stmtInsert->execute([
             ':usuario_id' => $usuarioId,
             ':token_hash' => $tokenHash,
             ':validade' => (string)$validadeMinutos,
+            ':request_ip' => $requestIp !== '' ? substr($requestIp, 0, 64) : null,
         ]);
         $expiresAt = (string)$stmtInsert->fetchColumn();
         $pdo->commit();
@@ -63,6 +66,72 @@ function painel_password_reset_issue(PDO $pdo, int $usuarioId, int $validadeMinu
         }
         throw $e;
     }
+}
+
+function painel_password_reset_find_user(PDO $pdo, string $identifier): ?array
+{
+    $identifier = strtolower(trim($identifier));
+    if ($identifier === '') {
+        return null;
+    }
+
+    $columns = $pdo->query(<<<'SQL'
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'usuarios'
+    SQL)->fetchAll(PDO::FETCH_COLUMN);
+    $has = static fn(string $column): bool => in_array($column, $columns, true);
+
+    $where = [];
+    $params = [];
+    $index = 0;
+    foreach (['email', 'login', 'loguin', 'usuario', 'username'] as $column) {
+        if (!$has($column)) {
+            continue;
+        }
+        $placeholder = ':identifier_' . $index++;
+        $where[] = 'LOWER(TRIM(' . $column . ')) = ' . $placeholder;
+        $params[$placeholder] = $identifier;
+    }
+    if (!$where) {
+        return null;
+    }
+
+    $nameExpression = $has('nome') ? "COALESCE(NULLIF(TRIM(nome), ''), 'Usuário')" : "'Usuário'";
+    $emailExpression = $has('email') ? "COALESCE(NULLIF(TRIM(email), ''), '')" : "''";
+    $activeExpression = $has('ativo') ? 'COALESCE(ativo, TRUE)' : 'TRUE';
+    $stmt = $pdo->prepare(
+        'SELECT id, ' . $nameExpression . ' AS nome, ' . $emailExpression . ' AS email, '
+        . $activeExpression . ' AS ativo FROM usuarios WHERE (' . implode(' OR ', $where) . ') LIMIT 1'
+    );
+    $stmt->execute($params);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    return is_array($row) ? $row : null;
+}
+
+function painel_password_reset_can_issue(PDO $pdo, int $usuarioId, string $requestIp, int $intervaloSegundos = 120): bool
+{
+    painel_password_reset_ensure_schema($pdo);
+    $intervaloSegundos = max(60, min(3600, $intervaloSegundos));
+    $conditions = ['usuario_id = :usuario_id'];
+    $params = [
+        ':usuario_id' => $usuarioId,
+        ':intervalo' => (string)$intervaloSegundos,
+    ];
+    if ($requestIp !== '') {
+        $conditions[] = 'request_ip = :request_ip';
+        $params[':request_ip'] = substr($requestIp, 0, 64);
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT 1 FROM usuarios_password_resets '
+        . 'WHERE used_at IS NULL '
+        . "AND created_at > NOW() - (:intervalo || ' seconds')::interval "
+        . 'AND (' . implode(' OR ', $conditions) . ') LIMIT 1'
+    );
+    $stmt->execute($params);
+    return !$stmt->fetchColumn();
 }
 
 function painel_password_reset_lookup(PDO $pdo, string $token, bool $lock = false): ?array

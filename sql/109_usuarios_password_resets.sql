@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS usuarios_password_resets (
     token_hash CHAR(64) NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     used_at TIMESTAMPTZ NULL,
+    request_ip VARCHAR(64) NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

@@ -361,6 +361,10 @@ select.login-field{
         <button class="login-submit" type="submit">Entrar</button>
       </form>
 
+      <div style="margin-top:16px;text-align:center">
+        <a href="/redefinir_senha.php" style="color:#b8c2d8;text-decoration:none">Esqueci minha senha</a>
+      </div>
+
       <div class="footer-note">© Grupo Smile Eventos</div>
     </div>
   </div>
