@@ -829,7 +829,7 @@ function eventos_form_template_allowed_categories(): array {
  * Tipos reais de evento suportados internamente.
  */
 function eventos_reuniao_tipos_evento_real_allowed(): array {
-    return ['casamento', '15anos', 'infantil', 'formatura'];
+    return ['casamento', '15anos', 'infantil', 'formatura', 'aniversario_adulto'];
 }
 
 /**
@@ -888,6 +888,12 @@ function eventos_reuniao_tipos_evento_real_defaults(): array {
             'descricao' => 'Eventos de formatura e celebrações acadêmicas.',
             'ativo' => true,
             'ordem' => 40,
+        ],
+        'aniversario_adulto' => [
+            'label' => 'Aniversário Adulto',
+            'descricao' => 'Festas de aniversário para adultos.',
+            'ativo' => true,
+            'ordem' => 50,
         ],
     ];
 }

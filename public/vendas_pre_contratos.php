@@ -514,8 +514,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $evento_me = null;
         $already_exists = false;
         $me_call_started = false;
+        $approval_lock_acquired = false;
+        $approval_lock_namespace = 1447382596; // 0x56454E44 ("VEND"): separa esta trava de outros advisory locks.
+        $release_approval_lock = static function () use (
+            $pdo,
+            &$approval_lock_acquired,
+            $approval_lock_namespace,
+            $pre_contrato_id
+        ): void {
+            if (!$approval_lock_acquired) {
+                return;
+            }
+
+            try {
+                $stmt_unlock = $pdo->prepare('SELECT pg_advisory_unlock(CAST(? AS INTEGER), CAST(? AS INTEGER))');
+                $stmt_unlock->execute([$approval_lock_namespace, $pre_contrato_id]);
+            } catch (Throwable $unlock_error) {
+                error_log('[VENDAS] Falha ao liberar trava da aprovação #' . $pre_contrato_id . ': ' . $unlock_error->getMessage());
+            }
+
+            $approval_lock_acquired = false;
+        };
         
         try {
+            if ($pre_contrato_id <= 0) {
+                throw new Exception('Pré-contrato inválido.');
+            }
             if ($idvendedor <= 0) {
                 throw new Exception('Selecione o vendedor (ME) para criar o evento.');
             }
@@ -528,6 +552,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!isset($pacotes_evento_validos[$payload_comercial['pacote_evento_id']])) {
                 throw new Exception('Selecione um pacote válido para a organização.');
             }
+
+            // Impede duas aprovações simultâneas do mesmo pré-contrato (duplo clique,
+            // duas abas ou duas instâncias da aplicação). A consulta prévia na ME,
+            // isoladamente, não evita a corrida entre duas requisições concorrentes.
+            $stmt_lock = $pdo->prepare('SELECT pg_try_advisory_lock(CAST(? AS INTEGER), CAST(? AS INTEGER))');
+            $stmt_lock->execute([$approval_lock_namespace, $pre_contrato_id]);
+            $lock_result = $stmt_lock->fetchColumn();
+            $approval_lock_acquired = $lock_result === true
+                || $lock_result === 1
+                || $lock_result === '1'
+                || $lock_result === 't'
+                || $lock_result === 'true';
+
+            if (!$approval_lock_acquired) {
+                throw new Exception('A aprovação deste pré-contrato já está em andamento. Aguarde a conclusão antes de tentar novamente.');
+            }
+
+            // Rede de segurança para redirects, exit ou erro fatal durante chamadas à ME.
+            register_shutdown_function($release_approval_lock);
 
             $pdo->beginTransaction();
             vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload_comercial, $usuario_id, true, true);
@@ -722,6 +765,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 ];
                                 $_SESSION['vendas_conflito_detalhes'] = $conflito;
                                 $_SESSION['vendas_pre_contrato_id'] = $pre_contrato_id;
+                                $release_approval_lock();
                                 header('Location: ' . $redirect_url_error);
                                 exit;
                             }
@@ -743,6 +787,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ];
                             $_SESSION['vendas_conflito_detalhes'] = $conflito;
                             $_SESSION['vendas_pre_contrato_id'] = $pre_contrato_id;
+                            $release_approval_lock();
                             header('Location: ' . $redirect_url_error);
                             exit;
                         }
@@ -946,6 +991,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (int)$usuario_id
                 );
 
+                $release_approval_lock();
                 header('Location: ' . $redirect_url_success);
                 exit;
                 } // else empty($erros)
@@ -965,6 +1011,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'me_event_id' => $me_event_id ? (int)$me_event_id : null,
             ];
             error_log('Erro ao aprovar pré-contrato: ' . $e->getMessage());
+            $release_approval_lock();
             header('Location: ' . $redirect_url_error);
             exit;
         }
@@ -2436,7 +2483,7 @@ ob_start();
                 
                 <?php if ($pre_contrato_editar['status'] === 'pronto_aprovacao' || $pre_contrato_editar['status'] === 'aguardando_conferencia' || $pre_contrato_editar['status'] === ''): ?>
                     <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-                        <button type="button" class="btn btn-success" onclick="submeterAprovacao()">Confirmar Aprovação</button>
+                        <button type="button" class="btn btn-success" id="btn_confirmar_aprovacao" onclick="submeterAprovacao()">Confirmar Aprovação</button>
                         <button type="button" class="btn btn-secondary" onclick="fecharModalAprovacao()">Fechar</button>
                     </div>
                 <?php else: ?>
@@ -2453,6 +2500,7 @@ ob_start();
 
 <script>
 let itemIndex = <?php echo count($adicionais_editar); ?>;
+let aprovacaoEmEnvio = false;
 const pacotesEventoPrecos = <?php echo json_encode($pacotes_evento_precos_js, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 const preContratoEvento = <?php echo json_encode([
     'data_evento' => (string)($pre_contrato_editar['data_evento'] ?? ''),
@@ -2720,6 +2768,10 @@ document.getElementById('override_motivo')?.addEventListener('input', function()
 });
 
 function submeterAprovacao() {
+    if (aprovacaoEmEnvio) {
+        return;
+    }
+
     const overrideCheckbox = document.getElementById('override_conflito');
     const motivoTextarea = document.getElementById('override_motivo');
     const superadminSenha = document.getElementById('override_superadmin_senha');
@@ -2772,6 +2824,14 @@ function submeterAprovacao() {
     document.getElementById('approve_override_motivo').value = motivoTextarea ? String(motivoTextarea.value || '') : '';
     document.getElementById('approve_override_superadmin_senha').value = superadminSenha ? String(superadminSenha.value || '') : '';
     document.getElementById('approve_atualizar_cliente_me').value = document.getElementById('atualizar_cliente_me')?.value || 'manter';
+
+    aprovacaoEmEnvio = true;
+    const botaoAprovar = document.getElementById('btn_confirmar_aprovacao');
+    if (botaoAprovar) {
+        botaoAprovar.disabled = true;
+        botaoAprovar.setAttribute('aria-busy', 'true');
+        botaoAprovar.textContent = 'Aprovando... aguarde';
+    }
     formComercial.submit();
 }
 
