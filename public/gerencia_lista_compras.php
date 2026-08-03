@@ -8,6 +8,7 @@ $_GET['page'] = $_GET['page'] ?? 'gerencia_lista_compras';
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/core/gerencia_lista_compras_unidades_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 if (empty($_SESSION['logado'])) {
@@ -1135,12 +1136,20 @@ function glc_salvar_lista(PDO $pdo, array $events, array $calculo): int
     }
 
     $firstEvent = reset($events);
-    $unitId = (int)($firstEvent['unidade_interna_id'] ?? 0);
+    $unitId = glc_eventos_unidade_lista_id($events);
     $space = trim((string)($firstEvent['space_visivel'] ?? '')) ?: null;
+    if (!glc_eventos_mesma_unidade_operacional($events)) {
+        throw new RuntimeException('Não é possível salvar uma lista misturando unidades. Garden e Cristal podem ser combinados entre si.');
+    }
+    $spaces = [];
     foreach ($events as $event) {
-        if ((int)($event['unidade_interna_id'] ?? 0) !== $unitId) {
-            throw new RuntimeException('Não é possível salvar uma lista misturando unidades.');
+        $eventSpace = trim((string)($event['space_visivel'] ?? ''));
+        if ($eventSpace !== '') {
+            $spaces[glc_normalize_operational_text($eventSpace)] = $eventSpace;
         }
+    }
+    if (count($spaces) > 1 && glc_evento_grupo_unidade((array)$firstEvent) === 'garden_cristal') {
+        $space = 'Garden/Cristal';
     }
 
     $pdo->beginTransaction();
@@ -1434,9 +1443,9 @@ if ($isFormRequest) {
         }
 
         if (!$errors) {
-            $unitIds = array_values(array_unique(array_map(static fn($event) => (int)$event['unidade_interna_id'], $selectedEvents)));
-            if (count($unitIds) > 1) {
-                $errors[] = 'Selecione eventos de uma única unidade por lista.';
+            $unitGroups = glc_eventos_grupos_unidade($selectedEvents);
+            if (count($unitGroups) > 1) {
+                $errors[] = 'Selecione eventos de uma única unidade por lista. Garden e Cristal podem ser combinados; Lisbon1 e demais unidades devem ficar em outra lista.';
             }
         }
 
@@ -1564,7 +1573,7 @@ ob_start();
                         ]));
                         ?>
                         <label class="glc-event<?= $isAvailable ? '' : ' inactive' ?>" data-search="<?= h($searchText) ?>" title="<?= $isAvailable ? '' : h($motivoIndisponivel) ?>">
-                            <input type="checkbox" name="event_ids[]" value="<?= $eventId ?>" <?= $checked ? 'checked' : '' ?> <?= $isAvailable ? '' : 'disabled' ?> onchange="glcUpdateCount()">
+                            <input type="checkbox" name="event_ids[]" value="<?= $eventId ?>" data-unit-group="<?= h(glc_evento_grupo_unidade($evento)) ?>" data-unit-label="<?= h(glc_evento_grupo_unidade_label($evento)) ?>" <?= $checked ? 'checked' : '' ?> <?= $isAvailable ? '' : 'disabled' ?> onchange="glcHandleSelection(this)">
                             <span>
                                 <strong><?= h($evento['nome_evento'] ?? 'Evento') ?></strong>
                                 <span class="glc-event-meta">
@@ -1697,6 +1706,23 @@ function glcUpdateCount() {
 
 function glcClearSelection() {
     document.querySelectorAll('input[name="event_ids[]"]').forEach(input => input.checked = false);
+    glcUpdateCount();
+}
+
+function glcHandleSelection(input) {
+    if (!input?.checked) {
+        glcUpdateCount();
+        return;
+    }
+
+    const selectedFromOtherUnit = Array.from(document.querySelectorAll('input[name="event_ids[]"]:checked'))
+        .find(candidate => candidate !== input && candidate.dataset.unitGroup !== input.dataset.unitGroup);
+    if (selectedFromOtherUnit) {
+        input.checked = false;
+        const selectedLabel = selectedFromOtherUnit.dataset.unitLabel || 'outra unidade';
+        const attemptedLabel = input.dataset.unitLabel || 'outra unidade';
+        alert(`Não é possível misturar ${selectedLabel} com ${attemptedLabel} na mesma lista. Garden e Cristal podem ser combinados entre si.`);
+    }
     glcUpdateCount();
 }
 
